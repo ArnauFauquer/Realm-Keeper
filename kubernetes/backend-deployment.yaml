@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app: backend
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+    app.kubernetes.io/part-of: realm-keeper
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/component: api
+        app.kubernetes.io/part-of: realm-keeper
+    spec:
+      containers:
+        - name: backend
+          image: realm-keeper-backend:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: REPO_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: REPO_URL
+                  optional: true
+            - name: NOTE_TAG_IGNORE
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: NOTE_TAG_IGNORE
+                  optional: true
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: CORS_ALLOWED_ORIGINS
+            - name: OLLAMA_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: OLLAMA_HOST
+            - name: LLM_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: LLM_MODEL
+            - name: EMBEDDING_MODEL
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: EMBEDDING_MODEL
+            - name: EMBEDDING_DIM
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: EMBEDDING_DIM
+            - name: LLM_CONTEXT_SIZE
+              valueFrom:
+                configMapKeyRef:
+                  name: backend-config
+                  key: LLM_CONTEXT_SIZE
+            - name: LIGHTRAG_WORKING_DIR
+              value: "/app/rag_storage"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          volumeMounts:
+            - name: rag-storage
+              mountPath: /app/rag_storage
+      volumes:
+        - name: rag-storage
+          persistentVolumeClaim:
+            claimName: rag-storage-pvc
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: backend
+                topologyKey: kubernetes.io/hostname

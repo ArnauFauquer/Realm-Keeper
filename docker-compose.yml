@@ -1,0 +1,62 @@
+services:
+  backend:
+    build: ./backend
+    container_name: realm-keeper-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./backend/vault:/app/vault
+      - lightrag_data:/app/rag_storage
+    environment:
+      - PYTHONUNBUFFERED=1
+      - REPO_URL=${REPO_URL:-}
+      - NOTE_TAG_IGNORE=${NOTE_TAG_IGNORE:-draft}
+      - VAULT_SYNC_INTERVAL=${VAULT_SYNC_INTERVAL:-3600}
+      # LightRAG Configuration
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_MODEL=${LLM_MODEL:-llama3.1:8b-instruct-q4_0}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-768}
+      - LLM_CONTEXT_SIZE=${LLM_CONTEXT_SIZE:-8192}
+      - LIGHTRAG_WORKING_DIR=/app/rag_storage
+    depends_on:
+      - ollama
+
+  frontend:
+    build: ./frontend
+    container_name: realm-keeper-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: realm-keeper-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_KEEP_ALIVE=5m
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  ollama_data:
+  lightrag_data:
