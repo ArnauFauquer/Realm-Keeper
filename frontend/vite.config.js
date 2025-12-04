@@ -6,6 +6,7 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    allowedHosts: process.env.VITE_ALLOWED_HOSTS?.split(',') || true,
     watch: {
       usePolling: true
     }
