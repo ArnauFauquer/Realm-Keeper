@@ -11,7 +11,7 @@ import inspect
 
 from services.lightrag_service import LightRAGService, get_lightrag_service
 
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
 class ChatMessage(BaseModel):

@@ -1,17 +1,17 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: backend-config
+  name: realm-keeper-backend-config
   labels:
-    app: backend
+    app: realm-keeper-backend
     app.kubernetes.io/name: backend
     app.kubernetes.io/part-of: realm-keeper
 data:
   REPO_URL: "https://github.com/ArnauFauquer/RealmKeeperVault.git"
   NOTE_TAG_IGNORE: "draft"
   VAULT_SYNC_INTERVAL: "3600"
-  CORS_ALLOWED_ORIGINS: "https://realm-keeper.faukinator.com"
-  OLLAMA_HOST: "http://ollama:11434"
+  CORS_ALLOWED_ORIGINS: "https://realmkeeper.faukinator.com"
+  OLLAMA_HOST: "http://ollama.ollama.svc.cluster.local:11434"
   LLM_MODEL: "llama3.1:8b-instruct-q4_0"
   EMBEDDING_MODEL: "nomic-embed-text"
   EMBEDDING_DIM: "768"
@@ -20,10 +20,11 @@ data:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: frontend-config
+  name: realm-keeper-frontend-config
   labels:
-    app: frontend
-    app.kubernetes.io/name: frontend
+    app: realm-keeper-frontend
+    app.kubernetes.io/name: realm-keeper-frontend
     app.kubernetes.io/part-of: realm-keeper
 data:
-  VITE_API_URL: "https://realm-keeper.faukinator.com/api"
+  VITE_API_URL: "https://realmkeeper.faukinator.com"
+  VITE_ALLOWED_HOSTS: "realmkeeper.faukinator.com"

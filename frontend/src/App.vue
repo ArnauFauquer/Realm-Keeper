@@ -226,7 +226,7 @@ export default {
     },
     async fetchRagStatus() {
       try {
-        const response = await axios.get(`${this.apiUrl}/chat/status`)
+        const response = await axios.get(`${this.apiUrl}/api/chat/status`)
         this.ragStatus = response.data
       } catch (err) {
         console.error('Error fetching RAG status:', err)
@@ -238,7 +238,7 @@ export default {
       this.indexResult = null
       this.deleteResult = null
       try {
-        const response = await axios.post(`${this.apiUrl}/chat/index`, {})
+        const response = await axios.post(`${this.apiUrl}/api/chat/index`, {})
         this.indexResult = response.data
         // Start fast polling for progress updates
         this.startFastPolling()
@@ -278,7 +278,7 @@ export default {
       this.deleteResult = null
       this.indexResult = null
       try {
-        const response = await axios.delete(`${this.apiUrl}/chat/index`)
+        const response = await axios.delete(`${this.apiUrl}/api/chat/index`)
         this.deleteResult = response.data
         await this.fetchRagStatus()
       } catch (err) {

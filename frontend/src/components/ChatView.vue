@@ -166,7 +166,7 @@ export default {
           content: m.content
         }))
 
-        const response = await axios.post(`${this.apiUrl}/chat/query`, {
+        const response = await axios.post(`${this.apiUrl}/api/chat/query`, {
           message: messageText,
           mode: this.queryMode,
           stream: false,
