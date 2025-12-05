@@ -3,7 +3,7 @@
     <!-- Chat Header -->
     <div class="chat-header">
       <div class="header-info">
-        <span class="header-icon">🧠</span>
+        <span class="header-icon mdi mdi-brain"></span>
         <div class="header-text">
           <h2>Realm Knowledge</h2>
           <span class="header-subtitle">Ask questions about your vault</span>
@@ -27,7 +27,7 @@
     <div class="messages-container" ref="messagesContainer">
       <!-- Welcome message when empty -->
       <div v-if="messages.length === 0" class="welcome-message">
-        <div class="welcome-icon">✨</div>
+        <div class="welcome-icon mdi mdi-shimmer"></div>
         <h3>Welcome to Realm Knowledge</h3>
         <p>Ask me anything about your vault's content. I have knowledge of all your notes, characters, locations, and lore.</p>
         <div class="suggestion-chips">
@@ -49,7 +49,7 @@
         :class="['message', message.role]"
       >
         <div class="message-avatar">
-          {{ message.role === 'user' ? '👤' : '🧠' }}
+          <span class="mdi" :class="message.role === 'user' ? 'mdi-account' : 'mdi-brain'"></span>
         </div>
         <div class="message-content">
           <div class="message-header">
@@ -62,7 +62,7 @@
 
       <!-- Loading indicator -->
       <div v-if="isLoading" class="message assistant loading">
-        <div class="message-avatar">🧠</div>
+        <div class="message-avatar"><span class="mdi mdi-brain"></span></div>
         <div class="message-content">
           <div class="typing-indicator">
             <span></span>
@@ -259,6 +259,7 @@ export default {
 
 .header-icon {
   font-size: 1.75rem;
+  color: var(--interactive-primary);
 }
 
 .header-text h2 {
@@ -336,6 +337,7 @@ export default {
 .welcome-icon {
   font-size: 3rem;
   margin-bottom: 1rem;
+  color: var(--interactive-primary);
 }
 
 .welcome-message h3 {
@@ -413,10 +415,16 @@ export default {
   justify-content: center;
   font-size: 1.1rem;
   flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.message-avatar .mdi {
+  font-size: 1.2rem;
 }
 
 .message.user .message-avatar {
   background: var(--interactive-primary);
+  color: white;
 }
 
 .message-content {

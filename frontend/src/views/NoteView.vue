@@ -1,7 +1,7 @@
 <template>
   <div class="note-view">
     <div v-if="loading" class="loading">
-      <p>Cargando nota...</p>
+      <p>Loading note...</p>
     </div>
     
     <div v-else-if="error" class="error">
@@ -32,7 +32,7 @@
               :key="tag" 
               class="tag clickable"
               @click="filterByTag(tag)"
-              title="Filtrar por este tag"
+              title="Filter by this tag"
             >
               #{{ tag }}
             </span>

@@ -22,7 +22,7 @@
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="Buscar notas..." 
+          placeholder="Search notes..." 
           class="search-input"
         />
         
@@ -43,7 +43,7 @@
             <input 
               v-model="tagSearchQuery"
               type="text"
-              placeholder="Buscar tags..."
+              placeholder="Search tags..."
               class="tag-search-input"
             />
             <div class="tag-list">
@@ -58,7 +58,7 @@
                 {{ tag }}
               </button>
               <div v-if="filteredAvailableTags.length === 0" class="no-tags">
-                No se encontraron tags
+                No tags found
               </div>
             </div>
             <button 
@@ -67,7 +67,7 @@
               @click="clearTags"
             >
               <span class="mdi mdi-close-circle"></span>
-              Limpiar filtros
+              Clear filters
             </button>
           </div>
         </div>
@@ -86,7 +86,7 @@
         </div>
       </div>
       
-      <div v-if="loading" class="loading">Cargando notas...</div>
+      <div v-if="loading" class="loading">Loading notes...</div>
       <div v-else-if="error" class="error">{{ error }}</div>
       
       <div v-else class="notes-tree">
@@ -150,19 +150,19 @@ export default {
       )
     },
     notesTree() {
-      // Construir estructura jerárquica de árbol
+      // Build hierarchical tree structure
       const root = []
       const folderMap = {}
       
       // Use tag-filtered notes
       const notesToProcess = this.tagFilteredNotes
       
-      // Primero, crear todas las carpetas basadas en los paths de las notas
+      // First, create all folders based on note paths
       notesToProcess.forEach(note => {
         // Use note.id which has the path without .md extension
         const parts = note.id.split('/')
         
-        // Crear carpetas intermedias (todas menos la última parte que es el archivo)
+        // Create intermediate folders (all but the last part which is the file)
         for (let i = 0; i < parts.length - 1; i++) {
           const folderPath = parts.slice(0, i + 1).join('/')
           
@@ -178,7 +178,7 @@ export default {
             }
             folderMap[folderPath] = folder
             
-            // Agregar a su padre o a la raíz
+            // Add to parent or root
             if (i === 0) {
               root.push(folder)
             } else {
@@ -191,7 +191,7 @@ export default {
         }
       })
       
-      // Segundo paso: asignar notas a carpetas y detectar folder notes
+      // Second pass: assign notes to folders and detect folder notes
       notesToProcess.forEach(note => {
         const parts = note.id.split('/')
         const noteName = parts[parts.length - 1]
@@ -215,7 +215,7 @@ export default {
               folderMap[parentPath].notes.push(note)
             }
           } else {
-            // Nota en la raíz
+            // Note at root level
             root.push({
               ...note,
               isFolder: false
@@ -233,7 +233,7 @@ export default {
       
       const query = this.searchQuery.toLowerCase()
       
-      // Filtrar recursivamente
+      // Filter recursively
       const filterTree = (items) => {
         return items.map(item => {
           if (item.isFolder) {
@@ -243,18 +243,18 @@ export default {
               note.path.toLowerCase().includes(query)
             )
             
-            // Incluir carpeta si tiene notas o hijos que coinciden
+            // Include folder if it has matching notes or children
             if (filteredNotes.length > 0 || filteredChildren.length > 0) {
               return {
                 ...item,
                 children: filteredChildren,
                 notes: filteredNotes,
-                expanded: true // Expandir automáticamente al buscar
+                expanded: true // Auto-expand when searching
               }
             }
             return null
           } else {
-            // Es una nota en la raíz
+            // It's a note at root level
             if (item.title.toLowerCase().includes(query) ||
                 item.path.toLowerCase().includes(query)) {
               return item
@@ -314,7 +314,7 @@ export default {
       } else {
         this.expandedFolders.add(path)
       }
-      // Forzar re-render
+      // Force re-render
       this.expandedFolders = new Set(this.expandedFolders)
     },
     toggleSidebar() {

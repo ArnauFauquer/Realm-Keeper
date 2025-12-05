@@ -1,8 +1,8 @@
 <template>
   <div class="home">
     <div class="welcome">
-      <h1>🏰 Bienvenido a Realm Keeper</h1>
-      <p>Cargando página de inicio...</p>
+      <h1><span class="mdi mdi-saturn"></span> Welcome to Realm Keeper</h1>
+      <p>Loading home page...</p>
     </div>
   </div>
 </template>
@@ -32,5 +32,11 @@ export default {
 .welcome h1 {
   margin-bottom: 1rem;
   color: var(--text-primary);
+}
+
+.welcome h1 .mdi {
+  font-size: 2rem;
+  color: var(--interactive-primary);
+  margin-right: 0.5rem;
 }
 </style>

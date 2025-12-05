@@ -1,7 +1,7 @@
 <template>
   <div class="graph-view">
     <div v-if="loading" class="loading">
-      <p>Cargando grafo...</p>
+      <p>Loading graph...</p>
     </div>
     
     <div v-else-if="error" class="error">
@@ -22,7 +22,7 @@
       </button>
       
       <div class="graph-info" :class="{ 'is-open': showGraphInfo }">
-        <p>{{ nodes.length }} notas | {{ links.length }} conexiones</p>
+        <p>{{ nodes.length }} notes | {{ links.length }} connections</p>
         <button @click="showTypeStats = !showTypeStats" class="stats-toggle">
           {{ showTypeStats ? '▼' : '▶' }} Tipos
         </button>
@@ -35,7 +35,7 @@
             @click="toggleTypeHighlight(type)"
           >
             <span class="type-color" :style="{ backgroundColor: getColorForTypeName(type) }"></span>
-            <span class="type-name">{{ type || 'sin tipo' }}</span>
+            <span class="type-name">{{ type || 'no type' }}</span>
             <span class="type-count">{{ count }}</span>
           </div>
         </div>

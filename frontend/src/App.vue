@@ -31,23 +31,25 @@
           <ChatView :apiUrl="apiUrl" />
         </div>
         <div v-else-if="activeTab === 'admin'" class="tab-content">
-          <h2>⚙️ Admin</h2>
+          <h2><span class="mdi mdi-cog"></span> Admin</h2>
           
           <!-- LightRAG Status Section -->
           <div class="admin-section">
-            <h3>🧠 LightRAG Knowledge Base</h3>
+            <h3><span class="mdi mdi-brain"></span> LightRAG Knowledge Base</h3>
             <div v-if="ragStatus" class="rag-status">
               <div class="status-grid">
                 <div class="status-item">
                   <span class="status-label">Status:</span>
                   <span :class="['status-badge', ragStatus.initialized ? 'success' : 'warning']">
-                    {{ ragStatus.initialized ? '✓ Initialized' : '⚠ Not Initialized' }}
+                    <span class="mdi" :class="ragStatus.initialized ? 'mdi-check-circle' : 'mdi-alert'"></span>
+                    {{ ragStatus.initialized ? 'Initialized' : 'Not Initialized' }}
                   </span>
                 </div>
                 <div class="status-item">
                   <span class="status-label">Indexing:</span>
                   <span :class="['status-badge', ragStatus.indexing ? 'active' : 'idle']">
-                    {{ ragStatus.indexing ? '🔄 In Progress' : '● Idle' }}
+                    <span class="mdi" :class="ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-circle-small'"></span>
+                    {{ ragStatus.indexing ? 'In Progress' : 'Idle' }}
                   </span>
                 </div>
                 
@@ -64,7 +66,7 @@
                     ></div>
                   </div>
                   <div class="current-file" v-if="ragStatus.indexing_current_file">
-                    📄 {{ ragStatus.indexing_current_file }}
+                    <span class="mdi mdi-file-document-outline"></span> {{ ragStatus.indexing_current_file }}
                   </div>
                 </div>
                 
@@ -83,29 +85,31 @@
                   :disabled="indexing || ragStatus.indexing || deleting"
                   class="action-button primary"
                 >
-                  {{ indexing || ragStatus.indexing ? '🔄 Indexing...' : '📚 Index Vault' }}
+                  <span class="mdi" :class="indexing || ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-book-multiple'"></span>
+                  {{ indexing || ragStatus.indexing ? 'Indexing...' : 'Index Vault' }}
                 </button>
                 <button 
                   @click="fetchRagStatus" 
                   :disabled="indexing || deleting"
                   class="action-button secondary"
                 >
-                  🔄 Refresh Status
+                  <span class="mdi mdi-refresh"></span> Refresh Status
                 </button>
                 <button 
                   @click="deleteIndex" 
                   :disabled="indexing || ragStatus.indexing || deleting"
                   class="action-button danger"
                 >
-                  {{ deleting ? '🗑️ Deleting...' : '🗑️ Delete Index' }}
+                  <span class="mdi" :class="deleting ? 'mdi-delete-clock' : 'mdi-delete'"></span>
+                  {{ deleting ? 'Deleting...' : 'Delete Index' }}
                 </button>
               </div>
               <div v-if="indexResult" class="index-result" :class="indexResult.status">
                 <p v-if="indexResult.status === 'success'">
-                  ✅ Indexed {{ indexResult.indexed_files }} / {{ indexResult.total_files }} files
+                  <span class="mdi mdi-check-circle"></span> Indexed {{ indexResult.indexed_files }} / {{ indexResult.total_files }} files
                 </p>
                 <p v-else-if="indexResult.status === 'error'">
-                  ❌ Error: {{ indexResult.message }}
+                  <span class="mdi mdi-alert-circle"></span> Error: {{ indexResult.message }}
                 </p>
                 <div v-if="indexResult.errors && indexResult.errors.length > 0" class="error-list">
                   <details>
@@ -119,10 +123,10 @@
               </div>
               <div v-if="deleteResult" class="index-result" :class="deleteResult.status">
                 <p v-if="deleteResult.status === 'success'">
-                  🗑️ {{ deleteResult.message }}
+                  <span class="mdi mdi-delete-circle"></span> {{ deleteResult.message }}
                 </p>
                 <p v-else-if="deleteResult.status === 'error'">
-                  ❌ Error: {{ deleteResult.message }}
+                  <span class="mdi mdi-alert-circle"></span> Error: {{ deleteResult.message }}
                 </p>
               </div>
             </div>
@@ -133,19 +137,20 @@
 
           <!-- Vault Info Section -->
           <div class="admin-section">
-            <h3>📁 Vault Information</h3>
+            <h3><span class="mdi mdi-folder-outline"></span> Vault Information</h3>
             <div class="stats" v-if="vaultInfo">
-              <p><strong>Total de notas:</strong> {{ vaultInfo.total_notes }}</p>
+              <p><strong>Total notes:</strong> {{ vaultInfo.total_notes }}</p>
               <p><strong>Path:</strong> {{ vaultInfo.vault_path }}</p>
               <p v-if="vaultInfo.repo_url">
-                <strong>Repositorio:</strong> {{ vaultInfo.repo_url }}
+                <strong>Repository:</strong> {{ vaultInfo.repo_url }}
               </p>
               <button v-if="vaultInfo.repo_url" @click="syncVault" :disabled="syncing" class="action-button primary">
-                {{ syncing ? 'Sincronizando...' : '🔄 Sincronizar Vault' }}
+                <span class="mdi" :class="syncing ? 'mdi-sync mdi-spin' : 'mdi-sync'"></span>
+                {{ syncing ? 'Syncing...' : 'Sync Vault' }}
               </button>
             </div>
             <div v-else class="loading-stats">
-              <p>Cargando información...</p>
+              <p>Loading information...</p>
             </div>
           </div>
         </div>
@@ -210,11 +215,11 @@ export default {
       this.syncing = true
       try {
         await axios.post(`${this.apiUrl}/api/sync`)
-        alert('Vault sincronizado correctamente')
+        alert('Vault synced successfully')
         await this.fetchVaultInfo()
         window.location.reload()
       } catch (err) {
-        alert('Error sincronizando vault: ' + err.message)
+        alert('Error syncing vault: ' + err.message)
       } finally {
         this.syncing = false
       }
@@ -545,6 +550,17 @@ body {
   gap: 0.5rem;
 }
 
+.admin-section h3 .mdi {
+  font-size: 1.25rem;
+  color: var(--interactive-primary);
+}
+
+.tab-content h2 .mdi {
+  font-size: 1.5rem;
+  color: var(--interactive-primary);
+  margin-right: 0.5rem;
+}
+
 .stats p {
   margin: 0.5rem 0;
   color: var(--text-secondary);
@@ -589,12 +605,16 @@ body {
 .status-badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.35rem;
   padding: 0.25rem 0.75rem;
   border-radius: 20px;
   font-size: 0.85rem;
   font-weight: 500;
   width: fit-content;
+}
+
+.status-badge .mdi {
+  font-size: 1rem;
 }
 
 .status-badge.success {
@@ -613,7 +633,6 @@ body {
   background: rgba(59, 130, 246, 0.2);
   color: #60a5fa;
   border: 1px solid rgba(59, 130, 246, 0.3);
-  animation: pulse 2s infinite;
 }
 
 .status-badge.idle {
@@ -741,6 +760,16 @@ body {
   padding: 1rem;
   border-radius: 8px;
   margin-top: 1rem;
+}
+
+.index-result p {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.index-result .mdi {
+  font-size: 1.1rem;
 }
 
 .index-result.success {

@@ -41,7 +41,7 @@
       </div>
       
       <div v-if="item.expanded">
-        <!-- Subcarpetas -->
+        <!-- Subfolders -->
         <TreeItem 
           v-for="child in item.children" 
           :key="child.path"
@@ -51,7 +51,7 @@
           @note-click="$emit('note-click')"
         />
         
-        <!-- Notas en esta carpeta -->
+        <!-- Notes in this folder -->
         <router-link 
           v-for="note in item.notes" 
           :key="note.id"
@@ -67,7 +67,7 @@
       </div>
     </div>
     
-    <!-- Nota en la raíz -->
+    <!-- Note at root level -->
     <router-link 
       v-else
       :to="'/note/' + encodeURIComponent(item.id)"

@@ -1,16 +1,18 @@
 # Realm Keeper - Markdown Wiki
 
-Una aplicación web minimalista para visualizar tus notas de Markdown como una wiki navegable.
+A minimalist web application to visualize your Markdown notes as a navigable wiki.
 
-## 🚀 Características
+## 🚀 Features
 
-- ✅ Soporte para wikilinks `[[nota]]`
-- ✅ Navegación por estructura de directorios
-- ✅ Búsqueda de notas
-- ✅ Sincronización con repositorio Git
-- ✅ Renderizado de Markdown
-- ✅ Tags y metadata
-- ✅ Cache para mejor rendimiento
+- ✅ Wikilinks support `[[note]]`
+- ✅ Directory structure navigation
+- ✅ Note search
+- ✅ Git repository synchronization
+- ✅ Markdown rendering
+- ✅ Tags and metadata
+- ✅ Cache for better performance
+- ✅ Knowledge graph visualization
+- ✅ LightRAG-powered AI chat assistant
 
 ## Project Structure
 
@@ -19,9 +21,9 @@ Realm-Keeper/
 ├── backend/           # FastAPI backend
 │   ├── main.py
 │   ├── requirements.txt
-│   ├── models/        # Modelos de datos
-│   ├── routes/        # Endpoints API
-│   ├── services/      # Lógica de negocio
+│   ├── models/        # Data models
+│   ├── routes/        # API endpoints
+│   ├── services/      # Business logic
 │   └── Dockerfile
 ├── frontend/          # Vue frontend
 │   ├── src/
@@ -31,32 +33,33 @@ Realm-Keeper/
 │   │   └── App.vue
 │   ├── package.json
 │   └── Dockerfile
+├── kubernetes/        # Kubernetes deployment configs
 └── docker-compose.yml
 ```
 
 ## Getting Started
 
-### Configuración del Vault
+### Vault Configuration
 
-**Opción 1: Carpeta local (más simple)**
+**Option 1: Local folder (simplest)**
 
 ```bash
-# Copiar tus archivos .md a ./backend/vault/
-# La aplicación leerá directamente de esta carpeta
-cp -r /ruta/a/tus/notas/*.md backend/vault/
+# Copy your .md files to ./backend/vault/
+# The application will read directly from this folder
+cp -r /path/to/your/notes/*.md backend/vault/
 ```
 
-**Opción 2: Repositorio Git con sincronización**
+**Option 2: Git repository with synchronization**
 
-> 📖 **Ver guía completa**: [GITHUB_TOKEN_SETUP.md](./GITHUB_TOKEN_SETUP.md)
+> 📖 **See full guide**: [GITHUB_TOKEN_SETUP.md](./GITHUB_TOKEN_SETUP.md)
 
-1. Crear un token de GitHub con permisos `repo`
-2. Configurar en `.env`: `REPO_URL=https://TOKEN@github.com/user/repo.git`
-3. Sincronizar desde la UI con el botón "Sincronizar Vault"
+1. Create a GitHub token with `repo` permissions
+2. Configure in `.env`: `REPO_URL=https://TOKEN@github.com/user/repo.git`
+3. Sync from the UI using the "Sync Vault" button
 
 ### Running the Application
 
-1. Instalar dependencias del frontend:
+1. Install frontend dependencies:
 ```bash
 cd frontend
 npm install
@@ -72,7 +75,7 @@ docker-compose up --build
    - Backend API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
 
-### Development sin Docker
+### Development without Docker
 
 **Backend:**
 ```bash
@@ -95,49 +98,61 @@ npm run dev
 - `GET /health` - Health check
 
 ### Notes
-- `GET /api/notes` - Lista todas las notas con metadata
-- `GET /api/notes?search=query` - Buscar notas por título
-- `GET /api/note/{path}` - Obtiene una nota específica (mantiene estructura de directorios)
+- `GET /api/notes` - List all notes with metadata
+- `GET /api/notes?search=query` - Search notes by title
+- `GET /api/note/{path}` - Get a specific note (maintains directory structure)
+- `GET /api/tags` - List all available tags
+
+### Graph
+- `GET /api/graph/all` - Get full knowledge graph data
+
+### Chat (LightRAG)
+- `GET /api/chat/status` - Get LightRAG status
+- `POST /api/chat/query` - Query the knowledge base
+- `POST /api/chat/index` - Index vault into knowledge base
+- `DELETE /api/chat/index` - Delete the index
 
 ### Vault Management
-- `POST /api/sync` - Sincroniza el vault con repositorio Git
-- `GET /api/vault/info` - Información del vault
+- `POST /api/sync` - Sync vault with Git repository
+- `GET /api/vault/info` - Vault information
 
-## 📁 Estructura de Directorios
+## 📁 Directory Structure
 
-Las notas mantienen la estructura de directorios:
+Notes maintain the directory structure:
 
 ```
 vault/
-├── Personajes/
-│   ├── Héroe.md
-│   └── Villano.md
-├── Lugares/
-│   └── Ciudad.md
-└── Índice.md
+├── Characters/
+│   ├── Hero.md
+│   └── Villain.md
+├── Locations/
+│   └── City.md
+└── Index.md
 ```
 
-URLs correspondientes:
-- `/note/Personajes/Héroe`
-- `/note/Lugares/Ciudad`
+Corresponding URLs:
+- `/note/Characters/Hero`
+- `/note/Locations/City`
 
 ## 🔗 Wikilinks
 
-El parser convierte automáticamente:
-- `[[Nota]]` → `/note/Nota`
-- `[[Carpeta/Nota]]` → `/note/Carpeta/Nota`
-- `[[Nota|Texto]]` → Texto personalizado
+The parser automatically converts:
+- `[[Note]]` → `/note/Note`
+- `[[Folder/Note]]` → `/note/Folder/Note`
+- `[[Note|Text]]` → Custom display text
 
-## Stack Tecnológico
+## Tech Stack
 
 **Backend:**
 - FastAPI
 - GitPython
 - python-markdown
 - python-frontmatter
+- LightRAG
 
 **Frontend:**
 - Vue 3
 - Vue Router
+- D3.js (graph visualization)
 - Markdown-it
 - Axios
