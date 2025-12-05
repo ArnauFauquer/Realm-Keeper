@@ -112,14 +112,12 @@ async def get_graph_data():
         nodes = []
         links = []
         node_ids = set()
-        path_to_id = {}  # Map from path without .md to id
         
         # Create nodes for all notes
         for note_meta in notes_metadata:
             # Remove .md extension for matching with wikilinks
             path_without_ext = note_meta.path.replace('.md', '')
             node_ids.add(path_without_ext)
-            path_to_id[path_without_ext] = note_meta.id
             
             nodes.append({
                 "id": path_without_ext,

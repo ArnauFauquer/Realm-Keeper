@@ -11,13 +11,21 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
     nginx.ingress.kubernetes.io/cors-allow-origin: "*"
     nginx.ingress.kubernetes.io/enable-cors: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt"
 spec:
   ingressClassName: nginx
   rules:
-    - host: realm-keeper.example.com
+    - host: realmkeeper.faukinator.com
       http:
         paths:
           - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: backend
+                port:
+                  number: 8000
+          - path: /assets
             pathType: Prefix
             backend:
               service:
@@ -28,10 +36,10 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: frontend
+                name: realm-keeper-frontend
                 port:
                   number: 80
   tls:
     - hosts:
-        - realm-keeper.example.com
+        - realmkeeper.faukinator.com
       secretName: realm-keeper-tls

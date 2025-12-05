@@ -1,15 +1,14 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: rag-storage-pvc
+  name: realm-keeper-rag-storage-pvc
   labels:
-    app: backend
-    app.kubernetes.io/name: backend
+    app: realm-keeper-backend
+    app.kubernetes.io/name: realm-keeper-backend
     app.kubernetes.io/part-of: realm-keeper
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: standard
   resources:
     requests:
       storage: 10Gi

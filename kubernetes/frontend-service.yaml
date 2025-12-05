@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: frontend
+  name: realm-keeper-frontend
   labels:
-    app: frontend
-    app.kubernetes.io/name: frontend
+    app: realm-keeper-frontend
+    app.kubernetes.io/name: realm-keeper-frontend
     app.kubernetes.io/component: web
     app.kubernetes.io/part-of: realm-keeper
 spec:
   type: ClusterIP
   selector:
-    app: frontend
+    app: realm-keeper-frontend
   ports:
     - name: http
       port: 80

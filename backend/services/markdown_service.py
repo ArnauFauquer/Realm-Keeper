@@ -152,17 +152,6 @@ class MarkdownService:
             print(f"Error reading note {note_id}: {e}")
             return None
     
-    def search_notes(self, query: str) -> List[NoteMetadata]:
-        """Busca notas por título o contenido"""
-        query_lower = query.lower()
-        results = []
-        
-        for note_meta in self.get_all_notes():
-            if query_lower in note_meta.title.lower():
-                results.append(note_meta)
-        
-        return results
-    
     def get_all_tags(self) -> List[str]:
         """Obtiene todos los tags únicos del vault ordenados alfabéticamente"""
         tags = set()
@@ -171,15 +160,3 @@ class MarkdownService:
             tags.update(note_meta.tags)
         
         return sorted(list(tags), key=str.lower)
-    
-    def get_notes_by_tags(self, tag_list: List[str]) -> List[NoteMetadata]:
-        """Filtra notas que contienen al menos uno de los tags especificados"""
-        tag_list_lower = [t.lower() for t in tag_list]
-        results = []
-        
-        for note_meta in self.get_all_notes():
-            note_tags_lower = [t.lower() for t in note_meta.tags]
-            if any(t in note_tags_lower for t in tag_list_lower):
-                results.append(note_meta)
-        
-        return results

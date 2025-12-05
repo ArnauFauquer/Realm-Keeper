@@ -94,19 +94,3 @@ export function getNodeColor(node) {
   // Priority 3: Default color
   return DEFAULT_NODE_COLOR
 }
-
-/**
- * Get all currently assigned type colors
- * Useful for building legends
- * @returns {Map<string, string>} Map of type names to colors
- */
-export function getAssignedColors() {
-  return new Map(typeColorCache)
-}
-
-/**
- * Clear the color cache (useful for testing or reset)
- */
-export function clearColorCache() {
-  typeColorCache.clear()
-}

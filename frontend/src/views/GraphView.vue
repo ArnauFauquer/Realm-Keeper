@@ -58,7 +58,6 @@ export default {
       loading: true,
       error: null,
       simulation: null,
-      physicsEnabled: true,
       svg: null,
       g: null,
       zoom: null,
@@ -321,21 +320,6 @@ export default {
           nodeEl.select('circle').attr('opacity', 1)
           nodeEl.select('text').attr('opacity', 1)
         })
-      }
-    },
-    
-    resetZoom() {
-      this.svg.transition()
-        .duration(750)
-        .call(this.zoom.transform, d3.zoomIdentity)
-    },
-    
-    togglePhysics() {
-      this.physicsEnabled = !this.physicsEnabled
-      if (this.physicsEnabled) {
-        this.simulation.restart()
-      } else {
-        this.simulation.stop()
       }
     },
     

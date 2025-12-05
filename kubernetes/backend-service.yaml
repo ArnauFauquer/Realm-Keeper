@@ -1,16 +1,16 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: backend
+  name: realm-keeper-backend
   labels:
-    app: backend
-    app.kubernetes.io/name: backend
+    app: realm-keeper-backend
+    app.kubernetes.io/name: realm-keeper-backend
     app.kubernetes.io/component: api
     app.kubernetes.io/part-of: realm-keeper
 spec:
   type: ClusterIP
   selector:
-    app: backend
+    app: realm-keeper-backend
   ports:
     - name: http
       port: 8000

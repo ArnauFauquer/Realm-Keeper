@@ -30,10 +30,6 @@
         <div v-else-if="activeTab === 'chat'" class="tab-content chat-tab">
           <ChatView :apiUrl="apiUrl" />
         </div>
-        <div v-else-if="activeTab === 'bard'" class="tab-content">
-          <h2>🎭 Bard</h2>
-          <p>Bard assistant coming soon...</p>
-        </div>
         <div v-else-if="activeTab === 'admin'" class="tab-content">
           <h2>⚙️ Admin</h2>
           
@@ -184,7 +180,6 @@ export default {
         { id: 'wiki', label: 'Wiki', icon: 'mdi mdi-book-open-page-variant' },
         { id: 'graph', label: 'Graph', icon: 'mdi mdi-graph-outline' },
         { id: 'chat', label: 'Chat', icon: 'mdi mdi-message-text-outline' },
-        { id: 'bard', label: 'Bard', icon: 'mdi mdi-account-music' },
         { id: 'admin', label: 'Admin', icon: 'mdi mdi-cog-outline' }
       ],
       vaultInfo: null,
@@ -525,7 +520,9 @@ body {
   background: transparent;
 }
 
-.stats {
+/* Panel base styles - used by .stats and .admin-section */
+.stats,
+.admin-section {
   background-color: rgba(18, 19, 42, 0.8);
   padding: 1.5rem;
   border-radius: 12px;
@@ -534,11 +531,18 @@ body {
   backdrop-filter: blur(8px);
 }
 
-.stats h3 {
+.stats h3,
+.admin-section h3 {
   margin-bottom: 1rem;
   color: var(--text-primary);
   font-weight: 600;
   font-size: 1.1rem;
+}
+
+.admin-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .stats p {
@@ -551,26 +555,6 @@ body {
   text-align: center;
   padding: 3rem;
   color: var(--text-secondary);
-}
-
-/* Admin Section Styles */
-.admin-section {
-  background-color: rgba(18, 19, 42, 0.8);
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 1.5rem;
-  border: 1px solid var(--border-light);
-  backdrop-filter: blur(8px);
-}
-
-.admin-section h3 {
-  margin-bottom: 1rem;
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 1.1rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
 .rag-status {
@@ -791,31 +775,6 @@ body {
 .error-list li {
   margin: 0.25rem 0;
   word-break: break-word;
-}
-
-button {
-  background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
-  color: white;
-  border: none;
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(138, 92, 245, 0.3);
-}
-
-button:hover {
-  background: linear-gradient(135deg, #a78bfa 0%, #818cf8 100%);
-  box-shadow: 0 4px 16px rgba(138, 92, 245, 0.4);
-}
-
-button:disabled {
-  background: var(--text-tertiary);
-  cursor: not-allowed;
-  opacity: 0.6;
-  box-shadow: none;
 }
 
 /* Scrollbar styling for nebula theme */

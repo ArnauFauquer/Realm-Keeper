@@ -79,7 +79,6 @@
         <textarea 
           v-model="inputMessage"
           @keydown.enter.exact.prevent="sendMessage()"
-          @keydown.shift.enter="newLine"
           placeholder="Ask about your realm..."
           :disabled="isLoading"
           ref="inputField"
@@ -211,9 +210,6 @@ export default {
     formatMessage(content) {
       // Use markdown-it to render markdown
       return md.render(content || '')
-    },
-    newLine() {
-      // Shift+Enter adds newline - handled naturally by textarea
     },
     autoResizeTextarea() {
       const textarea = this.$refs.inputField

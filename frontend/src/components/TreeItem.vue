@@ -197,8 +197,4 @@ export default {
   color: var(--text-primary);
   box-shadow: 0 0 10px rgba(138, 92, 245, 0.25);
 }
-
-.note-icon {
-  margin-right: 0.5rem;
-}
 </style>

@@ -354,12 +354,6 @@ export default {
   border-bottom: 1px solid var(--border-light);
 }
 
-.sidebar-header h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.5rem;
-  color: var(--text-primary);
-}
-
 .search-input {
   width: 100%;
   padding: 0.625rem 0.875rem;
@@ -565,10 +559,6 @@ export default {
   padding: 0.5rem;
 }
 
-.tree-item {
-  margin-bottom: 0.25rem;
-}
-
 .folder {
   padding: 0.5rem 0.75rem;
   cursor: pointer;
@@ -581,10 +571,6 @@ export default {
 
 .folder:hover {
   background: rgba(138, 92, 245, 0.15);
-}
-
-.folder-icon {
-  margin-right: 0.5rem;
 }
 
 .note-link {
@@ -606,10 +592,6 @@ export default {
   color: var(--text-primary);
   font-weight: 500;
   box-shadow: 0 0 12px rgba(138, 92, 245, 0.3);
-}
-
-.note-icon {
-  margin-right: 0.5rem;
 }
 
 .loading, .error {

@@ -155,11 +155,3 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64,linux/arm64
-
-      - name: Summary
-        run: |
-          echo "## 🚀 Release v${{ needs.version-bump.outputs.new_version }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Docker Images Published:" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ needs.version-bump.outputs.new_version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ needs.version-bump.outputs.new_version }}\`" >> $GITHUB_STEP_SUMMARY

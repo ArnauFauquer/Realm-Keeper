@@ -12,7 +12,7 @@ from pathlib import Path
 # Vault sync scheduler
 async def vault_sync_scheduler():
     """Background task to periodically sync the vault repository"""
-    from services.obsidian_service import ObsidianService
+    from services.markdown_service import MarkdownService
     
     sync_interval = int(os.getenv('VAULT_SYNC_INTERVAL', '3600'))  # Default: 1 hour
     vault_path = os.getenv('VAULT_PATH', '/app/vault')
@@ -32,7 +32,7 @@ async def vault_sync_scheduler():
         await asyncio.sleep(sync_interval)
         try:
             print(f"Running scheduled vault sync...")
-            service = ObsidianService(vault_path=vault_path, repo_url=repo_url)
+            service = MarkdownService(vault_path=vault_path, repo_url=repo_url)
             success = service.sync_repository()
             if success:
                 print("Scheduled vault sync completed successfully")

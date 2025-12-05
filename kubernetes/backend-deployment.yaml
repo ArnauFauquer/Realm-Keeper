@@ -1,17 +1,17 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: backend
+  name: realm-keeper-backend
   labels:
-    app: backend
+    app: realm-keeper-backend
     app.kubernetes.io/name: backend
     app.kubernetes.io/component: api
     app.kubernetes.io/part-of: realm-keeper
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: backend
+      app: realm-keeper-backend
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -20,14 +20,14 @@ spec:
   template:
     metadata:
       labels:
-        app: backend
-        app.kubernetes.io/name: backend
+        app: realm-keeper-backend
+        app.kubernetes.io/name: realm-keeper-backend
         app.kubernetes.io/component: api
         app.kubernetes.io/part-of: realm-keeper
     spec:
       containers:
-        - name: backend
-          image: realm-keeper-backend:latest
+        - name: realm-keeper-backend
+          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.4
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -39,54 +39,47 @@ spec:
             - name: REPO_URL
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: REPO_URL
                   optional: true
             - name: NOTE_TAG_IGNORE
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-frontend-config
                   key: NOTE_TAG_IGNORE
                   optional: true
             - name: CORS_ALLOWED_ORIGINS
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: CORS_ALLOWED_ORIGINS
             - name: OLLAMA_HOST
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: OLLAMA_HOST
             - name: LLM_MODEL
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: LLM_MODEL
             - name: EMBEDDING_MODEL
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: EMBEDDING_MODEL
             - name: EMBEDDING_DIM
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: EMBEDDING_DIM
             - name: LLM_CONTEXT_SIZE
               valueFrom:
                 configMapKeyRef:
-                  name: backend-config
+                  name: realm-keeper-backend-config
                   key: LLM_CONTEXT_SIZE
             - name: LIGHTRAG_WORKING_DIR
               value: "/app/rag_storage"
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "100m"
-            limits:
-              memory: "1Gi"
-              cpu: "500m"
           livenessProbe:
             httpGet:
               path: /health
@@ -109,7 +102,7 @@ spec:
       volumes:
         - name: rag-storage
           persistentVolumeClaim:
-            claimName: rag-storage-pvc
+            claimName: realm-keeper-rag-storage-pvc
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -117,5 +110,5 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    app: backend
+                    app: realm-keeper-backend
                 topologyKey: kubernetes.io/hostname
