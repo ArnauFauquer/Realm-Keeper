@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.4
+          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.5
           imagePullPolicy: Always
           ports:
             - containerPort: 5173

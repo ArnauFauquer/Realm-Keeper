@@ -22,14 +22,14 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: backend
+                name: realm-keeper-backend
                 port:
                   number: 8000
           - path: /assets
             pathType: Prefix
             backend:
               service:
-                name: backend
+                name: realm-keeper-backend
                 port:
                   number: 8000
           - path: /
