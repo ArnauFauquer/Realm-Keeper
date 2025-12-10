@@ -132,6 +132,42 @@ async def get_all_tags():
         raise HTTPException(status_code=500, detail=f"Error getting tags: {str(e)}")
 
 
+@router.get("/container-folders", response_model=List[str])
+async def get_container_folders():
+    """
+    Obtiene la lista de carpetas que son 'contenedoras' (no tienen nota índice).
+    Estas son carpetas que solo contienen otras carpetas/notas, pero no tienen
+    un archivo Carpeta/Carpeta.md que las represente.
+    
+    Útil para el frontend para saber qué carpetas no deben convertirse en links.
+    """
+    try:
+        all_notes = markdown_service.get_all_notes()
+        all_note_ids = set(n.id for n in all_notes)
+        
+        # Encontrar todas las carpetas que aparecen en los paths
+        folders_found = set()
+        for note_id in all_note_ids:
+            parts = note_id.split('/')
+            # Agregar cada nivel de carpeta excepto el último (que es la nota)
+            for i in range(len(parts) - 1):
+                folder_path = '/'.join(parts[:i + 1])
+                folders_found.add(folder_path)
+        
+        # Encontrar carpetas contenedoras: carpetas cuyo path no tiene una nota correspondiente
+        # Ej: si existe "Factions/Drunaris" como nota, entonces "Factions" es contenedora
+        # pero si existe "Factions/Factions" como nota, entonces "Factions" NO es contenedora
+        container_folders = set()
+        for folder in folders_found:
+            if folder not in all_note_ids:
+                container_folders.add(folder.split('/')[-1])  # Solo el nombre de la carpeta
+        
+        return sorted(list(container_folders))
+    except Exception as e:
+        logger.error(f"Error getting container folders: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting container folders: {str(e)}")
+
+
 @router.get("/vault/info")
 async def get_vault_info():
     """Información sobre el vault actual"""

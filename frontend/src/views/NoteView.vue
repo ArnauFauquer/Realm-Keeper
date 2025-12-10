@@ -76,7 +76,8 @@ export default {
         breaks: true
       }),
       prefetchCache: new Set(),
-      prefetchTimeout: null
+      prefetchTimeout: null,
+      containerFolders: new Set()
     }
   },
   computed: {
@@ -90,13 +91,6 @@ export default {
       const parts = this.note.id.split('/')
       const crumbs = []
       
-      // Known container-only folders that don't have index notes
-      const containerFolders = new Set([
-        'Oneshots', 'Campañas', 'Sistemas', 'World', 'templates',
-        'Factions', 'Facciones', 'Sessions', 'Sesiones', 
-        'PlayerCharacter', 'Jugadores', '_assets'
-      ])
-      
       for (let i = 0; i < parts.length; i++) {
         const name = parts[i]
         const isLast = i === parts.length - 1
@@ -107,7 +101,7 @@ export default {
         } else {
           const folderPath = parts.slice(0, i + 1).join('/')
           
-          if (containerFolders.has(name)) {
+          if (this.containerFolders.has(name)) {
             // Known container folder - don't create a link
             crumbs.push({ name, path: null })
           } else {
@@ -232,7 +226,21 @@ export default {
           }, { once: false })
         })
       })
+    },
+    async loadContainerFolders() {
+      try {
+        const response = await axios.get(`${this.apiUrl}/api/container-folders`)
+        this.containerFolders = new Set(response.data)
+      } catch (err) {
+        console.error('Error loading container folders:', err)
+        // Si falla, simplemente no habrá carpetas contenedoras
+        // y todos los directorios se tratarán como potenciales links
+      }
     }
+  },
+  mounted() {
+    // Load container folders once on component mount
+    this.loadContainerFolders()
   },
   watch: {
     notePath: {
