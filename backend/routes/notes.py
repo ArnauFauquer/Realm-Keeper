@@ -1,54 +1,100 @@
 from fastapi import APIRouter, HTTPException, Query
+from pathlib import Path
 from typing import List, Optional
 from models.note import Note, NoteMetadata
 from services.markdown_service import MarkdownService
-import os
+from config.settings import settings
+from config.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api", tags=["notes"])
 
-# Inicializar el servicio
-# El vault_path puede ser configurado via variable de entorno
-VAULT_PATH = os.getenv("VAULT_PATH", "/app/vault")
-REPO_URL = os.getenv("REPO_URL", None)
-NOTE_TAG_IGNORE = os.getenv("NOTE_TAG_IGNORE", "draft")
-
-markdown_service = MarkdownService(vault_path=VAULT_PATH, repo_url=REPO_URL, ignore_tag=NOTE_TAG_IGNORE)
+# Inicializar el servicio - singleton que usa configuración centralizada
+markdown_service = MarkdownService(
+    vault_path=str(settings.VAULT_PATH),
+    repo_url=settings.REPO_URL,
+    ignore_tag=settings.NOTE_TAG_IGNORE
+)
 
 
 @router.get("/notes", response_model=List[NoteMetadata])
 async def get_all_notes(
-    search: Optional[str] = Query(None, description="Buscar por título"),
-    tags: Optional[str] = Query(None, description="Filtrar por tags (separados por coma)")
+    search: Optional[str] = Query(None, description="Buscar por título (fuzzy matching)"),
+    tags: Optional[str] = Query(None, description="Filtrar por tags (separados por coma)"),
+    limit: int = Query(50, ge=1, le=500, description="Máximo 500 notas por página"),
+    offset: int = Query(0, ge=0, description="Offset para paginación")
 ):
     """
-    Obtiene todas las notas del vault manteniendo la estructura de directorios.
-    Opcionalmente filtra por búsqueda de título y/o tags.
+    Obtiene notas del vault con paginación y búsqueda fuzzy.
+    
+    Parámetros:
+    - **search**: Búsqueda fuzzy por título (matchea parcialmente)
+    - **tags**: Filtro por tags (separa múltiples con comas)
+    - **limit**: Cantidad de notas por página (default 50, máximo 500)
+    - **offset**: Offset para paginación (default 0)
+    
+    Ejemplo: GET /api/notes?search=Wei&tags=campaign&limit=25&offset=0
     """
     try:
-        notes = markdown_service.get_all_notes()
+        all_notes = markdown_service.get_all_notes()
         
-        # Filter by search query
+        # Filtrar por búsqueda (fuzzy matching)
         if search:
-            search_lower = search.lower()
-            notes = [n for n in notes if search_lower in n.title.lower()]
+            from fuzzywuzzy import fuzz
+            all_notes = [
+                n for n in all_notes
+                if fuzz.token_set_ratio(search.lower(), n.title.lower()) > 60
+            ]
+            logger.debug(f"Fuzzy search for '{search}' returned {len(all_notes)} notes")
         
-        # Filter by tags
+        # Filtrar por tags
         if tags:
             tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
-            notes = [n for n in notes if any(t.lower() in [nt.lower() for nt in n.tags] for t in tag_list)]
+            all_notes = [
+                n for n in all_notes
+                if any(t.lower() in [nt.lower() for nt in n.tags] for t in tag_list)
+            ]
+            logger.debug(f"Tag filter for {tag_list} returned {len(all_notes)} notes")
         
-        return notes
+        # Paginación
+        total = len(all_notes)
+        paginated = all_notes[offset:offset + limit]
+        
+        logger.info(f"get_all_notes: returned {len(paginated)} of {total} notes (offset={offset}, limit={limit})")
+        
+        return paginated
     except Exception as e:
+        logger.error(f"Error getting notes: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error getting notes: {str(e)}")
 
 
 @router.get("/note/{note_path:path}", response_model=Note)
 async def get_note(note_path: str):
     """
-    Obtiene una nota específica por su path relativo.
+    Obtiene una nota específica por su path relativo con validación de seguridad.
+    Previene ataques de path traversal validando que la ruta esté dentro del vault.
+    
     Ejemplo: /api/note/Carpeta/Mi Nota
     """
-    note = markdown_service.get_note(note_path)
+    # Normalizar path
+    normalized_path = note_path.strip('/')
+    
+    # Validar que no intente path traversal
+    try:
+        full_path = (Path(markdown_service.vault_path) / f"{normalized_path}.md").resolve()
+        vault_resolved = Path(markdown_service.vault_path).resolve()
+        
+        # Verificar que el archivo esté dentro del vault
+        full_path.relative_to(vault_resolved)
+    except (ValueError, RuntimeError):
+        logger.warning(f"Path traversal attempt detected: {note_path}")
+        raise HTTPException(
+            status_code=403,
+            detail="Access denied: path must be within vault"
+        )
+    
+    note = markdown_service.get_note(normalized_path)
     
     if not note:
         raise HTTPException(status_code=404, detail=f"Note not found: {note_path}")
@@ -61,7 +107,7 @@ async def sync_vault():
     """
     Sincroniza el vault con el repositorio remoto (pull o clone)
     """
-    if not REPO_URL:
+    if not settings.REPO_URL:
         raise HTTPException(
             status_code=400, 
             detail="No repository URL configured. Set REPO_URL environment variable."
@@ -94,7 +140,7 @@ async def get_vault_info():
     return {
         "vault_path": str(markdown_service.vault_path),
         "total_notes": len(notes),
-        "repo_url": REPO_URL,
+        "repo_url": settings.REPO_URL,
         "has_git": (markdown_service.vault_path / '.git').exists()
     }
 
@@ -102,47 +148,77 @@ async def get_vault_info():
 @router.get("/graph/all")
 async def get_graph_data():
     """
-    Obtiene datos del grafo completo de todas las notas y sus wikilinks
+    Obtiene datos del grafo completo de todas las notas y sus wikilinks.
+    Optimizado para alto rendimiento: extrae links sin cargar contenido completo.
     """
     try:
-        # Get metadata for all notes
+        # Get metadata for all notes (single pass)
         notes_metadata = markdown_service.get_all_notes()
         
-        # Create nodes and links
+        # Create nodes and build lookup maps
         nodes = []
-        links = []
-        node_ids = set()
+        node_ids = set()  # Set de IDs (paths)
+        title_to_id = {}  # Map de título a ID para resolver wikilinks
         
-        # Create nodes for all notes
         for note_meta in notes_metadata:
-            # Remove .md extension for matching with wikilinks
-            path_without_ext = note_meta.path.replace('.md', '')
-            node_ids.add(path_without_ext)
+            node_ids.add(note_meta.id)
+            # Map título a ID para resolver wikilinks por título
+            title_to_id[note_meta.title] = note_meta.id
             
             nodes.append({
-                "id": path_without_ext,
+                "id": note_meta.id,
                 "title": note_meta.title,
-                "path": note_meta.id,  # Use id (without .md) for routing
+                "path": note_meta.id,
                 "tags": note_meta.tags,
                 "type": note_meta.type
             })
         
-        # Get full note data for each note to extract links
+        # Extract links efficiently (single pass, no full note load)
+        links = []
+        links_set = set()  # Para evitar duplicados
+        
         for note_meta in notes_metadata:
-            note = markdown_service.get_note(note_meta.id)
-            if note and note.links:
-                source_path = note.path.replace('.md', '')
-                for link in note.links:
-                    # Only create links if both nodes exist
-                    if link in node_ids:
+            # Get only the links without loading full note content
+            wikilinks = markdown_service.get_note_links_only(note_meta.id)
+            
+            for link in wikilinks:
+                # Intentar resolver el link de 3 formas:
+                # 1. Directo por ID
+                # 2. Por título exacto
+                # 3. Por coincidencia parcial del título
+                target_id = None
+                
+                if link in node_ids:
+                    # Match directo con ID
+                    target_id = link
+                elif link in title_to_id:
+                    # Match con título exacto
+                    target_id = title_to_id[link]
+                else:
+                    # Buscar por coincidencia de título (case-insensitive)
+                    link_lower = link.lower()
+                    for title, note_id in title_to_id.items():
+                        if title.lower() == link_lower:
+                            target_id = note_id
+                            break
+                
+                # Create link si el target existe
+                if target_id:
+                    link_key = (note_meta.id, target_id)
+                    if link_key not in links_set:
+                        links_set.add(link_key)
                         links.append({
-                            "source": source_path,
-                            "target": link
+                            "source": note_meta.id,
+                            "target": target_id
                         })
+        
+        logger.info(f"Graph data generated: {len(nodes)} nodes, {len(links)} links")
         
         return {
             "nodes": nodes,
             "links": links
         }
     except Exception as e:
+        logger.error(f"Error generating graph: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error generating graph: {str(e)}")
+

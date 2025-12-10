@@ -1,10 +1,10 @@
-# Realm Keeper - Markdown Wiki
+# Realm Keeper - Markdown Notes
 
-A minimalist web application to visualize your Markdown notes as a navigable wiki.
+A minimalist web application to visualize your Markdown notes as a navigable knowledge base.
 
 ## 🚀 Features
 
-- ✅ Wikilinks support `[[note]]`
+- ✅ Note links support `[[note]]`
 - ✅ Directory structure navigation
 - ✅ Note search
 - ✅ Git repository synchronization
@@ -134,7 +134,7 @@ Corresponding URLs:
 - `/note/Characters/Hero`
 - `/note/Locations/City`
 
-## 🔗 Wikilinks
+## 🔗 Note Links
 
 The parser automatically converts:
 - `[[Note]]` → `/note/Note`

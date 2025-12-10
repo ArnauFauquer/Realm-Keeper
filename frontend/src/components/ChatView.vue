@@ -107,8 +107,8 @@
 </template>
 
 <script>
-import axios from 'axios'
 import MarkdownIt from 'markdown-it'
+import { postWithCache } from '@/api/http'
 
 const md = new MarkdownIt({
   html: false,
@@ -136,7 +136,9 @@ export default {
         'What factions exist in the world?',
         'Tell me about recent events',
         'What locations are important?'
-      ]
+      ],
+      retryCount: 0,
+      maxRetries: 2
     }
   },
   methods: {
@@ -155,41 +157,96 @@ export default {
       this.isLoading = true
       this.error = null
 
+      // Create assistant message placeholder
+      const assistantMessage = {
+        role: 'assistant',
+        content: '',
+        timestamp: new Date()
+      }
+      this.messages.push(assistantMessage)
+
       // Auto-scroll to bottom
       this.$nextTick(() => this.scrollToBottom())
 
       try {
         // Build conversation history (last 10 messages for context)
-        const history = this.messages.slice(-11, -1).map(m => ({
+        const history = this.messages.slice(-13, -2).map(m => ({
           role: m.role,
           content: m.content
         }))
 
-        const response = await axios.post(`${this.apiUrl}/api/chat/query`, {
-          message: messageText,
-          mode: this.queryMode,
-          stream: false,
-          conversation_history: history.length > 0 ? history : null
-        })
-
-        // Add assistant response
-        this.messages.push({
-          role: 'assistant',
-          content: response.data.response,
-          timestamp: new Date(),
-          mode: response.data.mode
-        })
+        await this.queryWithRetry(messageText, assistantMessage, history)
       } catch (err) {
         console.error('Chat error:', err)
-        this.error = err.response?.data?.detail || err.message || 'Failed to get response'
-        // Remove the user message if there was an error
-        // this.messages.pop()
+        assistantMessage.content = `❌ Error: ${err.message}\n\nPlease try again.`
+        this.error = err.message
       } finally {
         this.isLoading = false
         this.$nextTick(() => {
           this.scrollToBottom()
           this.$refs.inputField?.focus()
         })
+      }
+    },
+    
+    async queryWithRetry(messageText, assistantMessage, history, retryCount = 0) {
+      try {
+        await this.streamQuery(messageText, assistantMessage, history)
+      } catch (err) {
+        if (retryCount < this.maxRetries) {
+          // Exponential backoff: 1s, 2s, 4s
+          const delayMs = Math.pow(2, retryCount) * 1000
+          assistantMessage.content = `⏳ Retrying (attempt ${retryCount + 2}/${this.maxRetries + 1})...`
+          
+          await new Promise(resolve => setTimeout(resolve, delayMs))
+          return this.queryWithRetry(messageText, assistantMessage, history, retryCount + 1)
+        } else {
+          throw new Error(
+            err.message || 'Connection failed after 3 attempts. Please check your connection and try again.'
+          )
+        }
+      }
+    },
+
+    async streamQuery(messageText, assistantMessage, history) {
+      try {
+        const response = await fetch(
+          `${this.apiUrl}/api/chat/query`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              // Agregar headers de cache control
+              'Cache-Control': 'no-cache'
+            },
+            body: JSON.stringify({
+              message: messageText,
+              mode: this.queryMode,
+              stream: false,
+              conversation_history: history && history.length > 0 ? history : null
+            }),
+            signal: AbortSignal.timeout ? AbortSignal.timeout(30000) : undefined
+          }
+        )
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(
+            errorData.detail || `HTTP ${response.status}: ${response.statusText}`
+          )
+        }
+
+        const data = await response.json()
+        assistantMessage.content = data.response
+        assistantMessage.mode = data.mode
+
+        // Auto-scroll after receiving response
+        this.$nextTick(() => this.scrollToBottom())
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw new Error('Request timeout - server is taking too long to respond')
+        }
+        throw err
       }
     },
     clearChat() {

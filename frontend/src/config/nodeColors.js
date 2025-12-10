@@ -1,6 +1,6 @@
 /**
  * Node color configuration for graph visualizations
- * Domain-agnostic color system that works for any wiki/vault
+ * Domain-agnostic color system that works for any notes vault
  */
 
 /**

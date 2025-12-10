@@ -2,10 +2,8 @@
 LightRAG Service for Realm Keeper
 Provides RAG-based chat functionality for the vault notes
 """
-import os
 import asyncio
 import logging
-from pathlib import Path
 from typing import Optional, AsyncGenerator
 import numpy as np
 
@@ -14,16 +12,9 @@ from lightrag.llm.ollama import ollama_model_complete, ollama_embed
 from lightrag.utils import EmbeddingFunc
 from lightrag.kg.shared_storage import initialize_pipeline_status
 
-logger = logging.getLogger("lightrag")
+from config.settings import settings
 
-# Configuration from environment
-WORKING_DIR = os.getenv("LIGHTRAG_WORKING_DIR", "/app/rag_storage")
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-LLM_MODEL = os.getenv("LLM_MODEL", "llama3.2")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "768"))
-LLM_CONTEXT_SIZE = int(os.getenv("LLM_CONTEXT_SIZE", "32768"))
-VAULT_PATH = os.getenv("VAULT_PATH", "/app/vault")
+logger = logging.getLogger("lightrag")
 
 
 class LightRAGService:
@@ -50,23 +41,19 @@ class LightRAGService:
             return
         
         # Ensure working directory exists
-        os.makedirs(WORKING_DIR, exist_ok=True)
+        settings.LIGHTRAG_WORKING_DIR.mkdir(parents=True, exist_ok=True)
         
-        logger.info(f"Initializing LightRAG with Ollama at {OLLAMA_HOST}")
-        logger.info(f"LLM Model: {LLM_MODEL}, Embedding Model: {EMBEDDING_MODEL}")
-        
-        # Increased timeouts for CPU-based inference
-        llm_timeout = 600  # 10 minutes for LLM calls
-        embed_timeout = 120  # 2 minutes for embedding calls
+        logger.info(f"Initializing LightRAG with Ollama at {settings.OLLAMA_HOST}")
+        logger.info(f"LLM Model: {settings.LLM_MODEL}, Embedding Model: {settings.EMBEDDING_MODEL}")
         
         self._rag = LightRAG(
-            working_dir=WORKING_DIR,
+            working_dir=str(settings.LIGHTRAG_WORKING_DIR),
             llm_model_func=ollama_model_complete,
-            llm_model_name=LLM_MODEL,
+            llm_model_name=settings.LLM_MODEL,
             llm_model_kwargs={
-                "host": OLLAMA_HOST,
-                "options": {"num_ctx": LLM_CONTEXT_SIZE},
-                "timeout": llm_timeout,
+                "host": settings.OLLAMA_HOST,
+                "options": {"num_ctx": settings.LLM_CONTEXT_SIZE},
+                "timeout": settings.LLM_TIMEOUT,
             },
             # Increase LightRAG's internal timeout for LLM worker pool
             llm_model_max_async=2,  # Reduce parallelism to avoid overloading Ollama
@@ -74,13 +61,13 @@ class LightRAGService:
             chunk_token_size=3000,  # Increased from default ~1200
             chunk_overlap_token_size=300,  # 10% overlap for context continuity
             embedding_func=EmbeddingFunc(
-                embedding_dim=EMBEDDING_DIM,
+                embedding_dim=settings.EMBEDDING_DIM,
                 max_token_size=8192,
                 func=lambda texts: ollama_embed(
                     texts,
-                    embed_model=EMBEDDING_MODEL,
-                    host=OLLAMA_HOST,
-                    timeout=embed_timeout,
+                    embed_model=settings.EMBEDDING_MODEL,
+                    host=settings.OLLAMA_HOST,
+                    timeout=settings.EMBED_TIMEOUT,
                 ),
             ),
             embedding_batch_num=4,  # Reduce batch size
@@ -125,7 +112,7 @@ class LightRAGService:
         self._indexing = True
         self._indexing_progress = 0
         self._indexing_current_file = ""
-        vault_path = Path(VAULT_PATH)
+        vault_path = settings.VAULT_PATH
         
         try:
             # Get all markdown files
@@ -239,13 +226,13 @@ ANSWER (based only on the context above):"""
         
         async with httpx.AsyncClient(timeout=300.0) as client:
             response = await client.post(
-                f"{OLLAMA_HOST}/api/generate",
+                f"{settings.OLLAMA_HOST}/api/generate",
                 json={
-                    "model": LLM_MODEL,
+                    "model": settings.LLM_MODEL,
                     "prompt": simple_prompt,
                     "system": "You are a helpful assistant that answers questions ONLY based on the provided context. Never make up information.",
                     "stream": False,
-                    "options": {"num_ctx": LLM_CONTEXT_SIZE}
+                    "options": {"num_ctx": settings.LLM_CONTEXT_SIZE}
                 }
             )
             result = response.json()
@@ -256,10 +243,10 @@ ANSWER (based only on the context above):"""
         status = {
             "initialized": self._initialized,
             "indexing": self._indexing,
-            "working_dir": WORKING_DIR,
-            "ollama_host": OLLAMA_HOST,
-            "llm_model": LLM_MODEL,
-            "embedding_model": EMBEDDING_MODEL,
+            "working_dir": str(settings.LIGHTRAG_WORKING_DIR),
+            "ollama_host": settings.OLLAMA_HOST,
+            "llm_model": settings.LLM_MODEL,
+            "embedding_model": settings.EMBEDDING_MODEL,
         }
         
         # Add progress info if indexing
@@ -311,7 +298,7 @@ ANSWER (based only on the context above):"""
             ]
             
             deleted_files = []
-            working_path = Path(WORKING_DIR)
+            working_path = settings.LIGHTRAG_WORKING_DIR
             
             for filename in files_to_delete:
                 file_path = working_path / filename

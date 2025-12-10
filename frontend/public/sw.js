@@ -5,6 +5,16 @@ const STATIC_ASSETS = [
   '/manifest.json'
 ];
 
+// Helper: Check if URL is a static asset (JS, CSS, images)
+function isStaticAsset(url) {
+  return /\.(js|css|woff2|woff|ttf|eot|svg|png|jpg|jpeg|webp|gif)(\?|$)/i.test(url);
+}
+
+// Helper: Check if URL is an API call
+function isApiRequest(url) {
+  return url.includes('/api/');
+}
+
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -29,42 +39,114 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch event - network first, fallback to cache
+// Fetch event - granular caching strategies
 self.addEventListener('fetch', (event) => {
+  const { request } = event;
+
   // Skip non-GET requests
-  if (event.request.method !== 'GET') {
+  if (request.method !== 'GET') {
     return;
   }
 
-  // Skip API requests - always fetch from network
-  if (event.request.url.includes('/api/')) {
-    return;
+  // Strategy 1: Cache-first for static assets (JS, CSS, images, fonts)
+  // Serve from cache if available, update cache in background
+  if (isStaticAsset(request.url)) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) {
+          // Fetch in background to update cache
+          fetch(request).then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(request, responseToCache);
+              });
+            }
+          }).catch(() => {
+            // Network failed, cached version is fine
+          });
+          return cachedResponse;
+        }
+
+        // Not in cache, fetch from network
+        return fetch(request).then((response) => {
+          if (!response || response.status !== 200) {
+            return response;
+          }
+
+          // Cache successful responses
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, responseToCache);
+          });
+
+          return response;
+        });
+      })
+    );
   }
 
-  event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Clone the response before caching
-        const responseClone = response.clone();
-        
-        caches.open(CACHE_NAME).then((cache) => {
-          cache.put(event.request, responseClone);
-        });
-        
-        return response;
-      })
-      .catch(() => {
-        // If network fails, try cache
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) {
-            return cachedResponse;
+  // Strategy 2: Network-first for API calls with cache fallback
+  // Try network first, fallback to cache if network fails
+  else if (isApiRequest(request.url)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Only cache successful responses
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseToCache);
+            });
           }
-          // Return offline page for navigation requests
-          if (event.request.mode === 'navigate') {
-            return caches.match('/');
+          return response;
+        })
+        .catch(() => {
+          // Network failed, try cache
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            // No cache available, return error response
+            return new Response(
+              JSON.stringify({ error: 'Offline - no cached data available' }),
+              { 
+                status: 503,
+                headers: { 'Content-Type': 'application/json' }
+              }
+            );
+          });
+        })
+    );
+  }
+
+  // Strategy 3: Network-first for HTML and other requests
+  else {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          // Clone and cache successful responses
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(request, responseToCache);
+            });
           }
-          return new Response('Offline', { status: 503 });
-        });
-      })
-  );
+          return response;
+        })
+        .catch(() => {
+          // If network fails, try cache
+          return caches.match(request).then((cachedResponse) => {
+            if (cachedResponse) {
+              return cachedResponse;
+            }
+            // Return offline page for navigation requests
+            if (request.mode === 'navigate') {
+              return caches.match('/');
+            }
+            return new Response('Offline', { status: 503 });
+          });
+        })
+    );
+  }
 });

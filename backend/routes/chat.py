@@ -10,6 +10,9 @@ import asyncio
 import inspect
 
 from services.lightrag_service import LightRAGService, get_lightrag_service
+from config.logging import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -166,7 +169,10 @@ async def chat_query_stream(
 ):
     """
     Query the LightRAG knowledge base with streaming response.
-    Returns a Server-Sent Events stream.
+    Returns a Server-Sent Events stream with safety limits:
+    - 5 minute timeout for the complete response
+    - Maximum 10000 chunks (~10MB of text)
+    - Comprehensive error handling
     """
     # Convert conversation history to the expected format
     history = None
@@ -178,25 +184,43 @@ async def chat_query_stream(
     
     async def generate():
         try:
-            response = await service.query(
-                question=request.message,
-                mode=request.mode,
-                stream=True,
-                conversation_history=history,
-            )
-            
-            # Check if response is an async generator
-            if inspect.isasyncgen(response):
-                async for chunk in response:
-                    yield f"data: {chunk}\n\n"
-            else:
-                # If not streaming, yield the whole response
-                yield f"data: {response}\n\n"
-            
-            yield "data: [DONE]\n\n"
-            
+            # Timeout de 5 minutos para la respuesta completa
+            async with asyncio.timeout(300):
+                response = await service.query(
+                    question=request.message,
+                    mode=request.mode,
+                    stream=True,
+                    conversation_history=history,
+                )
+                
+                chunk_count = 0
+                max_chunks = 10000  # ~10MB de tokens
+                
+                # Check if response is an async generator
+                if inspect.isasyncgen(response):
+                    async for chunk in response:
+                        if chunk_count >= max_chunks:
+                            logger.warning(f"Query stream exceeded max chunks ({max_chunks})")
+                            yield "data: [MAX_LENGTH_EXCEEDED]\n\n"
+                            break
+                        
+                        yield f"data: {chunk}\n\n"
+                        chunk_count += 1
+                else:
+                    # If not streaming, yield the whole response
+                    yield f"data: {response}\n\n"
+                
+                logger.info(f"Query stream completed: {chunk_count} chunks, mode={request.mode}")
+                yield "data: [DONE]\n\n"
+        
+        except asyncio.TimeoutError:
+            logger.error("Query stream timeout: exceeded 5 minute limit")
+            yield "data: [TIMEOUT: Query took more than 5 minutes]\n\n"
         except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
+            logger.error(f"Stream error: {str(e)}", exc_info=True)
+            # Send truncated error message (first 200 chars)
+            error_msg = str(e)[:200]
+            yield f"data: [ERROR: {error_msg}]\n\n"
     
     return StreamingResponse(
         generate(),

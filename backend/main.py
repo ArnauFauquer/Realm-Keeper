@@ -3,74 +3,84 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
-from routes.notes import router as notes_router
+from routes.notes import router as notes_router, markdown_service
 from routes.chat import router as chat_router
-import os
 import asyncio
 from pathlib import Path
+
+from config.settings import settings
+from config.logging import setup_logging
+from config.cache import CacheControlMiddleware
+
+# Setup logging
+logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
 # Vault sync scheduler
 async def vault_sync_scheduler():
     """Background task to periodically sync the vault repository"""
-    from services.markdown_service import MarkdownService
     
-    sync_interval = int(os.getenv('VAULT_SYNC_INTERVAL', '3600'))  # Default: 1 hour
-    vault_path = os.getenv('VAULT_PATH', '/app/vault')
-    repo_url = os.getenv('REPO_URL', '')
+    sync_interval = settings.VAULT_SYNC_INTERVAL
+    repo_url = settings.REPO_URL
     
     if sync_interval <= 0:
-        print("Vault sync disabled (VAULT_SYNC_INTERVAL <= 0)")
+        logger.info("Vault sync disabled (VAULT_SYNC_INTERVAL <= 0)")
         return
     
     if not repo_url:
-        print("Vault sync disabled (no REPO_URL configured)")
+        logger.info("Vault sync disabled (no REPO_URL configured)")
         return
     
-    print(f"Vault sync scheduler started - syncing every {sync_interval} seconds")
+    logger.info(f"Vault sync scheduler started - syncing every {sync_interval} seconds")
     
     while True:
         await asyncio.sleep(sync_interval)
         try:
-            print(f"Running scheduled vault sync...")
-            service = MarkdownService(vault_path=vault_path, repo_url=repo_url)
-            success = service.sync_repository()
+            logger.info(f"Running scheduled vault sync...")
+            success = markdown_service.sync_repository()
             if success:
-                print("Scheduled vault sync completed successfully")
+                markdown_service._cache.clear()  # Limpiar caché después de sync exitoso
+                logger.info("Scheduled vault sync completed successfully")
             else:
-                print("Scheduled vault sync failed")
+                logger.warning("Scheduled vault sync failed")
         except Exception as e:
-            print(f"Error in scheduled vault sync: {e}")
+            logger.exception("Error in scheduled vault sync")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Manage application lifespan events"""
     # Startup: create background sync task
+    logger.info("Starting Realm Keeper API")
     sync_task = asyncio.create_task(vault_sync_scheduler())
     yield
     # Shutdown: cancel the sync task
+    logger.info("Shutting down Realm Keeper API")
     sync_task.cancel()
     try:
         await sync_task
     except asyncio.CancelledError:
-        print("Vault sync scheduler stopped")
+        logger.info("Vault sync scheduler stopped")
 
 app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
 
-# Configure CORS - use environment variable for allowed origins
-cors_origins_env = os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
-cors_origins = [origin.strip() for origin in cors_origins_env.split(",")]
+# Configure CORS - use centralized settings
+cors_origins = settings.CORS_ALLOWED_ORIGINS
 
+# Add Cache Control middleware (debe ir antes de CORS)
+app.add_middleware(CacheControlMiddleware)
+
+# Add CORS middleware with correct configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+    allow_methods=["*"],  # Allow all methods including OPTIONS
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all headers
+    max_age=600,  # Cache preflight responses for 10 minutes
 )
 
 # Custom endpoint for assets with CORS headers
-vault_path = Path(os.getenv('VAULT_PATH', '/app/vault'))
-assets_path = vault_path / '_assets'
+assets_path = settings.VAULT_PATH / '_assets'
 
 @app.get("/assets/{filename:path}")
 async def get_asset(filename: str):

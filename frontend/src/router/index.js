@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from '../views/Home.vue'
-import NoteView from '../views/NoteView.vue'
-import GraphView from '../views/GraphView.vue'
+
+// Lazy load components for code splitting
+const Home = () => import('../views/Home.vue')
+const NoteView = () => import('../views/NoteView.vue')
+const GraphView = () => import('../views/GraphView.vue')
 
 const routes = [
   {
@@ -12,7 +14,8 @@ const routes = [
   {
     path: '/graph',
     name: 'Graph',
-    component: GraphView
+    component: GraphView,
+    meta: { requiresData: true }
   },
   {
     path: '/note/:notePath(.*)',

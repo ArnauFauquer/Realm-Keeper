@@ -45,8 +45,8 @@
 </template>
 
 <script>
-import axios from 'axios'
 import * as d3 from 'd3'
+import { getCached } from '@/api/http'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
 
 export default {
@@ -65,7 +65,8 @@ export default {
       showGraphInfo: false,
       highlightedType: null,
       linkSelection: null,
-      nodeSelection: null
+      nodeSelection: null,
+      zoomTimeout: null
     }
   },
   computed: {
@@ -91,6 +92,9 @@ export default {
     if (this.simulation) {
       this.simulation.stop()
     }
+    if (this.zoomTimeout) {
+      clearTimeout(this.zoomTimeout)
+    }
   },
   methods: {
     async fetchGraphData() {
@@ -98,9 +102,13 @@ export default {
       this.error = null
       
       try {
-        const response = await axios.get(`${this.apiUrl}/api/graph/all`)
-        this.nodes = response.data.nodes.map(node => ({ ...node }))
-        this.links = response.data.links.map(link => ({ ...link }))
+        // Cache graph data con TTL de 10 minutos (no cambia frecuentemente)
+        const data = await getCached(`${this.apiUrl}/api/graph/all`, {
+          useCache: true,
+          cacheTtl: 600 // 10 minutos
+        })
+        this.nodes = data.nodes.map(node => ({ ...node }))
+        this.links = data.links.map(link => ({ ...link }))
         this.loading = false
         
         this.$nextTick(() => {
@@ -127,11 +135,17 @@ export default {
         .attr('width', width)
         .attr('height', height)
       
-      // Add zoom behavior
+      // Debounce zoom handler
+      const debouncedZoom = (event) => {
+        this.g.attr('transform', event.transform)
+      }
+      
+      // Add zoom behavior with debounce
       this.zoom = d3.zoom()
         .scaleExtent([0.1, 10])
         .on('zoom', (event) => {
-          this.g.attr('transform', event.transform)
+          clearTimeout(this.zoomTimeout)
+          this.zoomTimeout = setTimeout(() => debouncedZoom(event), 8)
         })
       
       this.svg.call(this.zoom)
@@ -139,15 +153,17 @@ export default {
       // Main group for zooming
       this.g = this.svg.append('g')
       
-      // Create simulation
+      // Create simulation with optimized parameters
       this.simulation = d3.forceSimulation(this.nodes)
         .force('link', d3.forceLink(this.links)
           .id(d => d.id)
           .distance(150)
-          .strength(0.3))
+          .strength(0.1))
         .force('charge', d3.forceManyBody().strength(-200))
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(30))
+        .alphaDecay(0.03)  // Converge faster
+        .velocityDecay(0.3)  // Reduce vibration
       
       // Draw links
       const link = this.g.append('g')
@@ -224,7 +240,7 @@ export default {
         .style('pointer-events', 'none')
         .style('user-select', 'none')
       
-      // Update positions on tick
+      // Update positions on tick - optimized
       this.simulation.on('tick', () => {
         link
           .attr('x1', d => d.source.x)

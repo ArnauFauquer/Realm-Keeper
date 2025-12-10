@@ -86,26 +86,43 @@
         </div>
       </div>
       
-      <div v-if="loading" class="loading">Loading notes...</div>
+      <div v-if="loading && notes.length === 0" class="loading-state">
+        <div class="loading-spinner"></div>
+        <p>Loading your notes...</p>
+      </div>
       <div v-else-if="error" class="error">{{ error }}</div>
       
-      <div v-else class="notes-tree">
-        <TreeItem 
-          v-for="item in filteredNotesTree" 
-          :key="item.path || item.id"
-          :item="item"
-          :level="0"
-          @toggle="toggleFolder"
-          @note-click="closeSidebar"
-        />
+      <div v-else class="notes-tree-wrapper">
+        <div class="notes-tree" ref="treeContainer">
+          <TreeItem 
+            v-for="item in filteredNotesTree" 
+            :key="item.path || item.id"
+            :item="item"
+            :level="0"
+            @toggle="toggleFolder"
+            @note-click="closeSidebar"
+          />
+        </div>
+        
+        <!-- Infinite scroll indicator -->
+        <div v-if="hasMore" class="infinite-scroll-area" ref="scrollIndicator">
+          <div v-if="isLoadingMore" class="loading-more">
+            <div class="mini-spinner"></div>
+            <span>Loading more notes...</span>
+          </div>
+          <div v-else class="scroll-hint">
+            <span class="mdi mdi-chevron-down"></span>
+            <span>Scroll for more</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import axios from 'axios'
 import TreeItem from './TreeItem.vue'
+import { getCached, getNoCache } from '@/api/http'
 
 export default {
   name: 'NotesSidebar',
@@ -123,7 +140,13 @@ export default {
       tagSearchQuery: '',
       showTagFilter: false,
       expandedFolders: new Set(),
-      isOpen: false
+      isOpen: false,
+      pageSize: 500,
+      currentPage: 0,
+      hasMore: true,
+      isLoadingMore: false,
+      scrollOffset: 0,
+      scrollObserver: null
     }
   },
   computed: {
@@ -270,18 +293,87 @@ export default {
   methods: {
     async fetchNotes() {
       try {
-        const response = await axios.get(`${this.apiUrl}/api/notes`)
-        this.notes = response.data
+        // Load first page (50 items)
+        this.currentPage = 0
+        this.notes = []
+        this.hasMore = true
+        await this.loadMoreNotes()
         this.loading = false
       } catch (err) {
         this.error = err.message
         this.loading = false
       }
     },
+    async loadMoreNotes() {
+      if (this.isLoadingMore || !this.hasMore) return
+      
+      this.isLoadingMore = true
+      try {
+        const offset = this.currentPage * this.pageSize
+        // Use cache for paginated requests - but not when searching (search results shouldn't be cached)
+        const data = await getCached(`${this.apiUrl}/api/notes`, {
+          useCache: !this.searchQuery, // Only cache when not searching
+          cacheTtl: 300, // 5 minutes
+          params: {
+            limit: this.pageSize,
+            offset: offset,
+            search: this.searchQuery || undefined
+          }
+        })
+        
+        // Si es la primera página, reemplazar; si no, agregar
+        if (this.currentPage === 0) {
+          this.notes = data
+        } else {
+          this.notes.push(...data)
+        }
+        
+        // Si recibimos menos items que el pageSize, no hay más
+        this.hasMore = data.length === this.pageSize
+        this.currentPage++
+        
+        // Setup observer para el siguiente load
+        this.setupScrollObserver()
+      } catch (err) {
+        console.error('Error loading notes:', err)
+      } finally {
+        this.isLoadingMore = false
+      }
+    },
+    setupScrollObserver() {
+      // Use Intersection Observer para auto-load suave cuando el usuario scroll cerca del final
+      this.$nextTick(() => {
+        const indicator = this.$refs.scrollIndicator
+        if (!indicator) return
+        
+        // Cleanup observer anterior si existe
+        if (this.scrollObserver) {
+          this.scrollObserver.disconnect()
+        }
+        
+        // Crear nuevo observer
+        this.scrollObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach(entry => {
+              if (entry.isIntersecting && !this.isLoadingMore && this.hasMore) {
+                this.loadMoreNotes()
+              }
+            })
+          },
+          { threshold: 0.1 }
+        )
+        
+        this.scrollObserver.observe(indicator)
+      })
+    },
     async fetchTags() {
       try {
-        const response = await axios.get(`${this.apiUrl}/api/tags`)
-        this.availableTags = response.data
+        // Cache tags con TTL más largo (10 minutos) ya que no cambian frecuentemente
+        const data = await getCached(`${this.apiUrl}/api/tags`, {
+          useCache: true,
+          cacheTtl: 600 // 10 minutos
+        })
+        this.availableTags = data
       } catch (err) {
         console.error('Error fetching tags:', err.message)
       }
@@ -293,10 +385,19 @@ export default {
       } else {
         this.selectedTags.splice(index, 1)
       }
+      // Reset pagination when tag filter changes
+      this.resetPagination()
     },
     clearTags() {
       this.selectedTags = []
       this.tagSearchQuery = ''
+      this.resetPagination()
+    },
+    resetPagination() {
+      this.notes = []
+      this.currentPage = 0
+      this.hasMore = true
+      this.loadMoreNotes()
     },
     addTagToFilter(tag) {
       // Add tag to filter if not already selected
@@ -326,12 +427,21 @@ export default {
       document.body.style.overflow = ''
     }
   },
+  watch: {
+    searchQuery() {
+      // Reset pagination when search changes
+      this.resetPagination()
+    }
+  },
   mounted() {
     this.fetchNotes()
     this.fetchTags()
   },
   beforeUnmount() {
     document.body.style.overflow = ''
+    if (this.scrollObserver) {
+      this.scrollObserver.disconnect()
+    }
   }
 }
 </script>
@@ -553,10 +663,178 @@ export default {
   opacity: 1;
 }
 
+.notes-tree-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .notes-tree {
   flex: 1;
   overflow-y: auto;
   padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.notes-tree::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notes-tree::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.notes-tree::-webkit-scrollbar-thumb {
+  background: rgba(138, 92, 245, 0.3);
+  border-radius: 3px;
+  transition: background 0.2s ease;
+}
+
+.notes-tree::-webkit-scrollbar-thumb:hover {
+  background: rgba(138, 92, 245, 0.6);
+}
+
+/* Loading State */
+.loading-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1rem;
+  color: var(--text-secondary);
+  background: radial-gradient(circle at center, rgba(138, 92, 245, 0.1), transparent);
+}
+
+.loading-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(138, 92, 245, 0.2);
+  border-top-color: var(--interactive-primary);
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  box-shadow: 0 0 16px rgba(138, 92, 245, 0.2);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-state p {
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+/* Infinite Scroll Indicator */
+.infinite-scroll-area {
+  padding: 1.25rem 0.5rem 0.75rem;
+  text-align: center;
+  border-top: 1px solid rgba(138, 92, 245, 0.15);
+  background: linear-gradient(to top, rgba(138, 92, 245, 0.08), rgba(138, 92, 245, 0.02), transparent);
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.infinite-scroll-area::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(138, 92, 245, 0.3), transparent);
+  opacity: 0.5;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1.5rem;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  animation: fadeIn 0.4s ease;
+  background: rgba(138, 92, 245, 0.12);
+  border-radius: 8px;
+  border: 1px solid rgba(138, 92, 245, 0.2);
+  font-weight: 500;
+  letter-spacing: 0.2px;
+  position: relative;
+  z-index: 1;
+}
+
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(138, 92, 245, 0.2);
+  border-top-color: var(--interactive-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(138, 92, 245, 0.3);
+}
+
+.scroll-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-tertiary);
+  font-size: 0.8rem;
+  padding: 0.75rem 1.25rem;
+  animation: slideInUp 0.5s ease;
+  letter-spacing: 0.5px;
+  position: relative;
+  z-index: 1;
+}
+
+.scroll-hint .mdi {
+  font-size: 1.2rem;
+  animation: bounce 1.6s ease-in-out infinite;
+  color: rgba(138, 92, 245, 0.6);
+}
+
+@keyframes slideInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(4px); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Error and Loading States */
+.loading, .error {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--status-error);
 }
 
 .folder {
@@ -592,17 +870,6 @@ export default {
   color: var(--text-primary);
   font-weight: 500;
   box-shadow: 0 0 12px rgba(138, 92, 245, 0.3);
-}
-
-.loading, .error {
-  padding: 1.5rem 1rem;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-}
-
-.error {
-  color: var(--status-error);
 }
 
 /* Mobile toggle button */

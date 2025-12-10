@@ -18,9 +18,9 @@
         </div>
       </div>
       <main class="main-content">
-        <div v-if="activeTab === 'wiki'" class="wiki-container">
+        <div v-if="activeTab === 'notes'" class="notes-container">
           <NotesSidebar ref="notesSidebar" />
-          <div class="wiki-content">
+          <div class="notes-content">
             <router-view />
           </div>
         </div>
@@ -31,146 +31,149 @@
           <ChatView :apiUrl="apiUrl" />
         </div>
         <div v-else-if="activeTab === 'admin'" class="tab-content">
-          <h2><span class="mdi mdi-cog"></span> Admin</h2>
-          
-          <!-- LightRAG Status Section -->
-          <div class="admin-section">
-            <h3><span class="mdi mdi-brain"></span> LightRAG Knowledge Base</h3>
-            <div v-if="ragStatus" class="rag-status">
-              <div class="status-grid">
-                <div class="status-item">
-                  <span class="status-label">Status:</span>
-                  <span :class="['status-badge', ragStatus.initialized ? 'success' : 'warning']">
-                    <span class="mdi" :class="ragStatus.initialized ? 'mdi-check-circle' : 'mdi-alert'"></span>
-                    {{ ragStatus.initialized ? 'Initialized' : 'Not Initialized' }}
-                  </span>
-                </div>
-                <div class="status-item">
-                  <span class="status-label">Indexing:</span>
-                  <span :class="['status-badge', ragStatus.indexing ? 'active' : 'idle']">
-                    <span class="mdi" :class="ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-circle-small'"></span>
-                    {{ ragStatus.indexing ? 'In Progress' : 'Idle' }}
-                  </span>
-                </div>
-                
-                <!-- Progress bar when indexing -->
-                <div v-if="ragStatus.indexing" class="indexing-progress">
-                  <div class="progress-info">
-                    <span class="progress-percent">{{ ragStatus.indexing_percent || 0 }}%</span>
-                    <span class="progress-count">{{ ragStatus.indexing_progress || 0 }} / {{ ragStatus.indexing_total || 0 }} files</span>
+            <h2><span class="mdi mdi-cog"></span> Admin</h2>
+            
+            <!-- LightRAG Status Section -->
+            <div class="admin-section">
+              <h3><span class="mdi mdi-brain"></span> LightRAG Knowledge Base</h3>
+              <div v-if="ragStatus" class="rag-status">
+                <div class="status-grid">
+                  <div class="status-item">
+                    <span class="status-label">Status:</span>
+                    <span :class="['status-badge', ragStatus.initialized ? 'success' : 'warning']">
+                      <span class="mdi" :class="ragStatus.initialized ? 'mdi-check-circle' : 'mdi-alert'"></span>
+                      {{ ragStatus.initialized ? 'Initialized' : 'Not Initialized' }}
+                    </span>
                   </div>
-                  <div class="progress-bar-container">
-                    <div 
-                      class="progress-bar-fill" 
-                      :style="{ width: (ragStatus.indexing_percent || 0) + '%' }"
-                    ></div>
+                  <div class="status-item">
+                    <span class="status-label">Indexing:</span>
+                    <span :class="['status-badge', ragStatus.indexing ? 'active' : 'idle']">
+                      <span class="mdi" :class="ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-circle-small'"></span>
+                      {{ ragStatus.indexing ? 'In Progress' : 'Idle' }}
+                    </span>
                   </div>
-                  <div class="current-file" v-if="ragStatus.indexing_current_file">
-                    <span class="mdi mdi-file-document-outline"></span> {{ ragStatus.indexing_current_file }}
+                  
+                  <!-- Progress bar when indexing -->
+                  <div v-if="ragStatus.indexing" class="indexing-progress">
+                    <div class="progress-info">
+                      <span class="progress-percent">{{ ragStatus.indexing_percent || 0 }}%</span>
+                      <span class="progress-count">{{ ragStatus.indexing_progress || 0 }} / {{ ragStatus.indexing_total || 0 }} files</span>
+                    </div>
+                    <div class="progress-bar-container">
+                      <div 
+                        class="progress-bar-fill" 
+                        :style="{ width: (ragStatus.indexing_percent || 0) + '%' }"
+                      ></div>
+                    </div>
+                    <div class="current-file" v-if="ragStatus.indexing_current_file">
+                      <span class="mdi mdi-file-document-outline"></span> {{ ragStatus.indexing_current_file }}
+                    </div>
+                  </div>
+                  
+                  <div class="status-item">
+                    <span class="status-label">LLM Model:</span>
+                    <span class="status-value">{{ ragStatus.llm_model }}</span>
+                  </div>
+                  <div class="status-item">
+                    <span class="status-label">Embedding Model:</span>
+                    <span class="status-value">{{ ragStatus.embedding_model }}</span>
                   </div>
                 </div>
-                
-                <div class="status-item">
-                  <span class="status-label">LLM Model:</span>
-                  <span class="status-value">{{ ragStatus.llm_model }}</span>
+                <div class="rag-actions">
+                  <button 
+                    @click="indexVault" 
+                    :disabled="indexing || ragStatus.indexing || deleting"
+                    class="action-button primary"
+                  >
+                    <span class="mdi" :class="indexing || ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-book-multiple'"></span>
+                    {{ indexing || ragStatus.indexing ? 'Indexing...' : 'Index Vault' }}
+                  </button>
+                  <button 
+                    @click="fetchRagStatus" 
+                    :disabled="indexing || deleting"
+                    class="action-button secondary"
+                  >
+                    <span class="mdi mdi-refresh"></span> Refresh Status
+                  </button>
+                  <button 
+                    @click="deleteIndex" 
+                    :disabled="indexing || ragStatus.indexing || deleting"
+                    class="action-button danger"
+                  >
+                    <span class="mdi" :class="deleting ? 'mdi-delete-clock' : 'mdi-delete'"></span>
+                    {{ deleting ? 'Deleting...' : 'Delete Index' }}
+                  </button>
                 </div>
-                <div class="status-item">
-                  <span class="status-label">Embedding Model:</span>
-                  <span class="status-value">{{ ragStatus.embedding_model }}</span>
+                <div v-if="indexResult" class="index-result" :class="indexResult.status">
+                  <p v-if="indexResult.status === 'success'">
+                    <span class="mdi mdi-check-circle"></span> Indexed {{ indexResult.indexed_files }} / {{ indexResult.total_files }} files
+                  </p>
+                  <p v-else-if="indexResult.status === 'error'">
+                    <span class="mdi mdi-alert-circle"></span> Error: {{ indexResult.message }}
+                  </p>
+                  <div v-if="indexResult.errors && indexResult.errors.length > 0" class="error-list">
+                    <details>
+                      <summary>{{ indexResult.errors.length }} errors occurred</summary>
+                      <ul>
+                        <li v-for="(error, i) in indexResult.errors.slice(0, 5)" :key="i">{{ error }}</li>
+                        <li v-if="indexResult.errors.length > 5">...and {{ indexResult.errors.length - 5 }} more</li>
+                      </ul>
+                    </details>
+                  </div>
+                </div>
+                <div v-if="deleteResult" class="index-result" :class="deleteResult.status">
+                  <p v-if="deleteResult.status === 'success'">
+                    <span class="mdi mdi-delete-circle"></span> {{ deleteResult.message }}
+                  </p>
+                  <p v-else-if="deleteResult.status === 'error'">
+                    <span class="mdi mdi-alert-circle"></span> Error: {{ deleteResult.message }}
+                  </p>
                 </div>
               </div>
-              <div class="rag-actions">
-                <button 
-                  @click="indexVault" 
-                  :disabled="indexing || ragStatus.indexing || deleting"
-                  class="action-button primary"
-                >
-                  <span class="mdi" :class="indexing || ragStatus.indexing ? 'mdi-sync mdi-spin' : 'mdi-book-multiple'"></span>
-                  {{ indexing || ragStatus.indexing ? 'Indexing...' : 'Index Vault' }}
-                </button>
-                <button 
-                  @click="fetchRagStatus" 
-                  :disabled="indexing || deleting"
-                  class="action-button secondary"
-                >
-                  <span class="mdi mdi-refresh"></span> Refresh Status
-                </button>
-                <button 
-                  @click="deleteIndex" 
-                  :disabled="indexing || ragStatus.indexing || deleting"
-                  class="action-button danger"
-                >
-                  <span class="mdi" :class="deleting ? 'mdi-delete-clock' : 'mdi-delete'"></span>
-                  {{ deleting ? 'Deleting...' : 'Delete Index' }}
-                </button>
-              </div>
-              <div v-if="indexResult" class="index-result" :class="indexResult.status">
-                <p v-if="indexResult.status === 'success'">
-                  <span class="mdi mdi-check-circle"></span> Indexed {{ indexResult.indexed_files }} / {{ indexResult.total_files }} files
-                </p>
-                <p v-else-if="indexResult.status === 'error'">
-                  <span class="mdi mdi-alert-circle"></span> Error: {{ indexResult.message }}
-                </p>
-                <div v-if="indexResult.errors && indexResult.errors.length > 0" class="error-list">
-                  <details>
-                    <summary>{{ indexResult.errors.length }} errors occurred</summary>
-                    <ul>
-                      <li v-for="(error, i) in indexResult.errors.slice(0, 5)" :key="i">{{ error }}</li>
-                      <li v-if="indexResult.errors.length > 5">...and {{ indexResult.errors.length - 5 }} more</li>
-                    </ul>
-                  </details>
-                </div>
-              </div>
-              <div v-if="deleteResult" class="index-result" :class="deleteResult.status">
-                <p v-if="deleteResult.status === 'success'">
-                  <span class="mdi mdi-delete-circle"></span> {{ deleteResult.message }}
-                </p>
-                <p v-else-if="deleteResult.status === 'error'">
-                  <span class="mdi mdi-alert-circle"></span> Error: {{ deleteResult.message }}
-                </p>
+              <div v-else class="loading-stats">
+                <p>Loading LightRAG status...</p>
               </div>
             </div>
-            <div v-else class="loading-stats">
-              <p>Loading LightRAG status...</p>
-            </div>
-          </div>
 
-          <!-- Vault Info Section -->
-          <div class="admin-section">
-            <h3><span class="mdi mdi-folder-outline"></span> Vault Information</h3>
-            <div class="stats" v-if="vaultInfo">
-              <p><strong>Total notes:</strong> {{ vaultInfo.total_notes }}</p>
-              <p><strong>Path:</strong> {{ vaultInfo.vault_path }}</p>
-              <p v-if="vaultInfo.repo_url">
-                <strong>Repository:</strong> {{ vaultInfo.repo_url }}
-              </p>
-              <button v-if="vaultInfo.repo_url" @click="syncVault" :disabled="syncing" class="action-button primary">
-                <span class="mdi" :class="syncing ? 'mdi-sync mdi-spin' : 'mdi-sync'"></span>
-                {{ syncing ? 'Syncing...' : 'Sync Vault' }}
-              </button>
-            </div>
-            <div v-else class="loading-stats">
-              <p>Loading information...</p>
+            <!-- Vault Info Section -->
+            <div class="admin-section">
+              <h3><span class="mdi mdi-folder-outline"></span> Vault Information</h3>
+              <div class="stats" v-if="vaultInfo">
+                <p><strong>Total notes:</strong> {{ vaultInfo.total_notes }}</p>
+                <p><strong>Path:</strong> {{ vaultInfo.vault_path }}</p>
+                <p v-if="vaultInfo.repo_url">
+                  <strong>Repository:</strong> {{ vaultInfo.repo_url }}
+                </p>
+                <button v-if="vaultInfo.repo_url" @click="syncVault" :disabled="syncing" class="action-button primary">
+                  <span class="mdi" :class="syncing ? 'mdi-sync mdi-spin' : 'mdi-sync'"></span>
+                  {{ syncing ? 'Syncing...' : 'Sync Vault' }}
+                </button>
+              </div>
+              <div v-else class="loading-stats">
+                <p>Loading information...</p>
+              </div>
             </div>
           </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
-  </div>
 </template>
 
 <script>
 import NotesSidebar from './components/NotesSidebar.vue'
 import NebulaBackground from './components/NebulaBackground.vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import ChatView from './components/ChatView.vue'
 import axios from 'axios'
 import { applyTheme } from './config/theme'
+import { cachedFetch, apiCache, invalidateCacheByResource } from './api/cache'
 
 export default {
   name: 'App',
   components: {
     NotesSidebar,
     NebulaBackground,
+    ErrorBoundary,
     ChatView
   },
   provide() {
@@ -180,9 +183,9 @@ export default {
   },
   data() {
     return {
-      activeTab: 'wiki',
+      activeTab: 'notes',
       tabs: [
-        { id: 'wiki', label: 'Wiki', icon: 'mdi mdi-book-open-page-variant' },
+        { id: 'notes', label: 'Notes', icon: 'mdi mdi-book-open-page-variant' },
         { id: 'graph', label: 'Graph', icon: 'mdi mdi-graph-outline' },
         { id: 'chat', label: 'Chat', icon: 'mdi mdi-message-text-outline' },
         { id: 'admin', label: 'Admin', icon: 'mdi mdi-cog-outline' }
@@ -226,8 +229,13 @@ export default {
     },
     async fetchRagStatus() {
       try {
-        const response = await axios.get(`${this.apiUrl}/api/chat/status`)
-        this.ragStatus = response.data
+        const cacheKey = 'rag:status'
+        
+        // Usar cachedFetch para obtener status con caché de 30 segundos
+        this.ragStatus = await cachedFetch(cacheKey, () =>
+          axios.get(`${this.apiUrl}/api/chat/status`)
+            .then(r => r.data)
+        )
       } catch (err) {
         console.error('Error fetching RAG status:', err)
         this.ragStatus = null
@@ -240,6 +248,10 @@ export default {
       try {
         const response = await axios.post(`${this.apiUrl}/api/chat/index`, {})
         this.indexResult = response.data
+        
+        // Invalidar caché de notas cuando se indexa el vault
+        invalidateCacheByResource('note:')
+        
         // Start fast polling for progress updates
         this.startFastPolling()
         await this.fetchRagStatus()
@@ -280,6 +292,10 @@ export default {
       try {
         const response = await axios.delete(`${this.apiUrl}/api/chat/index`)
         this.deleteResult = response.data
+        
+        // Invalidar caché cuando se elimina el índice
+        invalidateCacheByResource('rag:')
+        
         await this.fetchRagStatus()
       } catch (err) {
         console.error('Error deleting index:', err)
@@ -306,8 +322,8 @@ export default {
       }
     },
     addTagFilter(tag) {
-      // Switch to wiki tab if not already there
-      this.activeTab = 'wiki'
+      // Switch to notes tab if not already there
+      this.activeTab = 'notes'
       // Wait for next tick to ensure sidebar is rendered, then call its method
       this.$nextTick(() => {
         if (this.$refs.notesSidebar) {
@@ -322,14 +338,14 @@ export default {
       if (to.name === 'Graph') {
         this.activeTab = 'graph'
       } else {
-        this.activeTab = 'wiki'
+        this.activeTab = 'notes'
       }
     },
     activeTab(newTab) {
       // Navigate to graph route when graph tab is clicked
       if (newTab === 'graph' && this.$route.name !== 'Graph') {
         this.$router.push('/graph')
-      } else if (newTab === 'wiki' && this.$route.name === 'Graph') {
+      } else if (newTab === 'notes' && this.$route.name === 'Graph') {
         this.$router.push('/')
       } else if (newTab === 'admin') {
         this.fetchVaultInfo()
@@ -477,13 +493,13 @@ body {
   background: transparent;
 }
 
-.wiki-container {
+.notes-container {
   display: flex;
   height: 100%;
   overflow: hidden;
 }
 
-.wiki-content {
+.notes-content {
   flex: 1;
   overflow-y: auto;
   background: rgba(12, 13, 29, 0.7);
@@ -874,7 +890,7 @@ body {
     padding-bottom: 80px;
   }
 
-  .wiki-content {
+  .notes-content {
     padding-bottom: 70px;
   }
 }
