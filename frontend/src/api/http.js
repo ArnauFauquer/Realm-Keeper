@@ -145,7 +145,7 @@ export async function getNoCache(url, options = {}) {
 }
 
 /**
- * Streaming GET para datos grandes (ej: chat)
+ * Streaming GET para datos grandes
  * No usa cache, procesa respuesta por chunks
  */
 export async function getStream(url, onChunk, options = {}) {

@@ -4,7 +4,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 from routes.notes import router as notes_router, markdown_service
-from routes.chat import router as chat_router
 import asyncio
 from pathlib import Path
 
@@ -102,7 +101,6 @@ async def get_asset(filename: str):
 
 # Include routers
 app.include_router(notes_router)
-app.include_router(chat_router)
 
 @app.get("/")
 async def root():

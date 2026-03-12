@@ -17,7 +17,7 @@ class Settings:
     # ============================================================
     VAULT_PATH: Path = Path(os.getenv("VAULT_PATH", "/app/vault"))
     REPO_URL: Optional[str] = os.getenv("REPO_URL", None)
-    VAULT_SYNC_INTERVAL: int = int(os.getenv("VAULT_SYNC_INTERVAL", "3600"))  # Default: 1 hour
+    VAULT_SYNC_INTERVAL: int = int(os.getenv("VAULT_SYNC_INTERVAL", "180"))  # Default: 3 min
     NOTE_TAG_IGNORE: str = os.getenv("NOTE_TAG_IGNORE", "draft")
 
     # ============================================================
@@ -33,30 +33,9 @@ class Settings:
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
 
     # ============================================================
-    # LIGHTRAG CONFIGURATION
-    # ============================================================
-    LIGHTRAG_WORKING_DIR: Path = Path(
-        os.getenv("LIGHTRAG_WORKING_DIR", "/app/rag_storage")
-    )
-    OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-    LLM_MODEL: str = os.getenv("LLM_MODEL", "llama3.2")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "768"))
-    LLM_CONTEXT_SIZE: int = int(os.getenv("LLM_CONTEXT_SIZE", "32768"))
-
-    # ============================================================
-    # TIMEOUT CONFIGURATION (in seconds)
-    # ============================================================
-    LLM_TIMEOUT: int = int(os.getenv("LLM_TIMEOUT", "600"))  # 10 min
-    EMBED_TIMEOUT: int = int(os.getenv("EMBED_TIMEOUT", "120"))  # 2 min
-    QUERY_TIMEOUT: int = int(os.getenv("QUERY_TIMEOUT", "300"))  # 5 min
-
-    # ============================================================
     # LIMITS & CONSTRAINTS
     # ============================================================
-    MAX_STREAM_CHUNKS: int = 10000
     MAX_NOTES_PER_REQUEST: int = 500
-    QUERY_MAX_RETRIES: int = 3
     MARKDOWN_CACHE_TTL: int = 300  # 5 minutes
 
     # ============================================================
@@ -80,7 +59,6 @@ class Settings:
     def _validate_paths(self) -> None:
         """Crear directorios necesarios si no existen"""
         self.VAULT_PATH.mkdir(parents=True, exist_ok=True)
-        self.LIGHTRAG_WORKING_DIR.mkdir(parents=True, exist_ok=True)
         self.LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     def _validate_configuration(self) -> None:
@@ -91,12 +69,6 @@ class Settings:
                 "WARNING: VAULT_SYNC_INTERVAL set but no REPO_URL configured. "
                 "Vault sync will be disabled."
             )
-
-        if self.QUERY_TIMEOUT <= 0:
-            raise ValueError("QUERY_TIMEOUT must be greater than 0")
-
-        if self.MAX_STREAM_CHUNKS <= 0:
-            raise ValueError("MAX_STREAM_CHUNKS must be greater than 0")
 
     def get_log_file(self, name: str) -> Path:
         """Obtener ruta de archivo de log"""

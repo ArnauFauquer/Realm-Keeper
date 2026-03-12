@@ -53,33 +53,6 @@ spec:
                 configMapKeyRef:
                   name: realm-keeper-backend-config
                   key: CORS_ALLOWED_ORIGINS
-            - name: OLLAMA_HOST
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: OLLAMA_HOST
-            - name: LLM_MODEL
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: LLM_MODEL
-            - name: EMBEDDING_MODEL
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: EMBEDDING_MODEL
-            - name: EMBEDDING_DIM
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: EMBEDDING_DIM
-            - name: LLM_CONTEXT_SIZE
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: LLM_CONTEXT_SIZE
-            - name: LIGHTRAG_WORKING_DIR
-              value: "/app/rag_storage"
           livenessProbe:
             httpGet:
               path: /health
@@ -96,13 +69,6 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
-          volumeMounts:
-            - name: rag-storage
-              mountPath: /app/rag_storage
-      volumes:
-        - name: rag-storage
-          persistentVolumeClaim:
-            claimName: realm-keeper-rag-storage-pvc
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

@@ -12,7 +12,6 @@ A minimalist web application to visualize your Markdown notes as a navigable kno
 - ✅ Tags and metadata
 - ✅ Cache for better performance
 - ✅ Knowledge graph visualization
-- ✅ LightRAG-powered AI chat assistant
 
 ## Project Structure
 
@@ -106,12 +105,6 @@ npm run dev
 ### Graph
 - `GET /api/graph/all` - Get full knowledge graph data
 
-### Chat (LightRAG)
-- `GET /api/chat/status` - Get LightRAG status
-- `POST /api/chat/query` - Query the knowledge base
-- `POST /api/chat/index` - Index vault into knowledge base
-- `DELETE /api/chat/index` - Delete the index
-
 ### Vault Management
 - `POST /api/sync` - Sync vault with Git repository
 - `GET /api/vault/info` - Vault information
@@ -148,7 +141,6 @@ The parser automatically converts:
 - GitPython
 - python-markdown
 - python-frontmatter
-- LightRAG
 
 **Frontend:**
 - Vue 3
