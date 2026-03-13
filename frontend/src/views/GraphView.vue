@@ -79,7 +79,6 @@ export default {
         const type = node.type || null
         stats[type] = (stats[type] || 0) + 1
       })
-      // Sort by count descending
       return Object.fromEntries(
         Object.entries(stats).sort((a, b) => b[1] - a[1])
       )
@@ -102,7 +101,6 @@ export default {
       this.error = null
       
       try {
-        // Cache graph data con TTL de 10 minutos (no cambia frecuentemente)
         const data = await getCached(`${this.apiUrl}/api/graph/all`, {
           useCache: true,
           cacheTtl: 600 // 10 minutos
@@ -124,23 +122,19 @@ export default {
       const container = this.$refs.svg
       if (!container) return
       
-      // Clear previous graph
       d3.select(container).selectAll('*').remove()
       
       const width = container.clientWidth
       const height = container.clientHeight
       
-      // Setup SVG
       this.svg = d3.select(container)
         .attr('width', width)
         .attr('height', height)
       
-      // Debounce zoom handler
       const debouncedZoom = (event) => {
         this.g.attr('transform', event.transform)
       }
       
-      // Add zoom behavior with debounce
       this.zoom = d3.zoom()
         .scaleExtent([0.1, 10])
         .on('zoom', (event) => {
@@ -150,10 +144,8 @@ export default {
       
       this.svg.call(this.zoom)
       
-      // Main group for zooming
       this.g = this.svg.append('g')
       
-      // Create simulation with optimized parameters
       this.simulation = d3.forceSimulation(this.nodes)
         .force('link', d3.forceLink(this.links)
           .id(d => d.id)
@@ -162,10 +154,9 @@ export default {
         .force('charge', d3.forceManyBody().strength(-200))
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(30))
-        .alphaDecay(0.03)  // Converge faster
-        .velocityDecay(0.3)  // Reduce vibration
+        .alphaDecay(0.03)
+        .velocityDecay(0.3)
       
-      // Draw links
       const link = this.g.append('g')
         .selectAll('line')
         .data(this.links)
@@ -176,10 +167,8 @@ export default {
         .attr('stroke-opacity', 'var(--graph-linkOpacity)')
         .attr('stroke-width', 1.5)
       
-      // Store link selection for hover highlighting
       this.linkSelection = link
       
-      // Draw nodes
       const node = this.g.append('g')
         .selectAll('g')
         .data(this.nodes)
@@ -191,13 +180,10 @@ export default {
           .on('drag', (event, d) => this.dragged(event, d))
           .on('end', (event, d) => this.dragEnded(event, d)))
       
-      // Store node selection for hover highlighting
       this.nodeSelection = node
       
-      // Reference to component for event handlers
       const self = this
       
-      // Node circles
       node.append('circle')
         .attr('r', 7)
         .attr('fill', d => this.getNodeColor(d))
@@ -205,31 +191,24 @@ export default {
         .attr('stroke-width', 2)
         .on('click', (event, d) => this.onNodeClick(d))
         .on('mouseover', function(event, d) {
-          // Don't highlight on hover if type filter is active
           if (self.highlightedType !== null) return
           
-          // Enlarge hovered node
           d3.select(this)
             .attr('r', 10)
             .attr('stroke-width', 3)
           
-          // Highlight connected links
           self.highlightConnectedLinks(d, true)
         })
         .on('mouseout', function(event, d) {
-          // Don't reset if type filter is active
           if (self.highlightedType !== null) return
           
-          // Reset node size
           d3.select(this)
             .attr('r', 7)
             .attr('stroke-width', 2)
           
-          // Reset link highlighting
           self.highlightConnectedLinks(d, false)
         })
       
-      // Node labels
       node.append('text')
         .text(d => d.title)
         .attr('x', 12)
@@ -240,7 +219,6 @@ export default {
         .style('pointer-events', 'none')
         .style('user-select', 'none')
       
-      // Update positions on tick - optimized
       this.simulation.on('tick', () => {
         link
           .attr('x1', d => d.source.x)
@@ -284,7 +262,6 @@ export default {
     highlightConnectedLinks(hoveredNode, highlight) {
       if (!this.linkSelection || !this.nodeSelection) return
       
-      // Find connected node IDs
       const connectedNodeIds = new Set()
       connectedNodeIds.add(hoveredNode.id)
       
@@ -300,7 +277,6 @@ export default {
       })
       
       if (highlight) {
-        // Highlight connected links
         this.linkSelection.each(function(d) {
           const linkEl = d3.select(this)
           const sourceId = typeof d.source === 'object' ? d.source.id : d.source
@@ -313,7 +289,6 @@ export default {
             .attr('stroke-opacity', isConnected ? 1 : 0.15)
         })
         
-        // Dim non-connected nodes
         this.nodeSelection.each(function(d) {
           const nodeEl = d3.select(this)
           const isConnected = connectedNodeIds.has(d.id)
@@ -324,13 +299,11 @@ export default {
             .attr('opacity', isConnected ? 1 : 0.3)
         })
       } else {
-        // Reset all links
         this.linkSelection
           .attr('stroke', 'var(--graph-link)')
           .attr('stroke-width', 1.5)
           .attr('stroke-opacity', 'var(--graph-linkOpacity)')
         
-        // Reset all nodes
         this.nodeSelection.each(function() {
           const nodeEl = d3.select(this)
           nodeEl.select('circle').attr('opacity', 1)
@@ -340,7 +313,6 @@ export default {
     },
     
     toggleTypeHighlight(type) {
-      // Toggle off if clicking the same type
       if (this.highlightedType === type) {
         this.highlightedType = null
       } else {
@@ -354,20 +326,17 @@ export default {
       
       const highlightedType = this.highlightedType
       
-      // Update nodes
       this.g.selectAll('.graph-node').each(function(d) {
         const node = d3.select(this)
         const circle = node.select('circle')
         const text = node.select('text')
         
         if (highlightedType === null) {
-          // No filter - restore all nodes
           circle
             .attr('opacity', 1)
             .attr('r', 7)
           text.attr('opacity', 1)
         } else {
-          // Check if node matches the highlighted type
           const nodeType = d.type || null
           const isMatch = nodeType === highlightedType
           
@@ -378,7 +347,6 @@ export default {
         }
       })
       
-      // Update links
       this.g.selectAll('.graph-link').each(function(d) {
         const link = d3.select(this)
         
@@ -557,7 +525,7 @@ export default {
   font-weight: 500;
 }
 
-/* Mobile toggle button for graph info */
+/* Mobile toggle button */
 .graph-info-toggle {
   display: none;
   position: fixed;

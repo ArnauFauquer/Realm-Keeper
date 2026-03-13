@@ -11,7 +11,6 @@
 export default {
   name: 'Home',
   mounted() {
-    // Redirect to default welcome page
     const defaultPage = import.meta.env.VITE_DEFAULT_PAGE || 'RealmKeeper'
     this.$router.replace(`/note/${defaultPage}`)
   }

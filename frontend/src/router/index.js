@@ -1,6 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
-// Lazy load components for code splitting
 const Home = () => import('../views/Home.vue')
 const NoteView = () => import('../views/NoteView.vue')
 const GraphView = () => import('../views/GraphView.vue')

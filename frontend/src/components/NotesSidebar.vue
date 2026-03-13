@@ -122,7 +122,7 @@
 
 <script>
 import TreeItem from './TreeItem.vue'
-import { getCached, getNoCache } from '@/api/http'
+import { getCached } from '@/api/http'
 
 export default {
   name: 'NotesSidebar',
@@ -173,19 +173,14 @@ export default {
       )
     },
     notesTree() {
-      // Build hierarchical tree structure
       const root = []
       const folderMap = {}
       
-      // Use tag-filtered notes
       const notesToProcess = this.tagFilteredNotes
       
-      // First, create all folders based on note paths
       notesToProcess.forEach(note => {
-        // Use note.id which has the path without .md extension
         const parts = note.id.split('/')
         
-        // Create intermediate folders (all but the last part which is the file)
         for (let i = 0; i < parts.length - 1; i++) {
           const folderPath = parts.slice(0, i + 1).join('/')
           
@@ -197,11 +192,10 @@ export default {
               expanded: this.expandedFolders.has(folderPath),
               children: [],
               notes: [],
-              folderNote: null // Will store the note that matches folder name
+              folderNote: null
             }
             folderMap[folderPath] = folder
             
-            // Add to parent or root
             if (i === 0) {
               root.push(folder)
             } else {
@@ -214,31 +208,22 @@ export default {
         }
       })
       
-      // Second pass: assign notes to folders and detect folder notes
       notesToProcess.forEach(note => {
         const parts = note.id.split('/')
         const noteName = parts[parts.length - 1]
         
-        // Check if this note's path matches an existing folder path
-        // This handles cases like: Factions/Drunaris.md and Factions/Drunaris/ folder
         if (folderMap[note.id]) {
-          // This note represents a folder!
           folderMap[note.id].folderNote = note
         } else {
-          // Regular note - add to parent folder
           const parentPath = parts.slice(0, -1).join('/')
           if (parentPath && folderMap[parentPath]) {
-            // Check if this note's name matches the parent folder's name
             const parentFolderName = parts[parts.length - 2]
             if (noteName === parentFolderName) {
-              // This note represents the parent folder itself
               folderMap[parentPath].folderNote = note
             } else {
-              // Regular note in the folder
               folderMap[parentPath].notes.push(note)
             }
           } else {
-            // Note at root level
             root.push({
               ...note,
               isFolder: false
@@ -256,7 +241,6 @@ export default {
       
       const query = this.searchQuery.toLowerCase()
       
-      // Filter recursively
       const filterTree = (items) => {
         return items.map(item => {
           if (item.isFolder) {
@@ -266,18 +250,16 @@ export default {
               note.path.toLowerCase().includes(query)
             )
             
-            // Include folder if it has matching notes or children
             if (filteredNotes.length > 0 || filteredChildren.length > 0) {
               return {
                 ...item,
                 children: filteredChildren,
                 notes: filteredNotes,
-                expanded: true // Auto-expand when searching
+                expanded: true
               }
             }
             return null
           } else {
-            // It's a note at root level
             if (item.title.toLowerCase().includes(query) ||
                 item.path.toLowerCase().includes(query)) {
               return item
@@ -293,7 +275,6 @@ export default {
   methods: {
     async fetchNotes() {
       try {
-        // Load first page (50 items)
         this.currentPage = 0
         this.notes = []
         this.hasMore = true
@@ -310,10 +291,9 @@ export default {
       this.isLoadingMore = true
       try {
         const offset = this.currentPage * this.pageSize
-        // Use cache for paginated requests - but not when searching (search results shouldn't be cached)
         const data = await getCached(`${this.apiUrl}/api/notes`, {
-          useCache: !this.searchQuery, // Only cache when not searching
-          cacheTtl: 300, // 5 minutes
+          useCache: !this.searchQuery,
+          cacheTtl: 300,
           params: {
             limit: this.pageSize,
             offset: offset,
@@ -321,18 +301,15 @@ export default {
           }
         })
         
-        // Si es la primera página, reemplazar; si no, agregar
         if (this.currentPage === 0) {
           this.notes = data
         } else {
           this.notes.push(...data)
         }
         
-        // Si recibimos menos items que el pageSize, no hay más
         this.hasMore = data.length === this.pageSize
         this.currentPage++
         
-        // Setup observer para el siguiente load
         this.setupScrollObserver()
       } catch (err) {
         console.error('Error loading notes:', err)
@@ -341,17 +318,14 @@ export default {
       }
     },
     setupScrollObserver() {
-      // Use Intersection Observer para auto-load suave cuando el usuario scroll cerca del final
       this.$nextTick(() => {
         const indicator = this.$refs.scrollIndicator
         if (!indicator) return
         
-        // Cleanup observer anterior si existe
         if (this.scrollObserver) {
           this.scrollObserver.disconnect()
         }
         
-        // Crear nuevo observer
         this.scrollObserver = new IntersectionObserver(
           (entries) => {
             entries.forEach(entry => {
@@ -368,10 +342,9 @@ export default {
     },
     async fetchTags() {
       try {
-        // Cache tags con TTL más largo (10 minutos) ya que no cambian frecuentemente
         const data = await getCached(`${this.apiUrl}/api/tags`, {
           useCache: true,
-          cacheTtl: 600 // 10 minutos
+          cacheTtl: 600
         })
         this.availableTags = data
       } catch (err) {
@@ -385,7 +358,6 @@ export default {
       } else {
         this.selectedTags.splice(index, 1)
       }
-      // Reset pagination when tag filter changes
       this.resetPagination()
     },
     clearTags() {
@@ -400,13 +372,10 @@ export default {
       this.loadMoreNotes()
     },
     addTagToFilter(tag) {
-      // Add tag to filter if not already selected
       if (!this.selectedTags.includes(tag)) {
         this.selectedTags.push(tag)
       }
-      // Open the tag filter section to show the active filter
       this.showTagFilter = true
-      // Open sidebar on mobile
       this.isOpen = true
     },
     toggleFolder(path) {
@@ -415,7 +384,6 @@ export default {
       } else {
         this.expandedFolders.add(path)
       }
-      // Force re-render
       this.expandedFolders = new Set(this.expandedFolders)
     },
     toggleSidebar() {
@@ -429,7 +397,6 @@ export default {
   },
   watch: {
     searchQuery() {
-      // Reset pagination when search changes
       this.resetPagination()
     }
   },

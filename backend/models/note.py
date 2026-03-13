@@ -1,20 +1,16 @@
 from pydantic import BaseModel
 from typing import Optional, List, Dict
 
-
 class Note(BaseModel):
-    """Modelo para una nota de Markdown"""
-    id: str  # Path relativo desde el root del vault
+    id: str
     title: str
-    path: str  # Path completo incluyendo directorios
+    path: str
     content: str
     frontmatter: Optional[Dict] = None
     tags: List[str] = []
-    links: List[str] = []  # Wikilinks encontrados en la nota
-
+    links: List[str] = []
 
 class NoteMetadata(BaseModel):
-    """Metadata ligera para listar notas"""
     id: str
     title: str
     path: str

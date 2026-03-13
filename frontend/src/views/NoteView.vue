@@ -87,7 +87,6 @@ export default {
     breadcrumbs() {
       if (!this.note) return []
       
-      // Use note.id which doesn't have .md extension
       const parts = this.note.id.split('/')
       const crumbs = []
       
@@ -96,17 +95,13 @@ export default {
         const isLast = i === parts.length - 1
         
         if (isLast) {
-          // Current note - not a link
           crumbs.push({ name, path: null })
         } else {
           const folderPath = parts.slice(0, i + 1).join('/')
           
           if (this.containerFolders.has(name)) {
-            // Known container folder - don't create a link
             crumbs.push({ name, path: null })
           } else {
-            // Likely a folder with an index note (folder/folder pattern)
-            // e.g., "Esparragus Totalus" folder should link to "Oneshots/Esparragus Totalus/Esparragus Totalus"
             const folderNotePath = folderPath + '/' + name
             crumbs.push({ name, path: folderNotePath })
           }
@@ -118,9 +113,7 @@ export default {
     renderedContent() {
       if (!this.note) return ''
       let html = this.md.render(this.note.content)
-      // Replace relative asset URLs with absolute backend URLs
       html = html.replace(/src="\/assets\//g, `src="${this.apiUrl}/assets/`)
-      // Enhance note links with data attributes for prefetch
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })
@@ -138,17 +131,14 @@ export default {
       try {
         const cacheKey = `note:${this.notePath}`
         
-        // Usar cachedFetch para obtener la nota con caché automático
         this.note = await cachedFetch(cacheKey, () =>
           axios.get(`${this.apiUrl}/api/note/${this.notePath}`)
             .then(r => r.data)
         )
         this.loading = false
         
-        // Setup link prefetch listeners
         this.setupLinkPrefetch()
         
-        // Prefetch linked notes en background
         this.prefetchLinkedNotes(this.note.links)
       } catch (err) {
         this.error = err.response?.data?.detail || err.message
@@ -158,29 +148,23 @@ export default {
     prefetchLinkedNotes(links) {
       if (!links || links.length === 0) return
 
-      // Usar requestIdleCallback si disponible
       const prefetchFn = () => {
-        // Prefetch máximo 5 links
         links.slice(0, 5).forEach(linkId => {
-          // Evitar prefetch duplicado
           if (this.prefetchCache.has(linkId)) return
           
           this.prefetchCache.add(linkId)
           
-          // Usar cachedFetch para prefetch con caché automático
           const cacheKey = `note:${linkId}`
           cachedFetch(cacheKey, () =>
             axios.get(`${this.apiUrl}/api/note/${linkId}`, {
-              timeout: 2000  // No esperar mucho
+              timeout: 2000
             })
               .then(r => r.data)
           ).catch(() => {
-            // Ignorar errores en prefetch silenciosamente
           })
         })
       }
 
-      // Cleanup timeout anterior si existe
       if (this.prefetchTimeout) {
         clearTimeout(this.prefetchTimeout)
       }
@@ -188,17 +172,14 @@ export default {
       if ('requestIdleCallback' in window) {
         requestIdleCallback(prefetchFn)
       } else {
-        // Fallback: ejecutar después de 1 segundo
         this.prefetchTimeout = setTimeout(prefetchFn, 1000)
       }
     },
     onLinkMouseEnter(linkId) {
-      // Prefetch individual cuando el usuario pasa el mouse sobre un link
       if (this.prefetchCache.has(linkId)) return
       
       this.prefetchCache.add(linkId)
       
-      // Usar cachedFetch para prefetch con caché automático
       const cacheKey = `note:${linkId}`
       cachedFetch(cacheKey, () =>
         axios.get(`${this.apiUrl}/api/note/${linkId}`, {
@@ -206,7 +187,6 @@ export default {
         })
           .then(r => r.data)
       ).catch(() => {
-        // Ignorar errores
       })
     },
     setupLinkPrefetch() {
@@ -214,13 +194,11 @@ export default {
         const content = this.$refs.markdownContent
         if (!content) return
         
-        // Encontrar todos los links internos con data-note-link
         const links = content.querySelectorAll('a[data-note-link]')
         links.forEach(link => {
           const linkId = link.getAttribute('data-note-link')
           if (!linkId) return
           
-          // Agregar event listener para prefetch on hover
           link.addEventListener('mouseenter', () => {
             this.onLinkMouseEnter(linkId)
           }, { once: false })
@@ -233,13 +211,10 @@ export default {
         this.containerFolders = new Set(response.data)
       } catch (err) {
         console.error('Error loading container folders:', err)
-        // Si falla, simplemente no habrá carpetas contenedoras
-        // y todos los directorios se tratarán como potenciales links
       }
     }
   },
   mounted() {
-    // Load container folders once on component mount
     this.loadContainerFolders()
   },
   watch: {

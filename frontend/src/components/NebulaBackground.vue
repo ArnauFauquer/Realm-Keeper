@@ -45,7 +45,6 @@ export default {
 
     createStars() {
       this.stars = []
-      // Create more stars with varying properties for a softer look
       for (let i = 0; i < 350; i++) {
         this.stars.push({
           x: Math.random() * this.width,
@@ -55,8 +54,7 @@ export default {
           brightness: Math.random(),
           twinkleSpeed: Math.random() * 0.002 + 0.001,
           twinkleOffset: Math.random() * Math.PI * 2,
-          // Add color tint for some stars
-          hue: Math.random() > 0.7 ? (Math.random() * 60 + 200) : 0 // Some blue/purple tinted stars
+          hue: Math.random() > 0.7 ? (Math.random() * 60 + 200) : 0
         })
       }
     },
@@ -64,12 +62,12 @@ export default {
     createNebulaClouds() {
       this.nebulaClouds = []
       const colors = [
-        'rgba(65, 105, 225, 0.08)',   // Royal Blue
-        'rgba(138, 43, 226, 0.08)',   // Blue Violet
-        'rgba(255, 20, 147, 0.06)',   // Deep Pink
-        'rgba(75, 0, 130, 0.08)',     // Indigo
-        'rgba(147, 112, 219, 0.07)', // Medium Purple
-        'rgba(218, 112, 214, 0.06)'  // Orchid
+        'rgba(65, 105, 225, 0.08)',
+        'rgba(138, 43, 226, 0.08)',
+        'rgba(255, 20, 147, 0.06)',
+        'rgba(75, 0, 130, 0.08)',
+        'rgba(147, 112, 219, 0.07)',
+        'rgba(218, 112, 214, 0.06)'
       ]
 
       for (let i = 0; i < 6; i++) {
@@ -122,26 +120,22 @@ export default {
         star.size = Math.random() * 2 + 0.5
         star.speed = Math.random() * 0.02 + 0.003
       }
-      // Softer, slower twinkling
       star.brightness = Math.sin(Date.now() * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
     },
 
     drawStar(star) {
       const ctx = this.ctx
       
-      // Draw soft glow around star
       if (star.size > 0.8) {
         const glowSize = star.size * 6
         const glow = ctx.createRadialGradient(star.x, star.y, 0, star.x, star.y, glowSize)
         
         if (star.hue > 0) {
-          // Colored star glow
           glow.addColorStop(0, `hsla(${star.hue}, 70%, 85%, ${star.brightness * 0.6})`)
           glow.addColorStop(0.3, `hsla(${star.hue}, 60%, 75%, ${star.brightness * 0.3})`)
           glow.addColorStop(0.6, `hsla(${star.hue}, 50%, 70%, ${star.brightness * 0.1})`)
           glow.addColorStop(1, 'transparent')
         } else {
-          // White star glow
           glow.addColorStop(0, `rgba(255, 255, 255, ${star.brightness * 0.6})`)
           glow.addColorStop(0.3, `rgba(220, 220, 255, ${star.brightness * 0.3})`)
           glow.addColorStop(0.6, `rgba(180, 180, 255, ${star.brightness * 0.1})`)
@@ -154,7 +148,6 @@ export default {
         ctx.fill()
       }
       
-      // Draw star core
       ctx.beginPath()
       ctx.arc(star.x, star.y, star.size * 0.6, 0, Math.PI * 2)
       if (star.hue > 0) {

@@ -57,20 +57,16 @@ export default {
       this.showDetails = false
       this.componentName = ''
       this.errorContext = ''
-      // Optionally reload the page
-      // window.location.reload()
     },
     toggleDetails() {
       this.showDetails = !this.showDetails
     }
   },
   errorCaptured(err, instance, info) {
-    // Capture error details
     this.error = err
     this.componentName = instance?.$options?.name || 'Unknown Component'
     this.errorContext = info || 'Unknown context'
     
-    // Log error for debugging
     console.error('Error caught by ErrorBoundary:', {
       error: err,
       component: this.componentName,
@@ -79,7 +75,6 @@ export default {
       timestamp: new Date().toISOString()
     })
     
-    // Prevent error propagation to parent
     return false
   }
 }
@@ -250,7 +245,7 @@ export default {
   color: #d0d0ff;
 }
 
-/* Scrollbar styling for error content */
+/* Scrollbar styling */
 .error-content::-webkit-scrollbar {
   width: 8px;
 }

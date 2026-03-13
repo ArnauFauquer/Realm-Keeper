@@ -1,7 +1,6 @@
 <template>
   <div class="tree-item">
     <div v-if="item.isFolder">
-      <!-- Folder with optional linked note -->
       <div 
         v-if="item.folderNote"
         class="folder-with-note"
@@ -25,7 +24,6 @@
         </router-link>
       </div>
       
-      <!-- Regular folder without note -->
       <div 
         v-else
         class="folder"
@@ -41,7 +39,6 @@
       </div>
       
       <div v-if="item.expanded">
-        <!-- Subfolders -->
         <TreeItem 
           v-for="child in item.children" 
           :key="child.path"
@@ -51,7 +48,6 @@
           @note-click="$emit('note-click')"
         />
         
-        <!-- Notes in this folder -->
         <router-link 
           v-for="note in item.notes" 
           :key="note.id"
@@ -67,7 +63,6 @@
       </div>
     </div>
     
-    <!-- Note at root level -->
     <router-link 
       v-else
       :to="'/note/' + encodeURIComponent(item.id)"

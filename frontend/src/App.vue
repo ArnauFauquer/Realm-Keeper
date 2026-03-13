@@ -38,7 +38,6 @@ import NebulaBackground from './components/NebulaBackground.vue'
 import ErrorBoundary from './components/ErrorBoundary.vue'
 import axios from 'axios'
 import { applyTheme } from './config/theme'
-import { cachedFetch, apiCache, invalidateCacheByResource } from './api/cache'
 
 export default {
   name: 'App',
@@ -91,9 +90,7 @@ export default {
       }
     },
     addTagFilter(tag) {
-      // Switch to notes tab if not already there
       this.activeTab = 'notes'
-      // Wait for next tick to ensure sidebar is rendered, then call its method
       this.$nextTick(() => {
         if (this.$refs.notesSidebar) {
           this.$refs.notesSidebar.addTagToFilter(tag)
@@ -103,7 +100,6 @@ export default {
   },
   watch: {
     '$route'(to) {
-      // Update active tab based on route
       if (to.name === 'Graph') {
         this.activeTab = 'graph'
       } else {
@@ -111,7 +107,6 @@ export default {
       }
     },
     activeTab(newTab) {
-      // Navigate to graph route when graph tab is clicked
       if (newTab === 'graph' && this.$route.name !== 'Graph') {
         this.$router.push('/graph')
       } else if (newTab === 'notes' && this.$route.name === 'Graph') {
@@ -128,7 +123,6 @@ export default {
 
 <style>
 :root {
-  /* Nebula dark theme defaults */
   --bg-primary: #0c0d1d;
   --bg-secondary: #12132a;
   --bg-tertiary: #1a1b3a;
@@ -301,7 +295,6 @@ body {
   color: var(--text-secondary);
 }
 
-/* Scrollbar styling for nebula theme */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -320,7 +313,6 @@ body {
   background: rgba(138, 92, 245, 0.6);
 }
 
-/* Mobile responsive styles */
 @media (max-width: 768px) {
   .main-container {
     flex-direction: column-reverse;
