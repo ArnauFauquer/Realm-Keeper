@@ -40,6 +40,50 @@
           </div>
         </div>
       </div>
+      
+      <!-- Settings toggle button -->
+      <button 
+        class="graph-settings-toggle"
+        :class="{ 'is-open': showForceSettings }"
+        @click="showForceSettings = !showForceSettings"
+        title="Graph Settings"
+        aria-label="Toggle graph settings"
+      >
+        <span class="mdi mdi-cog"></span>
+      </button>
+      
+      <div class="graph-settings" :class="{ 'is-open': showForceSettings }">
+        <div class="settings-header">
+          <h4>Layout Settings</h4>
+          <button class="close-btn" @click="showForceSettings = false">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        
+        <div class="setting-group">
+          <div class="setting-label">
+            <label>Link Distance</label>
+            <span>{{ forceSettings.linkDistance }}</span>
+          </div>
+          <input type="range" min="1" max="150" v-model.number="forceSettings.linkDistance" @input="updateForces">
+        </div>
+        
+        <div class="setting-group">
+          <div class="setting-label">
+            <label>Node Repulsion</label>
+            <span>{{ Math.abs(forceSettings.chargeStrength) }}</span>
+          </div>
+          <input type="range" min="10" max="1000" :value="Math.abs(forceSettings.chargeStrength)" @input="updateChargeStrength($event.target.value)">
+        </div>
+        
+        <div class="setting-group">
+          <div class="setting-label">
+            <label>Collision Radius</label>
+            <span>{{ forceSettings.collisionRadius }}</span>
+          </div>
+          <input type="range" min="5" max="100" v-model.number="forceSettings.collisionRadius" @input="updateForces">
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -66,7 +110,13 @@ export default {
       highlightedType: null,
       linkSelection: null,
       nodeSelection: null,
-      zoomTimeout: null
+      zoomTimeout: null,
+      showForceSettings: false,
+      forceSettings: {
+        linkDistance: 10,
+        chargeStrength: -200,
+        collisionRadius: 30
+      }
     }
   },
   computed: {
@@ -149,11 +199,11 @@ export default {
       this.simulation = d3.forceSimulation(this.nodes)
         .force('link', d3.forceLink(this.links)
           .id(d => d.id)
-          .distance(150)
+          .distance(this.forceSettings.linkDistance)
           .strength(0.1))
-        .force('charge', d3.forceManyBody().strength(-200))
+        .force('charge', d3.forceManyBody().strength(this.forceSettings.chargeStrength))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(30))
+        .force('collision', d3.forceCollide().radius(this.forceSettings.collisionRadius))
         .alphaDecay(0.03)
         .velocityDecay(0.3)
       
@@ -360,6 +410,21 @@ export default {
           link.attr('opacity', isConnected ? 0.6 : 0.05)
         }
       })
+    },
+    
+    updateChargeStrength(value) {
+      this.forceSettings.chargeStrength = -Number(value)
+      this.updateForces()
+    },
+    
+    updateForces() {
+      if (!this.simulation) return
+      
+      this.simulation.force('link').distance(this.forceSettings.linkDistance)
+      this.simulation.force('charge').strength(this.forceSettings.chargeStrength)
+      this.simulation.force('collision').radius(this.forceSettings.collisionRadius)
+      
+      this.simulation.alpha(0.3).restart()
     }
   }
 }
@@ -586,6 +651,141 @@ export default {
 
   .type-stats {
     max-height: 200px;
+  }
+}
+
+.graph-settings-toggle {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  z-index: 101;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(31, 32, 69, 0.8);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(138, 92, 245, 0.3);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.graph-settings-toggle .mdi {
+  font-size: 1.25rem;
+  color: var(--text-primary);
+  transition: transform 0.3s ease;
+}
+
+.graph-settings-toggle:hover {
+  background: rgba(45, 47, 95, 0.9);
+  transform: scale(1.05);
+  border-color: rgba(138, 92, 245, 0.6);
+}
+
+.graph-settings-toggle.is-open .mdi {
+  transform: rotate(90deg);
+}
+
+.graph-settings {
+  position: absolute;
+  top: 4.5rem;
+  right: 1.5rem;
+  z-index: 100;
+  background: rgba(12, 13, 29, 0.9);
+  backdrop-filter: blur(12px);
+  padding: 1.25rem;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  min-width: 260px;
+  border: 1px solid rgba(138, 92, 245, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-10px);
+  transition: all 0.3s ease;
+}
+
+.graph-settings.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--border-medium);
+  padding-bottom: 0.75rem;
+}
+
+.settings-header h4 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 4px;
+  font-size: 1.2rem;
+}
+
+.close-btn:hover {
+  color: var(--text-primary);
+  background: var(--interactive-secondary);
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.setting-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.setting-label span {
+  font-weight: 600;
+  color: var(--interactive-primaryHover);
+}
+
+.setting-group input[type="range"] {
+  width: 100%;
+  accent-color: var(--interactive-primary);
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .graph-settings-toggle {
+    top: 1rem;
+    right: 1rem;
+  }
+  
+  .graph-settings {
+    top: 4rem;
+    right: 1rem;
+    max-width: calc(100vw - 2rem);
   }
 }
 </style>
