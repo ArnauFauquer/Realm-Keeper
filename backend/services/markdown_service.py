@@ -30,38 +30,18 @@ class MarkdownService:
             return False
         
         try:
-            git_dir = self.vault_path / '.git'
-            
-            if git_dir.exists() and git_dir.is_dir():
-                repo = Repo(self.vault_path)
-                origin = repo.remotes.origin
-                origin.pull()
+            if (self.vault_path / '.git').exists():
+                Repo(self.vault_path).remotes.origin.pull()
             else:
+                import shutil
                 if self.vault_path.exists():
-                    files = list(self.vault_path.iterdir())
-                    if files:
-                        import shutil
-                        for item in files:
-                            if item.is_file():
-                                item.unlink()
-                            elif item.is_dir():
-                                shutil.rmtree(item)
-                
-                try:
-                    Repo.clone_from(self.repo_url, self.vault_path)
-                except Exception as clone_error:
-                    logger.warning(f"Clone with token failed: {clone_error}")
-                    import re
-                    url_without_token = re.sub(r'https://[^@]+@', 'https://', self.repo_url)
-                    if url_without_token != self.repo_url:
-                        Repo.clone_from(url_without_token, self.vault_path)
-                    else:
-                        raise
+                    shutil.rmtree(self.vault_path)
+                Repo.clone_from(self.repo_url, self.vault_path)
             
             self.invalidate_cache()
             return True
         except Exception as e:
-            logger.error(f"Error syncing repository: {e}", exc_info=True)
+            logger.error(f"Sync failed: {e}")
             return False
     
     def get_all_notes(self) -> List[NoteMetadata]:

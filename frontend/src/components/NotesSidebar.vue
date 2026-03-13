@@ -127,14 +127,12 @@ const notesTree = computed(() => {
   const root = []
   const folderMap = {}
   
-  const notesToProcess = tagFilteredNotes.value
-  
-  notesToProcess.forEach(note => {
+  tagFilteredNotes.value.forEach(note => {
     const parts = note.id.split('/')
     
+    // Ensure all parent folders exist
     for (let i = 0; i < parts.length - 1; i++) {
       const folderPath = parts.slice(0, i + 1).join('/')
-      
       if (!folderMap[folderPath]) {
         const folder = {
           path: folderPath,
@@ -142,44 +140,22 @@ const notesTree = computed(() => {
           isFolder: true,
           expanded: expandedFolders.value.has(folderPath),
           children: [],
-          notes: [],
-          folderNote: null
+          notes: []
         }
         folderMap[folderPath] = folder
-        
-        if (i === 0) {
-          root.push(folder)
-        } else {
+        if (i === 0) root.push(folder)
+        else {
           const parentPath = parts.slice(0, i).join('/')
-          if (folderMap[parentPath]) {
-            folderMap[parentPath].children.push(folder)
-          }
+          folderMap[parentPath].children.push(folder)
         }
       }
     }
-  })
-  
-  notesToProcess.forEach(note => {
-    const parts = note.id.split('/')
-    const noteName = parts[parts.length - 1]
-    
-    if (folderMap[note.id]) {
-      folderMap[note.id].folderNote = note
+
+    const parentPath = parts.slice(0, -1).join('/')
+    if (parentPath && folderMap[parentPath]) {
+      folderMap[parentPath].notes.push(note)
     } else {
-      const parentPath = parts.slice(0, -1).join('/')
-      if (parentPath && folderMap[parentPath]) {
-        const parentFolderName = parts[parts.length - 2]
-        if (noteName === parentFolderName) {
-          folderMap[parentPath].folderNote = note
-        } else {
-          folderMap[parentPath].notes.push(note)
-        }
-      } else {
-        root.push({
-          ...note,
-          isFolder: false
-        })
-      }
+      root.push({ ...note, isFolder: false })
     }
   })
   

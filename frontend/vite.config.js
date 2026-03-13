@@ -11,13 +11,7 @@ export default defineConfig({
   },
   build: {
     // Minify configuration
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,  // Remove console.logs in production
-        passes: 3
-      }
-    },
+    minify: 'esbuild',
     // Code splitting strategy
     rollupOptions: {
       output: {

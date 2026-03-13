@@ -357,126 +357,14 @@ export default {
 
 .markdown-content :deep(h1) {
   font-size: 1.875rem;
-  padding-bottom: 1.5rem;
-  position: relative;
-  border-bottom: none;
-  display: inline-block;
-  width: 100%;
-}
-
-.markdown-content :deep(h1)::after,
-.markdown-content :deep(h1)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 100%;
-  pointer-events: none;
-}
-
-.markdown-content :deep(h1)::after {
-  bottom: 0;
-  height: 35px;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1400 160' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cfilter id='glow' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='8' result='blur'/%3E%3CfeMerge%3E%3CfeMergeNode in='blur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3ClinearGradient id='g1' x1='0%25' x2='100%25' y1='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23b6f0ff'/%3E%3Cstop offset='60%25' stop-color='%237a6bff'/%3E%3Cstop offset='100%25' stop-color='%23ff88e6'/%3E%3C/linearGradient%3E%3ClinearGradient id='g2' x1='0%25' x2='100%25' y1='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23ffb3ff'/%3E%3Cstop offset='50%25' stop-color='%238ccaff'/%3E%3Cstop offset='100%25' stop-color='%23caa8ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath stroke='url(%23g1)' fill='none' stroke-width='8' stroke-linecap='round' stroke-linejoin='round' filter='url(%23glow)' opacity='0.8' d='M10 90 C200 10, 450 150, 700 70 C950 -10, 1200 160, 1390 80'/%3E%3Cpath stroke='url(%23g2)' fill='none' stroke-width='5' stroke-linecap='round' stroke-linejoin='round' filter='url(%23glow)' opacity='0.6' d='M20 110 C230 40, 400 140, 650 100 C900 60, 1150 140, 1380 60'/%3E%3C/svg%3E");
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.85;
-  animation: nebulaWave1 4s ease-in-out infinite;
-}
-
-.markdown-content :deep(h1)::before {
-  bottom: 2px;
-  height: 30px;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1400 160' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cfilter id='glow3' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='6' result='blur'/%3E%3CfeMerge%3E%3CfeMergeNode in='blur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3ClinearGradient id='g3' x1='100%25' x2='0%25' y1='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%23ffffff'/%3E%3Cstop offset='60%25' stop-color='%23b0e1ff'/%3E%3Cstop offset='100%25' stop-color='%23ffd4ff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath stroke='url(%23g3)' fill='none' stroke-width='3' stroke-linecap='round' stroke-linejoin='round' filter='url(%23glow3)' opacity='0.9' d='M30 70 C260 20, 520 120, 780 90 C1040 60, 1260 140, 1370 40'/%3E%3C/svg%3E");
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.9;
-  animation: nebulaWave2 5s ease-in-out infinite;
-}
-
-@keyframes nebulaWave1 {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  25% {
-    transform: translateY(-4px);
-  }
-  75% {
-    transform: translateY(4px);
-  }
-}
-
-@keyframes nebulaWave2 {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  33% {
-    transform: translateY(5px);
-  }
-  66% {
-    transform: translateY(-5px);
-  }
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--border-light);
 }
 
 .markdown-content :deep(h2) {
   font-size: 1.5rem;
-  padding-bottom: 1rem;
-  position: relative;
-  border-bottom: none;
-  display: inline-block;
-  width: 100%;
-}
-
-.markdown-content :deep(h2)::after,
-.markdown-content :deep(h2)::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  width: 70%;
-  pointer-events: none;
-}
-
-.markdown-content :deep(h2)::after {
-  bottom: 0;
-  height: 18px;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1400 160' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cfilter id='glow2' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='6' result='blur'/%3E%3CfeMerge%3E%3CfeMergeNode in='blur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3ClinearGradient id='h2g1' x1='0%25' x2='100%25' y1='0%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%238ccaff'/%3E%3Cstop offset='60%25' stop-color='%237a6bff'/%3E%3Cstop offset='100%25' stop-color='transparent'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath stroke='url(%23h2g1)' fill='none' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' filter='url(%23glow2)' opacity='0.7' d='M10 80 C300 30, 600 130, 900 70 C1100 30, 1300 90, 1400 60'/%3E%3C/svg%3E");
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.7;
-  animation: nebulaWaveH2a 5s ease-in-out infinite;
-}
-
-.markdown-content :deep(h2)::before {
-  bottom: 2px;
-  height: 14px;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1400 160' preserveAspectRatio='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3Cfilter id='glow2b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='4' result='blur'/%3E%3CfeMerge%3E%3CfeMergeNode in='blur'/%3E%3CfeMergeNode in='SourceGraphic'/%3E%3C/feMerge%3E%3C/filter%3E%3ClinearGradient id='h2g2' x1='0%25' x2='100%25' y1='100%25' y2='0%25'%3E%3Cstop offset='0%25' stop-color='%23caa8ff'/%3E%3Cstop offset='70%25' stop-color='%23b6f0ff' stop-opacity='0.5'/%3E%3Cstop offset='100%25' stop-color='transparent'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath stroke='url(%23h2g2)' fill='none' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' filter='url(%23glow2b)' opacity='0.5' d='M10 100 C350 50, 650 120, 950 80 C1150 50, 1350 100, 1400 70'/%3E%3C/svg%3E");
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  opacity: 0.6;
-  animation: nebulaWaveH2b 6s ease-in-out infinite;
-}
-
-@keyframes nebulaWaveH2a {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  25% {
-    transform: translateY(-3px);
-  }
-  75% {
-    transform: translateY(3px);
-  }
-}
-
-@keyframes nebulaWaveH2b {
-  0%, 100% {
-    transform: translateY(0);
-  }
-  33% {
-    transform: translateY(3px);
-  }
-  66% {
-    transform: translateY(-3px);
-  }
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .markdown-content :deep(h3) {

@@ -2,10 +2,9 @@
   <div id="app">
     <NebulaBackground />
     <div class="main-container">
-      <div class="tabs-header">
+      <header class="tabs-header">
         <button 
-          v-for="tab in tabs" 
-          :key="tab.id"
+          v-for="tab in tabs" :key="tab.id"
           :class="['tab-button', { active: activeTab === tab.id }]"
           @click="activeTab = tab.id"
         >
@@ -16,108 +15,54 @@
           <span class="mdi mdi-orbit"></span>
           <span class="title-text">RealmKeeper</span>
         </div>
-      </div>
+      </header>
       <main class="main-content">
         <div v-if="activeTab === 'notes'" class="notes-container">
           <NotesSidebar ref="notesSidebar" />
-          <div class="notes-content">
-            <router-view />
-          </div>
+          <div class="notes-content"><router-view /></div>
         </div>
-        <div v-else-if="activeTab === 'graph'" class="tab-content full-size">
-          <router-view />
-        </div>
+        <div v-else class="tab-content full-size"><router-view /></div>
       </main>
-      </div>
     </div>
+  </div>
 </template>
 
 <script>
 import NotesSidebar from './components/NotesSidebar.vue'
 import NebulaBackground from './components/NebulaBackground.vue'
-import ErrorBoundary from './components/ErrorBoundary.vue'
-import axios from 'axios'
 import { applyTheme } from './config/theme'
 
 export default {
   name: 'App',
-  components: {
-    NotesSidebar,
-    NebulaBackground,
-    ErrorBoundary
-  },
-  provide() {
-    return {
-      addTagFilter: this.addTagFilter
-    }
-  },
+  components: { NotesSidebar, NebulaBackground },
+  provide() { return { addTagFilter: this.addTagFilter } },
   data() {
     return {
       activeTab: 'notes',
       tabs: [
         { id: 'notes', label: 'Notes', icon: 'mdi mdi-book-open-page-variant' },
         { id: 'graph', label: 'Graph', icon: 'mdi mdi-graph-outline' }
-      ],
-      vaultInfo: null,
-      syncing: false
-    }
-  },
-  computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || 'http://localhost:8000'
+      ]
     }
   },
   methods: {
-    async fetchVaultInfo() {
-      try {
-        const response = await axios.get(`${this.apiUrl}/api/vault/info`)
-        this.vaultInfo = response.data
-      } catch (err) {
-        console.error('Error fetching vault info:', err)
-      }
-    },
-    async syncVault() {
-      this.syncing = true
-      try {
-        await axios.post(`${this.apiUrl}/api/sync`)
-        alert('Vault synced successfully')
-        await this.fetchVaultInfo()
-        window.location.reload()
-      } catch (err) {
-        alert('Error syncing vault: ' + err.message)
-      } finally {
-        this.syncing = false
-      }
-    },
     addTagFilter(tag) {
       this.activeTab = 'notes'
       this.$nextTick(() => {
-        if (this.$refs.notesSidebar) {
-          this.$refs.notesSidebar.addTagToFilter(tag)
-        }
+        if (this.$refs.notesSidebar) this.$refs.notesSidebar.addTagToFilter(tag)
       })
     }
   },
   watch: {
     '$route'(to) {
-      if (to.name === 'Graph') {
-        this.activeTab = 'graph'
-      } else {
-        this.activeTab = 'notes'
-      }
+      this.activeTab = to.name === 'Graph' ? 'graph' : 'notes'
     },
     activeTab(newTab) {
-      if (newTab === 'graph' && this.$route.name !== 'Graph') {
-        this.$router.push('/graph')
-      } else if (newTab === 'notes' && this.$route.name === 'Graph') {
-        this.$router.push('/')
-      }
+      const path = newTab === 'graph' ? '/graph' : '/'
+      if (this.$route.path !== path) this.$router.push(path)
     }
   },
-  mounted() {
-    applyTheme()
-    this.fetchVaultInfo()
-  }
+  mounted() { applyTheme() }
 }
 </script>
 

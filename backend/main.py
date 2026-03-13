@@ -13,31 +13,9 @@ from config.cache import CacheControlMiddleware
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
-async def vault_sync_scheduler():
-    sync_interval = settings.VAULT_SYNC_INTERVAL
-    repo_url = settings.REPO_URL
-    
-    if sync_interval <= 0 or not repo_url:
-        return
-        
-    while True:
-        await asyncio.sleep(sync_interval)
-        try:
-            success = markdown_service.sync_repository()
-            if success:
-                markdown_service.invalidate_cache()
-        except Exception as e:
-            logger.exception("Error in scheduled vault sync")
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    sync_task = asyncio.create_task(vault_sync_scheduler())
     yield
-    sync_task.cancel()
-    try:
-        await sync_task
-    except asyncio.CancelledError:
-        pass
 
 app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
 

@@ -31,10 +31,10 @@ async def get_all_notes(
         all_notes = service.get_all_notes()
         
         if search:
-            from fuzzywuzzy import fuzz
+            query = search.lower()
             all_notes = [
                 n for n in all_notes
-                if fuzz.token_set_ratio(search.lower(), n.title.lower()) > 60
+                if query in n.title.lower() or query in n.id.lower()
             ]
         
         if tags:
