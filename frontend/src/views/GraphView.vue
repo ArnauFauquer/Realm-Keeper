@@ -239,7 +239,7 @@ export default {
     },
     
     onNodeClick(node) {
-      this.$router.push(`/note/${node.path}`)
+      this.$router.push(`/note/${encodeURIComponent(node.id)}`)
     },
     
     dragStarted(event, d) {

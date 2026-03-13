@@ -28,28 +28,11 @@ async def get_all_notes(
     service: MarkdownService = Depends(get_markdown_service)
 ):
     try:
-        all_notes = service.get_all_notes()
-        
-        if search:
-            query = search.lower()
-            all_notes = [
-                n for n in all_notes
-                if query in n.title.lower() or query in n.id.lower()
-            ]
-        
-        if tags:
-            tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()]
-            all_notes = [
-                n for n in all_notes
-                if any(t.lower() in [nt.lower() for nt in n.tags] for t in tag_list)
-            ]
-        
-        paginated = all_notes[offset:offset + limit]
-        
-        return paginated
+        all_notes = service.get_all_notes(search=search, tags=tags)
+        return all_notes[offset:offset + limit]
     except Exception as e:
-        logger.error(f"Error getting notes: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error getting notes: {str(e)}")
+        logger.error(f"Error getting notes: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/note/{note_path:path}", response_model=Note)
 async def get_note(note_path: str, service: MarkdownService = Depends(get_markdown_service)):
@@ -94,7 +77,7 @@ async def get_all_tags(service: MarkdownService = Depends(get_markdown_service))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting tags: {str(e)}")
 
-@router.get("/container-folders", response_model=List[str])
+@router.get("/container-folders", response_model=Dict[str, Optional[str]])
 async def get_container_folders(service: MarkdownService = Depends(get_markdown_service)):
     try:
         return service.get_container_folders()

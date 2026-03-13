@@ -130,11 +130,11 @@ const notesTree = computed(() => {
   tagFilteredNotes.value.forEach(note => {
     const parts = note.id.split('/')
     
-    // Ensure all parent folders exist
+    // Create folders
     for (let i = 0; i < parts.length - 1; i++) {
       const folderPath = parts.slice(0, i + 1).join('/')
       if (!folderMap[folderPath]) {
-        const folder = {
+        folderMap[folderPath] = {
           path: folderPath,
           name: parts[i],
           isFolder: true,
@@ -142,62 +142,33 @@ const notesTree = computed(() => {
           children: [],
           notes: []
         }
-        folderMap[folderPath] = folder
-        if (i === 0) root.push(folder)
-        else {
-          const parentPath = parts.slice(0, i).join('/')
-          folderMap[parentPath].children.push(folder)
-        }
+        if (i === 0) root.push(folderMap[folderPath])
+        else folderMap[parts.slice(0, i).join('/')].children.push(folderMap[folderPath])
       }
     }
 
     const parentPath = parts.slice(0, -1).join('/')
-    if (parentPath && folderMap[parentPath]) {
-      folderMap[parentPath].notes.push(note)
-    } else {
-      root.push({ ...note, isFolder: false })
-    }
+    if (parentPath) folderMap[parentPath].notes.push(note)
+    else root.push({ ...note, isFolder: false })
   })
   
   return root
 })
 
 const filteredNotesTree = computed(() => {
-  if (!searchQuery.value) {
-    return notesTree.value
-  }
-  
+  if (!searchQuery.value) return notesTree.value
   const query = searchQuery.value.toLowerCase()
   
-  const filterTree = (items) => {
-    return items.map(item => {
-      if (item.isFolder) {
-        const filteredChildren = filterTree(item.children || [])
-        const filteredNotes = item.notes.filter(note => 
-          note.title.toLowerCase().includes(query) ||
-          note.path.toLowerCase().includes(query)
-        )
-        
-        if (filteredNotes.length > 0 || filteredChildren.length > 0) {
-          return {
-            ...item,
-            children: filteredChildren,
-            notes: filteredNotes,
-            expanded: true
-          }
-        }
-        return null
-      } else {
-        if (item.title.toLowerCase().includes(query) ||
-            item.path.toLowerCase().includes(query)) {
-          return item
-        }
-        return null
-      }
-    }).filter(item => item !== null)
-  }
+  const filter = (items) => items.map(item => {
+    if (item.isFolder) {
+      const children = filter(item.children)
+      const notes = item.notes.filter(n => n.title.toLowerCase().includes(query))
+      return (children.length || notes.length) ? { ...item, children, notes, expanded: true } : null
+    }
+    return item.title.toLowerCase().includes(query) ? item : null
+  }).filter(Boolean)
   
-  return filterTree(notesTree.value)
+  return filter(notesTree.value)
 })
 
 const removeTag = (tag) => {

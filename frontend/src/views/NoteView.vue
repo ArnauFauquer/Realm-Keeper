@@ -16,8 +16,8 @@
           <nav class="note-breadcrumb">
             <template v-for="(crumb, index) in breadcrumbs" :key="index">
               <router-link 
-                v-if="crumb.path" 
-                :to="'/note/' + encodeURIComponent(crumb.path)"
+                v-if="crumb.to" 
+                :to="crumb.to"
                 class="breadcrumb-link"
               >
                 {{ crumb.name }}
@@ -77,7 +77,7 @@ export default {
       }),
       prefetchCache: new Set(),
       prefetchTimeout: null,
-      containerFolders: new Set()
+      containerFolders: {}
     }
   },
   computed: {
@@ -85,25 +85,28 @@ export default {
       return import.meta.env.VITE_API_URL || 'http://localhost:8000'
     },
     breadcrumbs() {
-      if (!this.note) return []
+      if (!this.note || !this.containerFolders) return []
       
       const parts = this.note.id.split('/')
-      const crumbs = []
+      // Start with a link to the root notes view
+      const crumbs = [{ name: 'Notes', to: '/' }]
       
+      let currentPath = ''
       for (let i = 0; i < parts.length; i++) {
         const name = parts[i]
         const isLast = i === parts.length - 1
         
+        currentPath = currentPath ? `${currentPath}/${name}` : name
+        
         if (isLast) {
-          crumbs.push({ name, path: null })
+          crumbs.push({ name, to: null })
         } else {
-          const folderPath = parts.slice(0, i + 1).join('/')
-          
-          if (this.containerFolders.has(name)) {
-            crumbs.push({ name, path: null })
+          // If the folder mapping has a note ID for this path, use it as the link
+          const targetNoteId = this.containerFolders[currentPath]
+          if (targetNoteId) {
+            crumbs.push({ name, to: '/note/' + encodeURIComponent(targetNoteId) })
           } else {
-            const folderNotePath = folderPath + '/' + name
-            crumbs.push({ name, path: folderNotePath })
+            crumbs.push({ name, to: null })
           }
         }
       }
@@ -208,7 +211,7 @@ export default {
     async loadContainerFolders() {
       try {
         const response = await axios.get(`${this.apiUrl}/api/container-folders`)
-        this.containerFolders = new Set(response.data)
+        this.containerFolders = response.data
       } catch (err) {
         console.error('Error loading container folders:', err)
       }

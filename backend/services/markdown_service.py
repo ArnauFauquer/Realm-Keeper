@@ -44,44 +44,59 @@ class MarkdownService:
             logger.error(f"Sync failed: {e}")
             return False
     
-    def get_all_notes(self) -> List[NoteMetadata]:
-        if self._all_notes_cache is not None and self._all_notes_cached_at is not None:
-            if self._is_cache_valid(self._all_notes_cached_at):
-                return self._all_notes_cache
+    def get_all_notes(self, search: Optional[str] = None, tags: Optional[str] = None) -> List[NoteMetadata]:
+        # Simple caching for unfiltered notes
+        if not search and not tags:
+            if self._all_notes_cache is not None and self._all_notes_cached_at is not None:
+                if self._is_cache_valid(self._all_notes_cached_at):
+                    return self._all_notes_cache
                 
         notes = []
+        tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
+        search_query = search.lower() if search else None
         
         for md_file in self.vault_path.rglob('*.md'):
             if any(part.startswith('.') for part in md_file.parts):
                 continue
             
             relative_path = md_file.relative_to(self.vault_path)
-            note_id = str(relative_path.with_suffix(''))
+            note_id = str(relative_path.with_suffix('')).replace('\\', '/')
             
             try:
-                fm, content, tags, wikilinks = self.parser.parse_file(md_file)
+                fm, _, note_tags, wikilinks = self.parser.parse_file(md_file)
                 
-                title = fm.get('title', md_file.stem)
-                note_type = fm.get('type', None)
-                
-                if self.ignore_tag and self.ignore_tag in tags:
+                if self.ignore_tag and self.ignore_tag in note_tags:
                     continue
                 
+                # Search filter
+                title = fm.get('title', md_file.stem)
+                if search:
+                    query = search.lower()
+                    if query not in title.lower() and query not in note_id.lower():
+                        continue
+                    
+                # Tag filter
+                if tag_list and not any(t in [nt.lower() for nt in note_tags] for t in tag_list):
+                    continue
+
                 notes.append(NoteMetadata(
-                    id=note_id.replace('\\', '/'),
+                    id=note_id,
                     title=title,
                     path=str(relative_path).replace('\\', '/'),
-                    tags=tags,
-                    type=note_type,
+                    tags=note_tags,
+                    type=fm.get('type'),
                     links=wikilinks
                 ))
             except Exception as e:
-                logger.error(f"Error processing {md_file}: {e}", exc_info=True)
+                logger.error(f"Error processing {md_file}: {e}")
                 continue
         
         sorted_notes = sorted(notes, key=lambda x: x.path)
-        self._all_notes_cache = sorted_notes
-        self._all_notes_cached_at = datetime.now()
+        
+        if not search and not tags:
+            self._all_notes_cache = sorted_notes
+            self._all_notes_cached_at = datetime.now()
+            
         return sorted_notes
     
     def _is_cache_valid(self, cached_at: datetime) -> bool:
@@ -142,53 +157,37 @@ class MarkdownService:
         
         return sorted(list(tags), key=str.lower)
     
-    def get_note_links_only(self, note_id: str) -> List[str]:
-        """Reads a markdown file explicitly to extract missing wikilinks."""
-        note_id_normalized = note_id.replace('/', os.sep)
-        note_path = self.vault_path / f"{note_id_normalized}.md"
-        
-        if not note_path.exists():
-            return []
-        
-        try:
-            content = note_path.read_text(encoding='utf-8')
-            
-            if content.startswith('---'):
-                parts = content.split('---', 2)
-                if len(parts) >= 3:
-                    content = parts[2]
-            
-            wikilinks = re.findall(r'\[\[([^\]|]+)', content)
-            
-            cleaned_links = []
-            for link in wikilinks:
-                link = link.strip()
-                if link:
-                    cleaned_links.append(link)
-            
-            return cleaned_links
-            
-        except Exception as e:
-            return []
-
-    def get_container_folders(self) -> List[str]:
-        """Calculates and returns a sorted list of all container folders in the vault."""
+    def get_container_folders(self) -> Dict[str, Optional[str]]:
+        """
+        Returns a mapping of folder paths to their 'primary' note ID.
+        If a folder has a note with the same name inside, that note ID is the value.
+        Otherwise, if it's just a container, the value is None.
+        """
         all_notes = self.get_all_notes()
-        all_note_ids = set(n.id for n in all_notes)
+        note_ids = {n.id for n in all_notes}
         
-        folders_found = set()
-        for note_id in all_note_ids:
-            parts = note_id.split('/')
-            for i in range(len(parts) - 1):
-                folder_path = '/'.join(parts[:i + 1])
-                folders_found.add(folder_path)
+        folder_paths = set()
+        for note in all_notes:
+            p = Path(note.path).parent
+            while str(p) != '.' and str(p) != '':
+                folder_paths.add(str(p).replace('\\', '/'))
+                p = p.parent
         
-        container_folders = set()
-        for folder in folders_found:
-            if folder not in all_note_ids:
-                container_folders.add(folder.split('/')[-1])
-        
-        return sorted(list(container_folders))
+        mapping: Dict[str, Optional[str]] = {}
+        for fp in folder_paths:
+            # Check if this folder path itself is a note
+            if fp in note_ids:
+                mapping[fp] = fp
+            else:
+                # Check for namesake note: folder "Hijos Del Fango" -> note "Hijos Del Fango/Hijos Del Fango"
+                folder_name = Path(fp).name
+                expected_note_id = f"{fp}/{folder_name}"
+                if expected_note_id in note_ids:
+                    mapping[fp] = expected_note_id
+                else:
+                    mapping[fp] = None
+                
+        return mapping
 
     def get_graph_data(self) -> Dict:
         """Generates node and link data for the graph view based on note metadata and wikilinks."""

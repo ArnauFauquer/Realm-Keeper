@@ -2,30 +2,6 @@
   <div class="tree-item">
     <div v-if="item.isFolder">
       <div 
-        v-if="item.folderNote"
-        class="folder-with-note"
-        :style="{ paddingLeft: (level * 1) + 'rem' }"
-      >
-        <span 
-          class="folder-toggle"
-          @click="$emit('toggle', item.path)"
-        >
-          <span v-if="hasChildren(item)" class="mdi" :class="item.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
-          <span v-else class="mdi mdi-circle-small"></span>
-        </span>
-        <span class="mdi mdi-file-document-outline"></span>
-        <router-link 
-          :to="'/note/' + encodeURIComponent(item.folderNote.id)"
-          class="folder-note-link"
-          active-class="active"
-          @click="$emit('note-click')"
-        >
-          {{ item.name }}
-        </router-link>
-      </div>
-      
-      <div 
-        v-else
         class="folder"
         :style="{ paddingLeft: (level * 1) + 'rem' }"
         @click="$emit('toggle', item.path)"

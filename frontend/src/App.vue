@@ -6,7 +6,7 @@
         <button 
           v-for="tab in tabs" :key="tab.id"
           :class="['tab-button', { active: activeTab === tab.id }]"
-          @click="activeTab = tab.id"
+          @click="switchTab(tab.id)"
         >
           <span :class="tab.icon"></span>
           <span class="tab-label">{{ tab.label }}</span>
@@ -46,6 +46,11 @@ export default {
     }
   },
   methods: {
+    switchTab(tabId) {
+      this.activeTab = tabId
+      const path = tabId === 'graph' ? '/graph' : '/'
+      if (this.$route.path !== path) this.$router.push(path)
+    },
     addTagFilter(tag) {
       this.activeTab = 'notes'
       this.$nextTick(() => {
@@ -56,10 +61,6 @@ export default {
   watch: {
     '$route'(to) {
       this.activeTab = to.name === 'Graph' ? 'graph' : 'notes'
-    },
-    activeTab(newTab) {
-      const path = newTab === 'graph' ? '/graph' : '/'
-      if (this.$route.path !== path) this.$router.push(path)
     }
   },
   mounted() { applyTheme() }
