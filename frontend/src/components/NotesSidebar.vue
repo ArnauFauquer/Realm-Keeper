@@ -476,41 +476,6 @@ onBeforeUnmount(() => {
   color: var(--status-error);
 }
 
-.folder {
-  padding: 0.5rem 0.75rem;
-  cursor: pointer;
-  font-weight: 500;
-  border-radius: 6px;
-  transition: all 0.15s ease;
-  color: var(--text-primary);
-  font-size: 0.9rem;
-}
-
-.folder:hover {
-  background: rgba(138, 92, 245, 0.15);
-}
-
-.note-link {
-  display: block;
-  padding: 0.5rem 0.75rem;
-  text-decoration: none;
-  color: var(--text-primary);
-  border-radius: 6px;
-  transition: all 0.15s ease;
-  font-size: 0.9rem;
-}
-
-.note-link:hover {
-  background: rgba(138, 92, 245, 0.15);
-}
-
-.note-link.active {
-  background: linear-gradient(135deg, rgba(138, 92, 245, 0.4), rgba(99, 102, 241, 0.4));
-  color: var(--text-primary);
-  font-weight: 500;
-  box-shadow: 0 0 12px rgba(138, 92, 245, 0.3);
-}
-
 /* Mobile toggle button */
 .sidebar-toggle {
   display: none;

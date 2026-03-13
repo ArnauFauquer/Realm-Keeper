@@ -235,12 +235,6 @@ body {
   background: transparent;
 }
 
-.loading-stats {
-  text-align: center;
-  padding: 3rem;
-  color: var(--text-secondary);
-}
-
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

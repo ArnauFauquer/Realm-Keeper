@@ -1,9 +1,7 @@
 import os
-import re
 from pathlib import Path
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
-from git import Repo
 from models.note import Note, NoteMetadata
 from services.markdown_parser import MarkdownParser
 from config.logging import get_logger
@@ -11,9 +9,8 @@ from config.logging import get_logger
 logger = get_logger(__name__)
 
 class MarkdownService:
-    def __init__(self, vault_path: str, repo_url: Optional[str] = None, ignore_tag: Optional[str] = None):
+    def __init__(self, vault_path: str, ignore_tag: Optional[str] = None):
         self.vault_path = Path(vault_path)
-        self.repo_url = repo_url
         self.ignore_tag = ignore_tag
         self.parser = MarkdownParser(vault_path=self.vault_path)
         
@@ -25,25 +22,6 @@ class MarkdownService:
         
         self.vault_path.mkdir(parents=True, exist_ok=True)
     
-    def sync_repository(self) -> bool:
-        if not self.repo_url:
-            return False
-        
-        try:
-            if (self.vault_path / '.git').exists():
-                Repo(self.vault_path).remotes.origin.pull()
-            else:
-                import shutil
-                if self.vault_path.exists():
-                    shutil.rmtree(self.vault_path)
-                Repo.clone_from(self.repo_url, self.vault_path)
-            
-            self.invalidate_cache()
-            return True
-        except Exception as e:
-            logger.error(f"Sync failed: {e}")
-            return False
-    
     def get_all_notes(self, search: Optional[str] = None, tags: Optional[str] = None) -> List[NoteMetadata]:
         # Simple caching for unfiltered notes
         if not search and not tags:
@@ -53,7 +31,6 @@ class MarkdownService:
                 
         notes = []
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
-        search_query = search.lower() if search else None
         
         for md_file in self.vault_path.rglob('*.md'):
             if any(part.startswith('.') for part in md_file.parts):

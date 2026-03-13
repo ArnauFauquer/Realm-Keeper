@@ -12,9 +12,9 @@ router = APIRouter(prefix="/api", tags=["notes"])
 
 md_service_instance = MarkdownService(
     vault_path=str(settings.VAULT_PATH),
-    repo_url=settings.REPO_URL,
     ignore_tag=settings.NOTE_TAG_IGNORE
 )
+
 
 def get_markdown_service() -> MarkdownService:
     return md_service_instance
@@ -55,21 +55,6 @@ async def get_note(note_path: str, service: MarkdownService = Depends(get_markdo
     
     return note
 
-@router.post("/sync")
-async def sync_vault(service: MarkdownService = Depends(get_markdown_service)):
-    if not settings.REPO_URL:
-        raise HTTPException(
-            status_code=400, 
-            detail="No repository URL configured. Set REPO_URL environment variable."
-        )
-    
-    success = service.sync_repository()
-    
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to sync repository")
-    
-    return {"message": "Vault synced successfully"}
-
 @router.get("/tags", response_model=List[str])
 async def get_all_tags(service: MarkdownService = Depends(get_markdown_service)):
     try:
@@ -84,17 +69,6 @@ async def get_container_folders(service: MarkdownService = Depends(get_markdown_
     except Exception as e:
         logger.error(f"Error getting container folders: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error getting container folders: {str(e)}")
-
-@router.get("/vault/info")
-async def get_vault_info(service: MarkdownService = Depends(get_markdown_service)):
-    notes = service.get_all_notes()
-    
-    return {
-        "vault_path": str(service.vault_path),
-        "total_notes": len(notes),
-        "repo_url": settings.REPO_URL,
-        "has_git": (service.vault_path / '.git').exists()
-    }
 
 @router.get("/graph/all")
 async def get_graph_data(service: MarkdownService = Depends(get_markdown_service)):

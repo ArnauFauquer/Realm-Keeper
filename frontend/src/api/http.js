@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { apiCache, invalidateCacheByResource } from './cache'
+import { apiCache } from './cache'
 
 const httpClient = axios.create({
   timeout: 30000,
@@ -42,11 +42,9 @@ export async function getCached(url, options = {}) {
 
   const cachedData = apiCache.get(cacheKey)
   if (cachedData) {
-    console.debug(`[Cache HIT] ${url}`)
     return cachedData
   }
 
-  console.debug(`[Cache MISS] ${url}`)
   const response = await httpClient.get(url, axiosConfig)
   const data = response.data
 
@@ -58,76 +56,7 @@ export async function getCached(url, options = {}) {
 }
 
 export async function postWithCache(url, data, options = {}) {
-  const { invalidatePattern, ...axiosConfig } = options
-  
-  const response = await httpClient.post(url, data, axiosConfig)
-  
-  if (invalidatePattern) {
-    invalidateCacheByResource(invalidatePattern)
-    console.debug(`[Cache INVALIDATED] Patrón: ${invalidatePattern}`)
-  }
-
+  const response = await httpClient.post(url, data, options)
   return response.data
 }
 
-export async function putWithCache(url, data, options = {}) {
-  const { invalidatePattern, ...axiosConfig } = options
-  
-  const response = await httpClient.put(url, data, axiosConfig)
-  
-  if (invalidatePattern) {
-    invalidateCacheByResource(invalidatePattern)
-  }
-
-  return response.data
-}
-
-export async function deleteWithCache(url, options = {}) {
-  const { invalidatePattern, ...axiosConfig } = options
-  
-  const response = await httpClient.delete(url, axiosConfig)
-  
-  if (invalidatePattern) {
-    invalidateCacheByResource(invalidatePattern)
-  }
-
-  return response.data
-}
-
-export async function getNoCache(url, options = {}) {
-  return getCached(url, { ...options, useCache: false })
-}
-
-export async function getStream(url, onChunk, options = {}) {
-  const { ...axiosConfig } = options
-
-  return httpClient.get(url, {
-    ...axiosConfig,
-    responseType: 'stream',
-    onDownloadProgress: (progressEvent) => {
-      const chunk = new TextDecoder().decode(progressEvent.event.target.response)
-      onChunk(chunk)
-    }
-  }).then(res => res.data)
-}
-
-export function clearAllCache() {
-  apiCache.clear()
-  console.debug('[Cache CLEARED] Todo el cache fue limpiado')
-}
-
-export function getCacheStats() {
-  return apiCache.getStats()
-}
-
-export default {
-  getCached,
-  postWithCache,
-  putWithCache,
-  deleteWithCache,
-  getNoCache,
-  getStream,
-  clearAllCache,
-  getCacheStats,
-  httpClient
-}

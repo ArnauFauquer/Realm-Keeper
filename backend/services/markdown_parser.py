@@ -122,6 +122,3 @@ class MarkdownParser:
             return f'![{image_name}](/assets/{encoded_name})'
             
         return self.image_wikilink_pattern.sub(replace_image, content)
-        
-    def to_html(self, content: str) -> str:
-        return self.md.convert(content)

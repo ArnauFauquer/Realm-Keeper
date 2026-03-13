@@ -1,11 +1,7 @@
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from contextlib import asynccontextmanager
-from routes.notes import router as notes_router, md_service_instance as markdown_service
-import asyncio
-from pathlib import Path
+from routes.notes import router as notes_router
 
 from config.settings import settings
 from config.logging import setup_logging
@@ -13,11 +9,7 @@ from config.cache import CacheControlMiddleware
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-
-app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
+app = FastAPI(title="Realm Keeper API")
 
 cors_origins = settings.CORS_ALLOWED_ORIGINS
 

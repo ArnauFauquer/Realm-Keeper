@@ -48,7 +48,7 @@
 <script>
 import axios from 'axios'
 import MarkdownIt from 'markdown-it'
-import { cachedFetch, apiCache, invalidateCacheByResource } from '@/api/cache'
+import { cachedFetch } from '@/api/cache'
 
 export default {
   name: 'NoteView',
@@ -467,38 +467,5 @@ export default {
   background: var(--bg-secondary);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.backlinks {
-  margin-top: 3rem;
-  padding-top: 2rem;
-  border-top: 1px solid var(--border-light);
-}
-
-.backlinks h3 {
-  margin-bottom: 1rem;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-  font-weight: 600;
-}
-
-.backlinks ul {
-  list-style: none;
-  padding: 0;
-}
-
-.backlinks li {
-  margin-bottom: 0.5rem;
-}
-
-.backlinks a {
-  color: var(--interactive-primary);
-  text-decoration: none;
-  transition: color 0.15s ease;
-}
-
-.backlinks a:hover {
-  color: var(--interactive-primaryHover);
-  text-decoration: underline;
 }
 </style>

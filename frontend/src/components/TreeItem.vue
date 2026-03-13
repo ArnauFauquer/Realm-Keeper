@@ -132,23 +132,6 @@ export default {
   font-size: 1rem;
 }
 
-.folder-note-link {
-  flex: 1;
-  font-weight: 600;
-  color: var(--text-primary);
-  text-decoration: none;
-  transition: color 0.2s;
-}
-
-.folder-note-link:hover {
-  color: var(--interactive-primary);
-}
-
-.folder-note-link.active {
-  color: var(--interactive-primary);
-  font-weight: 700;
-}
-
 .note-link {
   display: flex;
   align-items: center;
