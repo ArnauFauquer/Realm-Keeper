@@ -19,58 +19,11 @@
     
     <div class="sidebar" :class="{ 'is-open': isOpen }">
       <div class="sidebar-header">
-        <input 
-          v-model="searchQuery" 
-          type="text" 
-          placeholder="Search notes..." 
-          class="search-input"
+        <SearchBar v-model="searchQuery" />
+        <TagFilter 
+          :availableTags="availableTags"
+          v-model:selectedTags="selectedTags"
         />
-        
-        <!-- Tag Filter Section -->
-        <div class="tag-filter-section">
-          <button 
-            class="tag-filter-toggle"
-            :class="{ 'is-active': showTagFilter }"
-            @click="showTagFilter = !showTagFilter"
-          >
-            <span class="mdi mdi-tag-multiple"></span>
-            <span>Tags</span>
-            <span v-if="selectedTags.length" class="tag-count">{{ selectedTags.length }}</span>
-            <span class="mdi" :class="showTagFilter ? 'mdi-chevron-up' : 'mdi-chevron-down'"></span>
-          </button>
-          
-          <div v-if="showTagFilter" class="tag-filter-dropdown">
-            <input 
-              v-model="tagSearchQuery"
-              type="text"
-              placeholder="Search tags..."
-              class="tag-search-input"
-            />
-            <div class="tag-list">
-              <button
-                v-for="tag in filteredAvailableTags"
-                :key="tag"
-                class="tag-item"
-                :class="{ 'is-selected': selectedTags.includes(tag) }"
-                @click="toggleTag(tag)"
-              >
-                <span class="mdi" :class="selectedTags.includes(tag) ? 'mdi-checkbox-marked' : 'mdi-checkbox-blank-outline'"></span>
-                {{ tag }}
-              </button>
-              <div v-if="filteredAvailableTags.length === 0" class="no-tags">
-                No tags found
-              </div>
-            </div>
-            <button 
-              v-if="selectedTags.length > 0"
-              class="clear-tags-btn"
-              @click="clearTags"
-            >
-              <span class="mdi mdi-close-circle"></span>
-              Clear filters
-            </button>
-          </div>
-        </div>
         
         <!-- Selected Tags Display -->
         <div v-if="selectedTags.length > 0" class="selected-tags">
@@ -78,7 +31,7 @@
             v-for="tag in selectedTags" 
             :key="tag" 
             class="selected-tag"
-            @click="toggleTag(tag)"
+            @click="removeTag(tag)"
           >
             {{ tag }}
             <span class="mdi mdi-close"></span>
@@ -120,297 +73,232 @@
   </div>
 </template>
 
-<script>
+<script setup>
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import TreeItem from './TreeItem.vue'
-import { getCached } from '@/api/http'
+import SearchBar from './SearchBar.vue'
+import TagFilter from './TagFilter.vue'
+import { useNotes } from '@/composables/useNotes'
 
-export default {
-  name: 'NotesSidebar',
-  components: {
-    TreeItem
-  },
-  data() {
-    return {
-      notes: [],
-      availableTags: [],
-      selectedTags: [],
-      loading: true,
-      error: null,
-      searchQuery: '',
-      tagSearchQuery: '',
-      showTagFilter: false,
-      expandedFolders: new Set(),
-      isOpen: false,
-      pageSize: 500,
-      currentPage: 0,
-      hasMore: true,
-      isLoadingMore: false,
-      scrollOffset: 0,
-      scrollObserver: null
-    }
-  },
-  computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || 'http://localhost:8000'
-    },
-    filteredAvailableTags() {
-      if (!this.tagSearchQuery) {
-        return this.availableTags
-      }
-      const query = this.tagSearchQuery.toLowerCase()
-      return this.availableTags.filter(tag => tag.toLowerCase().includes(query))
-    },
-    tagFilteredNotes() {
-      if (this.selectedTags.length === 0) {
-        return this.notes
-      }
-      return this.notes.filter(note => 
-        note.tags && note.tags.some(tag => 
-          this.selectedTags.some(selectedTag => 
-            tag.toLowerCase() === selectedTag.toLowerCase()
-          )
-        )
+const {
+  notes,
+  availableTags,
+  loading,
+  error,
+  hasMore,
+  isLoadingMore,
+  fetchNotes,
+  loadMoreNotes,
+  fetchTags,
+  resetPagination
+} = useNotes()
+
+const selectedTags = ref([])
+const searchQuery = ref('')
+const expandedFolders = ref(new Set())
+const isOpen = ref(false)
+const scrollIndicator = ref(null)
+let scrollObserver = null
+
+const tagFilteredNotes = computed(() => {
+  if (selectedTags.value.length === 0) {
+    return notes.value
+  }
+  return notes.value.filter(note => 
+    note.tags && note.tags.some(tag => 
+      selectedTags.value.some(selectedTag => 
+        tag.toLowerCase() === selectedTag.toLowerCase()
       )
-    },
-    notesTree() {
-      const root = []
-      const folderMap = {}
+    )
+  )
+})
+
+/**
+ * Computes a nested tree structure out of flat note arrays depending on tag filters.
+ * 
+ * Algorithm:
+ * 1. Iterates over notes and extracts their folder path chunks.
+ * 2. Builds `folderMap` to construct standard directories as intermediate tree branches.
+ * 3. Assesses the actual markdown notes parsing if a note behaves as a "folder note"
+ *    (named precisely after the directory) to avoid rendering redundant list elements.
+ * 4. Fills the root level array connecting orphaned notes or branch roots.
+ */
+const notesTree = computed(() => {
+  const root = []
+  const folderMap = {}
+  
+  const notesToProcess = tagFilteredNotes.value
+  
+  notesToProcess.forEach(note => {
+    const parts = note.id.split('/')
+    
+    for (let i = 0; i < parts.length - 1; i++) {
+      const folderPath = parts.slice(0, i + 1).join('/')
       
-      const notesToProcess = this.tagFilteredNotes
-      
-      notesToProcess.forEach(note => {
-        const parts = note.id.split('/')
-        
-        for (let i = 0; i < parts.length - 1; i++) {
-          const folderPath = parts.slice(0, i + 1).join('/')
-          
-          if (!folderMap[folderPath]) {
-            const folder = {
-              path: folderPath,
-              name: parts[i],
-              isFolder: true,
-              expanded: this.expandedFolders.has(folderPath),
-              children: [],
-              notes: [],
-              folderNote: null
-            }
-            folderMap[folderPath] = folder
-            
-            if (i === 0) {
-              root.push(folder)
-            } else {
-              const parentPath = parts.slice(0, i).join('/')
-              if (folderMap[parentPath]) {
-                folderMap[parentPath].children.push(folder)
-              }
-            }
-          }
+      if (!folderMap[folderPath]) {
+        const folder = {
+          path: folderPath,
+          name: parts[i],
+          isFolder: true,
+          expanded: expandedFolders.value.has(folderPath),
+          children: [],
+          notes: [],
+          folderNote: null
         }
-      })
-      
-      notesToProcess.forEach(note => {
-        const parts = note.id.split('/')
-        const noteName = parts[parts.length - 1]
+        folderMap[folderPath] = folder
         
-        if (folderMap[note.id]) {
-          folderMap[note.id].folderNote = note
+        if (i === 0) {
+          root.push(folder)
         } else {
-          const parentPath = parts.slice(0, -1).join('/')
-          if (parentPath && folderMap[parentPath]) {
-            const parentFolderName = parts[parts.length - 2]
-            if (noteName === parentFolderName) {
-              folderMap[parentPath].folderNote = note
-            } else {
-              folderMap[parentPath].notes.push(note)
-            }
-          } else {
-            root.push({
-              ...note,
-              isFolder: false
-            })
+          const parentPath = parts.slice(0, i).join('/')
+          if (folderMap[parentPath]) {
+            folderMap[parentPath].children.push(folder)
           }
         }
-      })
-      
-      return root
-    },
-    filteredNotesTree() {
-      if (!this.searchQuery) {
-        return this.notesTree
       }
-      
-      const query = this.searchQuery.toLowerCase()
-      
-      const filterTree = (items) => {
-        return items.map(item => {
-          if (item.isFolder) {
-            const filteredChildren = filterTree(item.children || [])
-            const filteredNotes = item.notes.filter(note => 
-              note.title.toLowerCase().includes(query) ||
-              note.path.toLowerCase().includes(query)
-            )
-            
-            if (filteredNotes.length > 0 || filteredChildren.length > 0) {
-              return {
-                ...item,
-                children: filteredChildren,
-                notes: filteredNotes,
-                expanded: true
-              }
-            }
-            return null
-          } else {
-            if (item.title.toLowerCase().includes(query) ||
-                item.path.toLowerCase().includes(query)) {
-              return item
-            }
-            return null
-          }
-        }).filter(item => item !== null)
-      }
-      
-      return filterTree(this.notesTree)
     }
-  },
-  methods: {
-    async fetchNotes() {
-      try {
-        this.currentPage = 0
-        this.notes = []
-        this.hasMore = true
-        await this.loadMoreNotes()
-        this.loading = false
-      } catch (err) {
-        this.error = err.message
-        this.loading = false
-      }
-    },
-    async loadMoreNotes() {
-      if (this.isLoadingMore || !this.hasMore) return
-      
-      this.isLoadingMore = true
-      try {
-        const offset = this.currentPage * this.pageSize
-        const data = await getCached(`${this.apiUrl}/api/notes`, {
-          useCache: !this.searchQuery,
-          cacheTtl: 300,
-          params: {
-            limit: this.pageSize,
-            offset: offset,
-            search: this.searchQuery || undefined
-          }
-        })
-        
-        if (this.currentPage === 0) {
-          this.notes = data
+  })
+  
+  notesToProcess.forEach(note => {
+    const parts = note.id.split('/')
+    const noteName = parts[parts.length - 1]
+    
+    if (folderMap[note.id]) {
+      folderMap[note.id].folderNote = note
+    } else {
+      const parentPath = parts.slice(0, -1).join('/')
+      if (parentPath && folderMap[parentPath]) {
+        const parentFolderName = parts[parts.length - 2]
+        if (noteName === parentFolderName) {
+          folderMap[parentPath].folderNote = note
         } else {
-          this.notes.push(...data)
+          folderMap[parentPath].notes.push(note)
         }
-        
-        this.hasMore = data.length === this.pageSize
-        this.currentPage++
-        
-        this.setupScrollObserver()
-      } catch (err) {
-        console.error('Error loading notes:', err)
-      } finally {
-        this.isLoadingMore = false
+      } else {
+        root.push({
+          ...note,
+          isFolder: false
+        })
       }
-    },
-    setupScrollObserver() {
-      this.$nextTick(() => {
-        const indicator = this.$refs.scrollIndicator
-        if (!indicator) return
-        
-        if (this.scrollObserver) {
-          this.scrollObserver.disconnect()
-        }
-        
-        this.scrollObserver = new IntersectionObserver(
-          (entries) => {
-            entries.forEach(entry => {
-              if (entry.isIntersecting && !this.isLoadingMore && this.hasMore) {
-                this.loadMoreNotes()
-              }
-            })
-          },
-          { threshold: 0.1 }
+    }
+  })
+  
+  return root
+})
+
+const filteredNotesTree = computed(() => {
+  if (!searchQuery.value) {
+    return notesTree.value
+  }
+  
+  const query = searchQuery.value.toLowerCase()
+  
+  const filterTree = (items) => {
+    return items.map(item => {
+      if (item.isFolder) {
+        const filteredChildren = filterTree(item.children || [])
+        const filteredNotes = item.notes.filter(note => 
+          note.title.toLowerCase().includes(query) ||
+          note.path.toLowerCase().includes(query)
         )
         
-        this.scrollObserver.observe(indicator)
-      })
-    },
-    async fetchTags() {
-      try {
-        const data = await getCached(`${this.apiUrl}/api/tags`, {
-          useCache: true,
-          cacheTtl: 600
-        })
-        this.availableTags = data
-      } catch (err) {
-        console.error('Error fetching tags:', err.message)
-      }
-    },
-    toggleTag(tag) {
-      const index = this.selectedTags.indexOf(tag)
-      if (index === -1) {
-        this.selectedTags.push(tag)
+        if (filteredNotes.length > 0 || filteredChildren.length > 0) {
+          return {
+            ...item,
+            children: filteredChildren,
+            notes: filteredNotes,
+            expanded: true
+          }
+        }
+        return null
       } else {
-        this.selectedTags.splice(index, 1)
+        if (item.title.toLowerCase().includes(query) ||
+            item.path.toLowerCase().includes(query)) {
+          return item
+        }
+        return null
       }
-      this.resetPagination()
-    },
-    clearTags() {
-      this.selectedTags = []
-      this.tagSearchQuery = ''
-      this.resetPagination()
-    },
-    resetPagination() {
-      this.notes = []
-      this.currentPage = 0
-      this.hasMore = true
-      this.loadMoreNotes()
-    },
-    addTagToFilter(tag) {
-      if (!this.selectedTags.includes(tag)) {
-        this.selectedTags.push(tag)
-      }
-      this.showTagFilter = true
-      this.isOpen = true
-    },
-    toggleFolder(path) {
-      if (this.expandedFolders.has(path)) {
-        this.expandedFolders.delete(path)
-      } else {
-        this.expandedFolders.add(path)
-      }
-      this.expandedFolders = new Set(this.expandedFolders)
-    },
-    toggleSidebar() {
-      this.isOpen = !this.isOpen
-      document.body.style.overflow = this.isOpen ? 'hidden' : ''
-    },
-    closeSidebar() {
-      this.isOpen = false
-      document.body.style.overflow = ''
-    }
-  },
-  watch: {
-    searchQuery() {
-      this.resetPagination()
-    }
-  },
-  mounted() {
-    this.fetchNotes()
-    this.fetchTags()
-  },
-  beforeUnmount() {
-    document.body.style.overflow = ''
-    if (this.scrollObserver) {
-      this.scrollObserver.disconnect()
-    }
+    }).filter(item => item !== null)
+  }
+  
+  return filterTree(notesTree.value)
+})
+
+const removeTag = (tag) => {
+  const index = selectedTags.value.indexOf(tag)
+  if (index !== -1) {
+    selectedTags.value.splice(index, 1)
+    resetPagination(searchQuery.value)
   }
 }
+
+const toggleFolder = (path) => {
+  const newExpanded = new Set(expandedFolders.value)
+  if (newExpanded.has(path)) {
+    newExpanded.delete(path)
+  } else {
+    newExpanded.add(path)
+  }
+  expandedFolders.value = newExpanded
+}
+
+const toggleSidebar = () => {
+  isOpen.value = !isOpen.value
+  document.body.style.overflow = isOpen.value ? 'hidden' : ''
+}
+
+const closeSidebar = () => {
+  isOpen.value = false
+  document.body.style.overflow = ''
+}
+
+const setupScrollObserver = () => {
+  nextTick(() => {
+    if (!scrollIndicator.value) return
+    
+    if (scrollObserver) {
+      scrollObserver.disconnect()
+    }
+    
+    scrollObserver = new IntersectionObserver(
+      (entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && !isLoadingMore.value && hasMore.value) {
+            loadMoreNotes(searchQuery.value)
+          }
+        })
+      },
+      { threshold: 0.1 }
+    )
+    
+    scrollObserver.observe(scrollIndicator.value)
+  })
+}
+
+watch(searchQuery, () => {
+  resetPagination(searchQuery.value)
+})
+
+watch(selectedTags, () => {
+  resetPagination(searchQuery.value)
+}, { deep: true })
+
+watch(notes, () => {
+  setupScrollObserver()
+})
+
+onMounted(() => {
+  fetchNotes(searchQuery.value)
+  fetchTags()
+  setupScrollObserver()
+})
+
+onBeforeUnmount(() => {
+  document.body.style.overflow = ''
+  if (scrollObserver) {
+    scrollObserver.disconnect()
+  }
+})
 </script>
 
 <style scoped>
@@ -429,169 +317,6 @@ export default {
   padding: 1rem;
   background: rgba(18, 19, 42, 0.6);
   border-bottom: 1px solid var(--border-light);
-}
-
-.search-input {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: rgba(26, 27, 58, 0.6);
-  color: var(--text-primary);
-  transition: all 0.2s ease;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
-  background: rgba(31, 32, 69, 0.8);
-  box-shadow: 0 0 12px rgba(138, 92, 245, 0.2);
-}
-
-.search-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-/* Tag Filter Styles */
-.tag-filter-section {
-  margin-top: 0.75rem;
-  position: relative;
-}
-
-.tag-filter-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  background: rgba(26, 27, 58, 0.6);
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s ease;
-}
-
-.tag-filter-toggle:hover,
-.tag-filter-toggle.is-active {
-  border-color: var(--interactive-primary);
-  background: rgba(31, 32, 69, 0.8);
-  color: var(--text-primary);
-}
-
-.tag-filter-toggle .tag-count {
-  background: var(--interactive-primary);
-  color: white;
-  padding: 0.125rem 0.5rem;
-  border-radius: 10px;
-  font-size: 0.75rem;
-  margin-left: auto;
-}
-
-.tag-filter-toggle .mdi:last-child {
-  margin-left: auto;
-}
-
-.tag-filter-toggle .tag-count + .mdi:last-child {
-  margin-left: 0.25rem;
-}
-
-.tag-filter-dropdown {
-  position: absolute;
-  top: calc(100% + 0.25rem);
-  left: 0;
-  right: 0;
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 100;
-  max-height: 250px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.tag-search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: none;
-  border-bottom: 1px solid var(--border-light);
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 0.85rem;
-}
-
-.tag-search-input:focus {
-  outline: none;
-  background: rgba(31, 32, 69, 0.4);
-}
-
-.tag-search-input::placeholder {
-  color: var(--text-tertiary);
-}
-
-.tag-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.25rem;
-}
-
-.tag-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.4rem 0.6rem;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 0.85rem;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  text-align: left;
-}
-
-.tag-item:hover {
-  background: rgba(138, 92, 245, 0.15);
-  color: var(--text-primary);
-}
-
-.tag-item.is-selected {
-  color: var(--interactive-primary);
-}
-
-.tag-item .mdi {
-  font-size: 1rem;
-}
-
-.no-tags {
-  padding: 1rem;
-  text-align: center;
-  color: var(--text-tertiary);
-  font-size: 0.85rem;
-}
-
-.clear-tags-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.5rem;
-  border: none;
-  border-top: 1px solid var(--border-light);
-  background: rgba(239, 68, 68, 0.1);
-  color: var(--status-error);
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.15s ease;
-}
-
-.clear-tags-btn:hover {
-  background: rgba(239, 68, 68, 0.2);
 }
 
 /* Selected Tags Display */

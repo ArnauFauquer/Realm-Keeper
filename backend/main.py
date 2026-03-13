@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
-from routes.notes import router as notes_router, markdown_service
+from routes.notes import router as notes_router, md_service_instance as markdown_service
 import asyncio
 from pathlib import Path
 
@@ -25,7 +25,7 @@ async def vault_sync_scheduler():
         try:
             success = markdown_service.sync_repository()
             if success:
-                markdown_service._cache.clear()
+                markdown_service.invalidate_cache()
         except Exception as e:
             logger.exception("Error in scheduled vault sync")
 
@@ -59,7 +59,14 @@ assets_path = settings.VAULT_PATH / '_assets'
 
 @app.get("/assets/{filename:path}")
 async def get_asset(filename: str):
-    file_path = assets_path / filename
+    file_path = (assets_path / filename).resolve()
+    assets_resolved = assets_path.resolve()
+    
+    try:
+        file_path.relative_to(assets_resolved)
+    except ValueError:
+        return Response(status_code=403, content="Access denied: invalid path")
+        
     if not file_path.exists() or not file_path.is_file():
         return Response(status_code=404, content="File not found")
         

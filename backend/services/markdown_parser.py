@@ -15,6 +15,11 @@ class MarkdownParser:
         self._note_index = None
     
     def _build_note_index(self):
+        """
+        Builds an in-memory index mapping note bases and logical paths to their exact
+        resolved relative paths. This enables fast O(1) wiki-link resolution without disk I/O.
+        Index is invalidated on git syncs to prevent stale references.
+        """
         if self._note_index is not None or not self.vault_path:
             return
             
@@ -34,6 +39,10 @@ class MarkdownParser:
             
             self._note_index_lower[filename.lower()] = resolved_path
             self._note_index_lower[resolved_path.lower()] = resolved_path
+            
+    def invalidate_index(self):
+        self._note_index = None
+        self._note_index_lower = None
             
     def _resolve_wikilink(self, link: str) -> str:
         if not self.vault_path:
@@ -79,6 +88,11 @@ class MarkdownParser:
         return sorted(list(tags))
         
     def _extract_wikilinks(self, content: str) -> List[str]:
+        """
+        Parses Markdown content using regex to pull Obsidian-style wikilinks [[NoteName]],
+        and delegates their resolution through the note index to translate missing or
+        ambiguous names into exact relative repository paths.
+        """
         matches = self.wikilink_pattern.findall(content)
         resolved_links = []
         for match in matches:

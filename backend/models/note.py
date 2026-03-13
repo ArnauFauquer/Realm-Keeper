@@ -16,3 +16,4 @@ class NoteMetadata(BaseModel):
     path: str
     tags: List[str] = []
     type: Optional[str] = None
+    links: List[str] = []

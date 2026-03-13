@@ -29,6 +29,16 @@ spec:
         - name: frontend
           image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.5
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
           ports:
             - containerPort: 5173
               name: http

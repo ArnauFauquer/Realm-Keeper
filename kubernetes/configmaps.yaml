@@ -7,7 +7,6 @@ metadata:
     app.kubernetes.io/name: backend
     app.kubernetes.io/part-of: realm-keeper
 data:
-  REPO_URL: "https://github.com/ArnauFauquer/RealmKeeperVault.git"
   NOTE_TAG_IGNORE: "draft"
   VAULT_SYNC_INTERVAL: "180"
   CORS_ALLOWED_ORIGINS: "https://realmkeeper.faukinator.com"

@@ -29,6 +29,16 @@ spec:
         - name: realm-keeper-backend
           image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.5
           imagePullPolicy: Always
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
           ports:
             - containerPort: 8000
               name: http
@@ -38,8 +48,8 @@ spec:
               value: "1"
             - name: REPO_URL
               valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
+                secretKeyRef:
+                  name: realm-keeper-secrets
                   key: REPO_URL
                   optional: true
             - name: NOTE_TAG_IGNORE
