@@ -27,7 +27,7 @@ app.add_middleware(
 
 assets_path = settings.VAULT_PATH / '_assets'
 
-@app.get("/assets/{filename:path}")
+@app.get("/vault-assets/{filename:path}")
 async def get_asset(filename: str):
     file_path = (assets_path / filename).resolve()
     assets_resolved = assets_path.resolve()

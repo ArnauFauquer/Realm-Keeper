@@ -116,7 +116,7 @@ export default {
     renderedContent() {
       if (!this.note) return ''
       let html = this.md.render(this.note.content)
-      html = html.replace(/src="\/assets\//g, `src="${this.apiUrl}/assets/`)
+      html = html.replace(/src="\/assets\//g, `src="${this.apiUrl}/vault-assets/`)
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })

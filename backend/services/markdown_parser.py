@@ -119,6 +119,6 @@ class MarkdownParser:
         def replace_image(match):
             image_name = match.group(1)
             encoded_name = quote(image_name, safe='')
-            return f'![{image_name}](/assets/{encoded_name})'
+            return f'![{image_name}](/vault-assets/{encoded_name})'
             
         return self.image_wikilink_pattern.sub(replace_image, content)
