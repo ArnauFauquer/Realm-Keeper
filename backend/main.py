@@ -14,6 +14,8 @@ logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
 def sync_vault() -> None:
     """Clone or pull the vault git repository on startup."""
+    import shutil
+
     repo_url = settings.REPO_URL
     if not repo_url:
         logger.info("REPO_URL not set, skipping vault git sync.")
@@ -29,18 +31,34 @@ def sync_vault() -> None:
                 ["git", "-C", str(vault_path), "pull"],
                 capture_output=True, text=True, timeout=120
             )
+            if result.returncode == 0:
+                logger.info(f"Vault sync successful: {result.stdout.strip()}")
+            else:
+                logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
         else:
-            logger.info(f"Cloning vault from {repo_url} into {vault_path}...")
-            vault_path.mkdir(parents=True, exist_ok=True)
+            # /vault may exist but be non-empty (e.g. created by mkdir elsewhere).
+            # Clone into a temp sibling dir then replace to avoid the
+            # "destination path already exists and is not an empty directory" error.
+            tmp_path = vault_path.parent / "_vault_clone_tmp"
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+
+            logger.info(f"Cloning vault from {repo_url} into {tmp_path}...")
             result = subprocess.run(
-                ["git", "clone", repo_url, str(vault_path)],
+                ["git", "clone", repo_url, str(tmp_path)],
                 capture_output=True, text=True, timeout=300
             )
 
-        if result.returncode == 0:
-            logger.info(f"Vault sync successful: {result.stdout.strip()}")
-        else:
-            logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
+            if result.returncode == 0:
+                logger.info("Clone successful, replacing vault directory...")
+                if vault_path.exists():
+                    shutil.rmtree(vault_path)
+                shutil.move(str(tmp_path), str(vault_path))
+                logger.info("Vault sync successful.")
+            else:
+                logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
+                if tmp_path.exists():
+                    shutil.rmtree(tmp_path)
     except subprocess.TimeoutExpired:
         logger.error("Vault sync timed out.")
     except Exception as e:
