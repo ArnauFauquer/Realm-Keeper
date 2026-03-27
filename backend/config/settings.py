@@ -6,6 +6,7 @@ from typing import List
 class Settings:
     VAULT_PATH: Path = Path(os.getenv("VAULT_PATH", "./vault"))
     NOTE_TAG_IGNORE: str = os.getenv("NOTE_TAG_IGNORE", "private")
+    REPO_URL: str = os.getenv("REPO_URL", "")
 
     CORS_ALLOWED_ORIGINS: List[str] = [
         origin.strip()

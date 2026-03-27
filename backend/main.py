@@ -1,3 +1,5 @@
+import subprocess
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -9,7 +11,49 @@ from config.cache import CacheControlMiddleware
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
-app = FastAPI(title="Realm Keeper API")
+
+def sync_vault() -> None:
+    """Clone or pull the vault git repository on startup."""
+    repo_url = settings.REPO_URL
+    if not repo_url:
+        logger.info("REPO_URL not set, skipping vault git sync.")
+        return
+
+    vault_path = settings.VAULT_PATH
+    git_dir = vault_path / ".git"
+
+    try:
+        if git_dir.exists():
+            logger.info(f"Vault already cloned at {vault_path}, pulling latest...")
+            result = subprocess.run(
+                ["git", "-C", str(vault_path), "pull"],
+                capture_output=True, text=True, timeout=120
+            )
+        else:
+            logger.info(f"Cloning vault from {repo_url} into {vault_path}...")
+            vault_path.mkdir(parents=True, exist_ok=True)
+            result = subprocess.run(
+                ["git", "clone", repo_url, str(vault_path)],
+                capture_output=True, text=True, timeout=300
+            )
+
+        if result.returncode == 0:
+            logger.info(f"Vault sync successful: {result.stdout.strip()}")
+        else:
+            logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
+    except subprocess.TimeoutExpired:
+        logger.error("Vault sync timed out.")
+    except Exception as e:
+        logger.error(f"Vault sync error: {e}", exc_info=True)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    sync_vault()
+    yield
+
+
+app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
 
 cors_origins = settings.CORS_ALLOWED_ORIGINS
 

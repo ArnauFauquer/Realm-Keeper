@@ -25,6 +25,10 @@ spec:
         app.kubernetes.io/component: api
         app.kubernetes.io/part-of: realm-keeper
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
       containers:
         - name: realm-keeper-backend
           image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.5
@@ -32,7 +36,6 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
-            fsGroup: 1000
             allowPrivilegeEscalation: false
           resources:
             requests:
@@ -48,6 +51,8 @@ spec:
           env:
             - name: PYTHONUNBUFFERED
               value: "1"
+            - name: VAULT_PATH
+              value: "/vault"
             - name: REPO_URL
               valueFrom:
                 secretKeyRef:
@@ -65,6 +70,9 @@ spec:
                 configMapKeyRef:
                   name: realm-keeper-backend-config
                   key: CORS_ALLOWED_ORIGINS
+          volumeMounts:
+            - name: vault-data
+              mountPath: /vault
           livenessProbe:
             httpGet:
               path: /health
@@ -81,6 +89,10 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+      volumes:
+        - name: vault-data
+          persistentVolumeClaim:
+            claimName: realm-keeper-vault
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
