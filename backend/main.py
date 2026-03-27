@@ -24,6 +24,13 @@ def sync_vault() -> None:
         return
 
     vault_path = settings.VAULT_PATH
+
+    # Mark the vault as a safe directory to avoid "dubious ownership" errors
+    # (container runs as UID 1000 but the PVC mount may be owned by root).
+    subprocess.run(
+        ["git", "config", "--global", "--add", "safe.directory", str(vault_path)],
+        capture_output=True, text=True
+    )
     git_dir = vault_path / ".git"
 
     try:
