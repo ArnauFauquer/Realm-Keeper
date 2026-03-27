@@ -1,5 +1,6 @@
 import subprocess
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -39,7 +40,7 @@ def sync_vault() -> None:
             # /vault may exist but be non-empty (e.g. created by mkdir elsewhere).
             # Clone into a temp sibling dir then replace to avoid the
             # "destination path already exists and is not an empty directory" error.
-            tmp_path = vault_path.parent / "_vault_clone_tmp"
+            tmp_path = Path("/tmp/_vault_clone_tmp")
             if tmp_path.exists():
                 shutil.rmtree(tmp_path)
 
