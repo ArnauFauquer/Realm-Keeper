@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/component: web
     app.kubernetes.io/part-of: realm-keeper
 spec:
-  maxUnavailable: 1
+  minAvailable: 1
   selector:
     matchLabels:
       app: realm-keeper-frontend

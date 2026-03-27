@@ -51,10 +51,16 @@ def sync_vault() -> None:
             )
 
             if result.returncode == 0:
-                logger.info("Clone successful, replacing vault directory...")
-                if vault_path.exists():
-                    shutil.rmtree(vault_path)
-                shutil.move(str(tmp_path), str(vault_path))
+                logger.info("Clone successful, moving contents into vault...")
+                # Cannot rmtree the PVC mount point itself — clear contents then move in.
+                for item in vault_path.iterdir():
+                    if item.is_dir():
+                        shutil.rmtree(item)
+                    else:
+                        item.unlink()
+                for item in tmp_path.iterdir():
+                    shutil.move(str(item), str(vault_path / item.name))
+                shutil.rmtree(tmp_path)
                 logger.info("Vault sync successful.")
             else:
                 logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")

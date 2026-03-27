@@ -31,45 +31,28 @@ spec:
         fsGroup: 1000
       containers:
         - name: realm-keeper-backend
-          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.5
+          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.21
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
             allowPrivilegeEscalation: false
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
           ports:
             - containerPort: 8000
               name: http
               protocol: TCP
           env:
-            - name: PYTHONUNBUFFERED
-              value: "1"
-            - name: VAULT_PATH
-              value: "/vault"
             - name: REPO_URL
               valueFrom:
                 secretKeyRef:
                   name: realm-keeper-secrets
                   key: REPO_URL
-                  optional: true
             - name: NOTE_TAG_IGNORE
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-frontend-config
-                  key: NOTE_TAG_IGNORE
-                  optional: true
+              value: "draft"
             - name: CORS_ALLOWED_ORIGINS
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-backend-config
-                  key: CORS_ALLOWED_ORIGINS
+              value: "https://realmkeeper.faukinator.com"
+            - name: VAULT_PATH
+              value: "/vault"
           volumeMounts:
             - name: vault-data
               mountPath: /vault

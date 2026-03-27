@@ -27,30 +27,18 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.5
+          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.21
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
             runAsUser: 101
-            fsGroup: 101
-            allowPrivilegeEscalation: false
-          resources:
-            requests:
-              cpu: "50m"
-              memory: "64Mi"
-            limits:
-              cpu: "200m"
-              memory: "256Mi"
           ports:
             - containerPort: 8080
               name: http
               protocol: TCP
           env:
             - name: VITE_API_URL
-              valueFrom:
-                configMapKeyRef:
-                  name: realm-keeper-frontend-config
-                  key: VITE_API_URL
+              value: "https://realmkeeper.faukinator.com"
           livenessProbe:
             httpGet:
               path: /
