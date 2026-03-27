@@ -7,6 +7,7 @@ class Settings:
     VAULT_PATH: Path = Path(os.getenv("VAULT_PATH", "./vault"))
     NOTE_TAG_IGNORE: str = os.getenv("NOTE_TAG_IGNORE", "private")
     REPO_URL: str = os.getenv("REPO_URL", "")
+    GIT_SYNC_INTERVAL: int = int(os.getenv("GIT_SYNC_INTERVAL", "300"))
 
     CORS_ALLOWED_ORIGINS: List[str] = [
         origin.strip()

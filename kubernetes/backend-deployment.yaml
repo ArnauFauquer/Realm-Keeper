@@ -53,6 +53,8 @@ spec:
               value: "https://realmkeeper.faukinator.com"
             - name: VAULT_PATH
               value: "/vault"
+            - name: GIT_SYNC_INTERVAL
+              value: "300"
           volumeMounts:
             - name: vault-data
               mountPath: /vault

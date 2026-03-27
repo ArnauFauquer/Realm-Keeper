@@ -1,3 +1,4 @@
+import asyncio
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -72,10 +73,28 @@ def sync_vault() -> None:
         logger.error(f"Vault sync error: {e}", exc_info=True)
 
 
+async def _periodic_sync():
+    interval = settings.GIT_SYNC_INTERVAL
+    if interval <= 0:
+        logger.info("Periodic vault sync disabled (GIT_SYNC_INTERVAL <= 0).")
+        return
+    logger.info(f"Periodic vault sync enabled every {interval}s.")
+    while True:
+        await asyncio.sleep(interval)
+        logger.info("Running periodic vault sync...")
+        sync_vault()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     sync_vault()
+    task = asyncio.create_task(_periodic_sync())
     yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
