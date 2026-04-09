@@ -81,8 +81,12 @@ jobs:
           # Write new version
           echo "$NEW_VERSION" > VERSION
           
+          # Update ArgoCD deployments
+          sed -i "s|image: ghcr.io/arnaufauquer/realm-keeper/backend:.*|image: ghcr.io/arnaufauquer/realm-keeper/backend:$NEW_VERSION|g" .argocd/backend-deployment.yaml
+          sed -i "s|image: ghcr.io/arnaufauquer/realm-keeper/frontend:.*|image: ghcr.io/arnaufauquer/realm-keeper/frontend:$NEW_VERSION|g" .argocd/frontend-deployment.yaml
+          
           # Commit and push
-          git add VERSION
+          git add VERSION .argocd/backend-deployment.yaml .argocd/frontend-deployment.yaml
           git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
           git push
           
