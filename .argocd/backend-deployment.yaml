@@ -31,7 +31,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: realm-keeper-backend
-          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.21
+          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.24
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
@@ -57,7 +57,7 @@ spec:
               value: "300"
           volumeMounts:
             - name: vault-data
-              mountPath: /vault
+              mountPath: /vault 
           livenessProbe:
             httpGet:
               path: /health
