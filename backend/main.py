@@ -35,7 +35,12 @@ def sync_vault() -> None:
 
     try:
         if git_dir.exists():
-            logger.info(f"Vault already cloned at {vault_path}, pulling latest...")
+            logger.info(f"Vault already cloned at {vault_path}, updating remote URL and pulling latest...")
+            # Always ensure the remote URL matches the current env var before pulling
+            subprocess.run(
+                ["git", "-C", str(vault_path), "remote", "set-url", "origin", repo_url],
+                capture_output=True, text=True
+            )
             result = subprocess.run(
                 ["git", "-C", str(vault_path), "pull"],
                 capture_output=True, text=True, timeout=120
