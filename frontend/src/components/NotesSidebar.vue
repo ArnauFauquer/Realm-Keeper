@@ -18,6 +18,31 @@
     </button>
     
     <div class="sidebar" :class="{ 'is-open': isOpen }">
+      <div class="sidebar-top-section">
+        <div class="app-title">
+          <span class="mdi mdi-orbit"></span>
+          <span class="title-text">RealmKeeper</span>
+        </div>
+        <div class="sidebar-tabs">
+          <button 
+            class="tab-button" 
+            :class="{ active: $route.name !== 'Graph' }"
+            @click="$router.push('/')"
+          >
+            <span class="mdi mdi-book-open-page-variant"></span>
+            <span class="tab-label">Notes</span>
+          </button>
+          <button 
+            class="tab-button" 
+            :class="{ active: $route.name === 'Graph' }"
+            @click="$router.push('/graph')"
+          >
+            <span class="mdi mdi-graph-outline"></span>
+            <span class="tab-label">Graph</span>
+          </button>
+        </div>
+      </div>
+
       <div class="sidebar-header">
         <SearchBar v-model="searchQuery" />
         <TagFilter 
@@ -264,6 +289,78 @@ onBeforeUnmount(() => {
   padding: 1rem;
   background: rgba(18, 19, 42, 0.6);
   border-bottom: 1px solid var(--border-light);
+}
+
+.sidebar-top-section {
+  padding: 1rem;
+  background: rgba(12, 13, 29, 0.85);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1rem;
+}
+
+.app-title .mdi {
+  font-size: 1.5rem;
+  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text; /* Added standard property */
+}
+
+.app-title .title-text {
+  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text; /* Added standard property */
+}
+
+.sidebar-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab-button {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  background: rgba(31, 32, 69, 0.5);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.tab-button:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.tab-button.active {
+  background: var(--interactive-secondary);
+  box-shadow: 0 0 8px rgba(138, 92, 245, 0.3);
+  color: var(--text-primary);
+}
+
+.tab-button.active .mdi,
+.tab-button.active .tab-label {
+  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text; /* Added standard property */
 }
 
 /* Selected Tags Display */

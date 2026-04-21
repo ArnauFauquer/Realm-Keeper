@@ -2,26 +2,9 @@
   <div id="app">
     <NebulaBackground />
     <div class="main-container">
-      <header class="tabs-header">
-        <button 
-          v-for="tab in tabs" :key="tab.id"
-          :class="['tab-button', { active: activeTab === tab.id }]"
-          @click="switchTab(tab.id)"
-        >
-          <span :class="tab.icon"></span>
-          <span class="tab-label">{{ tab.label }}</span>
-        </button>
-        <div class="app-title">
-          <span class="mdi mdi-orbit"></span>
-          <span class="title-text">RealmKeeper</span>
-        </div>
-      </header>
+      <NotesSidebar ref="notesSidebar" />
       <main class="main-content">
-        <div v-if="activeTab === 'notes'" class="notes-container">
-          <NotesSidebar ref="notesSidebar" />
-          <div class="notes-content"><router-view /></div>
-        </div>
-        <div v-else class="tab-content full-size"><router-view /></div>
+        <router-view />
       </main>
     </div>
   </div>
@@ -36,31 +19,17 @@ export default {
   name: 'App',
   components: { NotesSidebar, NebulaBackground },
   provide() { return { addTagFilter: this.addTagFilter } },
-  data() {
-    return {
-      activeTab: 'notes',
-      tabs: [
-        { id: 'notes', label: 'Notes', icon: 'mdi mdi-book-open-page-variant' },
-        { id: 'graph', label: 'Graph', icon: 'mdi mdi-graph-outline' }
-      ]
-    }
-  },
   methods: {
-    switchTab(tabId) {
-      this.activeTab = tabId
-      const path = tabId === 'graph' ? '/graph' : '/'
-      if (this.$route.path !== path) this.$router.push(path)
-    },
     addTagFilter(tag) {
-      this.activeTab = 'notes'
+      if (this.$route.path !== '/') this.$router.push('/')
       this.$nextTick(() => {
-        if (this.$refs.notesSidebar) this.$refs.notesSidebar.addTagToFilter(tag)
+        // Find a way to add tag or let state handle it if exposed.
+        if (this.$refs.notesSidebar && this.$refs.notesSidebar.selectedTags) {
+             if (!this.$refs.notesSidebar.selectedTags.includes(tag)) {
+                 this.$refs.notesSidebar.selectedTags.push(tag);
+             }
+        }
       })
-    }
-  },
-  watch: {
-    '$route'(to) {
-      this.activeTab = to.name === 'Graph' ? 'graph' : 'notes'
     }
   },
   mounted() { applyTheme() }
@@ -107,132 +76,31 @@ body {
 .main-container {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   overflow: hidden;
   position: relative;
   z-index: 1;
 }
 
-.tabs-header {
-  display: flex;
-  align-items: center;
-  background: rgba(12, 13, 29, 0.85);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-light);
-  padding: 0.5rem 1rem;
-  gap: 0.25rem;
-}
-
-.app-title {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  margin-left: auto;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.app-title .mdi {
-  font-size: 1.4rem;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.app-title .title-text {
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.tab-button {
-  padding: 0.625rem 1rem;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  border-radius: 6px;
-  transition: all 0.2s ease;
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.tab-button .mdi {
-  font-size: 1.1rem;
-}
-
-.tab-button:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.tab-button.active {
-  background: var(--interactive-secondary);
-  box-shadow: 0 0 12px rgba(138, 92, 245, 0.3);
-}
-
-.tab-button.active .mdi,
-.tab-button.active .tab-label {
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 .main-content {
   flex: 1;
-  overflow: hidden;
-  background: transparent;
-}
-
-.notes-container {
-  display: flex;
-  height: 100%;
-  overflow: hidden;
-}
-
-.notes-content {
-  flex: 1;
   overflow-y: auto;
   background: rgba(12, 13, 29, 0.7);
   backdrop-filter: blur(8px);
+  position: relative;
 }
 
-.tab-content {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  overflow-y: auto;
-  height: 100%;
-  background: rgba(12, 13, 29, 0.7);
-  backdrop-filter: blur(8px);
-}
-
-.tab-content h2 {
+/* Base styles for router-view content previously in tab-content/notes-content */
+.main-content h2 {
   margin-bottom: 1rem;
   color: var(--text-primary);
   font-weight: 600;
 }
 
-.tab-content p {
+.main-content p {
   color: var(--text-secondary);
   font-size: 1rem;
   line-height: 1.6;
-}
-
-.full-size {
-  padding: 0;
-  max-width: none;
-  height: 100%;
-  background: transparent;
 }
 
 ::-webkit-scrollbar {
@@ -255,53 +123,11 @@ body {
 
 @media (max-width: 768px) {
   .main-container {
-    flex-direction: column-reverse;
-  }
-
-  .tabs-header {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    z-index: 100;
-    justify-content: space-around;
-    padding: 0.5rem 0.25rem;
-    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0));
-    border-bottom: none;
-    border-top: 1px solid var(--border-light);
-  }
-
-  .app-title {
-    display: none;
-  }
-
-  .tab-button {
-    flex: 1;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 0.5rem 0.25rem;
-    font-size: 0.75rem;
-    max-width: 80px;
-  }
-
-  .tab-button .mdi {
-    font-size: 1.3rem;
-  }
-
-  .tab-button .tab-label {
-    font-size: 0.65rem;
+    flex-direction: row; /* Keep row, since sidebar goes off-canvas */
   }
 
   .main-content {
-    padding-bottom: 70px;
-  }
-
-  .tab-content {
-    padding: 1rem;
-    padding-bottom: 80px;
-  }
-
-  .notes-content {
+    /* Extra padding at bottom for any floating things, though toggle button takes space */
     padding-bottom: 70px;
   }
 }
