@@ -21,13 +21,9 @@ export default {
   provide() { return { addTagFilter: this.addTagFilter } },
   methods: {
     addTagFilter(tag) {
-      if (this.$route.path !== '/') this.$router.push('/')
       this.$nextTick(() => {
-        // Find a way to add tag or let state handle it if exposed.
-        if (this.$refs.notesSidebar && this.$refs.notesSidebar.selectedTags) {
-             if (!this.$refs.notesSidebar.selectedTags.includes(tag)) {
-                 this.$refs.notesSidebar.selectedTags.push(tag);
-             }
+        if (this.$refs.notesSidebar && this.$refs.notesSidebar.openSearchWithTag) {
+          this.$refs.notesSidebar.openSearchWithTag(tag)
         }
       })
     }

@@ -2,7 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 const Home = () => import('../views/Home.vue')
 const NoteView = () => import('../views/NoteView.vue')
-const GraphView = () => import('../views/GraphView.vue')
+
 
 const routes = [
   {
@@ -10,12 +10,7 @@ const routes = [
     name: 'Home',
     component: Home
   },
-  {
-    path: '/graph',
-    name: 'Graph',
-    component: GraphView,
-    meta: { requiresData: true }
-  },
+
   {
     path: '/note/:notePath(.*)',
     name: 'Note',

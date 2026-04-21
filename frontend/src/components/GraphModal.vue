@@ -1,5 +1,14 @@
 <template>
-  <div class="graph-view">
+  <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
+    <div class="modal-content graph-modal-content">
+      <div class="modal-header">
+        <h2>Knowledge Graph</h2>
+        <button class="close-btn" @click="closeModal">
+          <span class="mdi mdi-close"></span>
+        </button>
+      </div>
+      <div class="modal-body graph-body">
+        <div class="graph-view">
     <div v-if="loading" class="loading">
       <p>Loading graph...</p>
     </div>
@@ -85,6 +94,9 @@
         </div>
       </div>
     </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -94,7 +106,14 @@ import { getCached } from '@/api/http'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
 
 export default {
-  name: 'GraphView',
+  name: 'GraphModal',
+  props: {
+    isOpen: {
+      type: Boolean,
+      required: true
+    }
+  },
+  emits: ['close'],
   data() {
     return {
       nodes: [],
@@ -134,8 +153,27 @@ export default {
       )
     }
   },
+  watch: {
+    isOpen(newVal) {
+      if (newVal) {
+        if (this.nodes.length === 0) {
+          this.fetchGraphData()
+        } else {
+          this.$nextTick(() => {
+            this.initGraph()
+          })
+        }
+      } else {
+        if (this.simulation) {
+          this.simulation.stop()
+        }
+      }
+    }
+  },
   mounted() {
-    this.fetchGraphData()
+    if (this.isOpen) {
+      this.fetchGraphData()
+    }
   },
   beforeUnmount() {
     if (this.simulation) {
@@ -289,7 +327,12 @@ export default {
     },
     
     onNodeClick(node) {
+      this.closeModal()
       this.$router.push(`/note/${encodeURIComponent(node.id)}`)
+    },
+    
+    closeModal() {
+      this.$emit('close')
     },
     
     dragStarted(event, d) {
@@ -431,6 +474,76 @@ export default {
 </script>
 
 <style scoped>
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content.graph-modal-content {
+  background: rgba(18, 19, 42, 0.98);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  width: 95vw;
+  max-width: 1400px;
+  height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: var(--text-primary);
+}
+
+.close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.close-btn .mdi {
+  font-size: 1.5rem;
+}
+
+.modal-body.graph-body {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
 .graph-view {
   height: 100%;
   display: flex;

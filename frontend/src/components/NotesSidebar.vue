@@ -23,45 +23,18 @@
           <span class="mdi mdi-orbit"></span>
           <span class="title-text">RealmKeeper</span>
         </div>
-        <div class="sidebar-tabs">
-          <button 
-            class="tab-button" 
-            :class="{ active: $route.name !== 'Graph' }"
-            @click="$router.push('/')"
-          >
-            <span class="mdi mdi-book-open-page-variant"></span>
-            <span class="tab-label">Notes</span>
-          </button>
-          <button 
-            class="tab-button" 
-            :class="{ active: $route.name === 'Graph' }"
-            @click="$router.push('/graph')"
-          >
-            <span class="mdi mdi-graph-outline"></span>
-            <span class="tab-label">Graph</span>
-          </button>
-        </div>
+
       </div>
 
       <div class="sidebar-header">
-        <SearchBar v-model="searchQuery" />
-        <TagFilter 
-          :availableTags="availableTags"
-          v-model:selectedTags="selectedTags"
-        />
-        
-        <!-- Selected Tags Display -->
-        <div v-if="selectedTags.length > 0" class="selected-tags">
-          <span 
-            v-for="tag in selectedTags" 
-            :key="tag" 
-            class="selected-tag"
-            @click="removeTag(tag)"
-          >
-            {{ tag }}
-            <span class="mdi mdi-close"></span>
-          </span>
-        </div>
+        <button class="action-btn" @click="isSearchModalOpen = true">
+          <span class="mdi mdi-magnify"></span>
+          <span>Search Notes</span>
+        </button>
+        <button class="action-btn" @click="isGraphModalOpen = true">
+          <span class="mdi mdi-graph-outline"></span>
+          <span>View Graph</span>
+        </button>
       </div>
       
       <div v-if="loading && notes.length === 0" class="loading-state">
@@ -73,7 +46,7 @@
       <div v-else class="notes-tree-wrapper">
         <div class="notes-tree" ref="treeContainer">
           <TreeItem 
-            v-for="item in filteredNotesTree" 
+            v-for="item in notesTree" 
             :key="item.path || item.id"
             :item="item"
             :level="0"
@@ -95,14 +68,26 @@
         </div>
       </div>
     </div>
+    
+    <SearchModal 
+      ref="searchModalRef"
+      :is-open="isSearchModalOpen"
+      :notes="notes"
+      :available-tags="availableTags"
+      @close="isSearchModalOpen = false"
+    />
+    <GraphModal 
+      :is-open="isGraphModalOpen"
+      @close="isGraphModalOpen = false"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import TreeItem from './TreeItem.vue'
-import SearchBar from './SearchBar.vue'
-import TagFilter from './TagFilter.vue'
+import SearchModal from './SearchModal.vue'
+import GraphModal from './GraphModal.vue'
 import { useNotes } from '@/composables/useNotes'
 
 const {
@@ -118,24 +103,25 @@ const {
   resetPagination
 } = useNotes()
 
-const selectedTags = ref([])
-const searchQuery = ref('')
 const expandedFolders = ref(new Set())
 const isOpen = ref(false)
+const isSearchModalOpen = ref(false)
+const isGraphModalOpen = ref(false)
+const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
 let scrollObserver = null
 
-const tagFilteredNotes = computed(() => {
-  if (selectedTags.value.length === 0) {
-    return notes.value
-  }
-  return notes.value.filter(note => 
-    note.tags && note.tags.some(tag => 
-      selectedTags.value.some(selectedTag => 
-        tag.toLowerCase() === selectedTag.toLowerCase()
-      )
-    )
-  )
+const openSearchWithTag = (tag) => {
+  isSearchModalOpen.value = true
+  nextTick(() => {
+    if (searchModalRef.value) {
+      searchModalRef.value.addExternalTag(tag)
+    }
+  })
+}
+
+defineExpose({
+  openSearchWithTag
 })
 
 /**
@@ -152,7 +138,7 @@ const notesTree = computed(() => {
   const root = []
   const folderMap = {}
   
-  tagFilteredNotes.value.forEach(note => {
+  notes.value.forEach(note => {
     const parts = note.id.split('/')
     
     // Create folders
@@ -179,30 +165,6 @@ const notesTree = computed(() => {
   
   return root
 })
-
-const filteredNotesTree = computed(() => {
-  if (!searchQuery.value) return notesTree.value
-  const query = searchQuery.value.toLowerCase()
-  
-  const filter = (items) => items.map(item => {
-    if (item.isFolder) {
-      const children = filter(item.children)
-      const notes = item.notes.filter(n => n.title.toLowerCase().includes(query))
-      return (children.length || notes.length) ? { ...item, children, notes, expanded: true } : null
-    }
-    return item.title.toLowerCase().includes(query) ? item : null
-  }).filter(Boolean)
-  
-  return filter(notesTree.value)
-})
-
-const removeTag = (tag) => {
-  const index = selectedTags.value.indexOf(tag)
-  if (index !== -1) {
-    selectedTags.value.splice(index, 1)
-    resetPagination(searchQuery.value)
-  }
-}
 
 const toggleFolder = (path) => {
   const newExpanded = new Set(expandedFolders.value)
@@ -236,7 +198,7 @@ const setupScrollObserver = () => {
       (entries) => {
         entries.forEach(entry => {
           if (entry.isIntersecting && !isLoadingMore.value && hasMore.value) {
-            loadMoreNotes(searchQuery.value)
+            loadMoreNotes()
           }
         })
       },
@@ -247,20 +209,14 @@ const setupScrollObserver = () => {
   })
 }
 
-watch(searchQuery, () => {
-  resetPagination(searchQuery.value)
-})
 
-watch(selectedTags, () => {
-  resetPagination(searchQuery.value)
-}, { deep: true })
 
 watch(notes, () => {
   setupScrollObserver()
 })
 
 onMounted(() => {
-  fetchNotes(searchQuery.value)
+  fetchNotes()
   fetchTags()
   setupScrollObserver()
 })
@@ -289,6 +245,9 @@ onBeforeUnmount(() => {
   padding: 1rem;
   background: rgba(18, 19, 42, 0.6);
   border-bottom: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .sidebar-top-section {
@@ -322,81 +281,32 @@ onBeforeUnmount(() => {
   background-clip: text; /* Added standard property */
 }
 
-.sidebar-tabs {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.tab-button {
-  flex: 1;
-  padding: 0.5rem;
-  border: none;
-  background: rgba(31, 32, 69, 0.5);
-  cursor: pointer;
+/* Action Buttons */
+.action-btn {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
   font-size: 0.9rem;
-  font-weight: 500;
+  background: rgba(26, 27, 58, 0.6);
   color: var(--text-secondary);
-  border-radius: 6px;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-}
-
-.tab-button:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.tab-button.active {
-  background: var(--interactive-secondary);
-  box-shadow: 0 0 8px rgba(138, 92, 245, 0.3);
-  color: var(--text-primary);
-}
-
-.tab-button.active .mdi,
-.tab-button.active .tab-label {
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text; /* Added standard property */
-}
-
-/* Selected Tags Display */
-.selected-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-top: 0.75rem;
-}
-
-.selected-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.5rem;
-  background: rgba(138, 92, 245, 0.25);
-  border: 1px solid rgba(138, 92, 245, 0.4);
-  border-radius: 12px;
-  color: var(--text-primary);
-  font-size: 0.75rem;
+  gap: 0.5rem;
   cursor: pointer;
-  transition: all 0.15s ease;
 }
 
-.selected-tag:hover {
-  background: rgba(138, 92, 245, 0.35);
-  border-color: rgba(138, 92, 245, 0.6);
+.action-btn:hover {
+  border-color: var(--interactive-primary);
+  background: rgba(31, 32, 69, 0.8);
+  color: var(--text-primary);
+  box-shadow: 0 0 12px rgba(138, 92, 245, 0.2);
 }
 
-.selected-tag .mdi {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.selected-tag:hover .mdi {
-  opacity: 1;
+.action-btn .mdi {
+  font-size: 1.1rem;
 }
 
 .notes-tree-wrapper {
