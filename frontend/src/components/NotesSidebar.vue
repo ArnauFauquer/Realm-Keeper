@@ -138,7 +138,8 @@ const notesTree = computed(() => {
   const root = []
   const folderMap = {}
   
-  notes.value.forEach(note => {
+  const safeNotes = Array.isArray(notes.value) ? notes.value : []
+  safeNotes.forEach(note => {
     const parts = note.id.split('/')
     
     // Create folders

@@ -85,13 +85,7 @@
           <input type="range" min="10" max="1000" :value="Math.abs(forceSettings.chargeStrength)" @input="updateChargeStrength($event.target.value)">
         </div>
         
-        <div class="setting-group">
-          <div class="setting-label">
-            <label>Collision Radius</label>
-            <span>{{ forceSettings.collisionRadius }}</span>
-          </div>
-          <input type="range" min="5" max="100" v-model.number="forceSettings.collisionRadius" @input="updateForces">
-        </div>
+
       </div>
     </div>
         </div>
@@ -133,8 +127,7 @@ export default {
       showForceSettings: false,
       forceSettings: {
         linkDistance: 10,
-        chargeStrength: -200,
-        collisionRadius: 30
+        chargeStrength: -200
       }
     }
   },
@@ -193,6 +186,11 @@ export default {
           useCache: true,
           cacheTtl: 600 // 10 minutos
         })
+
+        if (!data || !data.nodes || !data.links) {
+          throw new Error("Invalid graph data format returned from API")
+        }
+
         this.nodes = data.nodes.map(node => ({ ...node }))
         this.links = data.links.map(link => ({ ...link }))
         this.loading = false
@@ -241,7 +239,7 @@ export default {
           .strength(0.1))
         .force('charge', d3.forceManyBody().strength(this.forceSettings.chargeStrength))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(this.forceSettings.collisionRadius))
+        .force('collision', d3.forceCollide().radius(d => (d.size || 7) + 5))
         .alphaDecay(0.03)
         .velocityDecay(0.3)
       
@@ -285,6 +283,10 @@ export default {
             .attr('r', 10)
             .attr('stroke-width', 3)
           
+          // Show this node's label
+          d3.select(this.parentNode).select('text')
+            .transition().duration(150).attr('opacity', 1)
+          
           self.highlightConnectedLinks(d, true)
         })
         .on('mouseout', function(event, d) {
@@ -293,6 +295,10 @@ export default {
           d3.select(this)
             .attr('r', 7)
             .attr('stroke-width', 2)
+          
+          // Restore label opacity
+          d3.select(this.parentNode).select('text')
+            .transition().duration(200).attr('opacity', 0.2)
           
           self.highlightConnectedLinks(d, false)
         })
@@ -304,6 +310,7 @@ export default {
         .attr('font-size', '11px')
         .attr('fill', 'var(--text-primary)')
         .attr('font-weight', '500')
+        .attr('opacity', 0.2)
         .style('pointer-events', 'none')
         .style('user-select', 'none')
       
@@ -389,7 +396,7 @@ export default {
           nodeEl.select('circle')
             .attr('opacity', isConnected ? 1 : 0.3)
           nodeEl.select('text')
-            .attr('opacity', isConnected ? 1 : 0.3)
+            .attr('opacity', isConnected ? 1 : 0.1)
         })
       } else {
         this.linkSelection
@@ -400,7 +407,7 @@ export default {
         this.nodeSelection.each(function() {
           const nodeEl = d3.select(this)
           nodeEl.select('circle').attr('opacity', 1)
-          nodeEl.select('text').attr('opacity', 1)
+          nodeEl.select('text').attr('opacity', 0.2)
         })
       }
     },
@@ -428,7 +435,7 @@ export default {
           circle
             .attr('opacity', 1)
             .attr('r', 7)
-          text.attr('opacity', 1)
+          text.attr('opacity', 0.2)
         } else {
           const nodeType = d.type || null
           const isMatch = nodeType === highlightedType
@@ -465,7 +472,7 @@ export default {
       
       this.simulation.force('link').distance(this.forceSettings.linkDistance)
       this.simulation.force('charge').strength(this.forceSettings.chargeStrength)
-      this.simulation.force('collision').radius(this.forceSettings.collisionRadius)
+      this.simulation.force('collision').radius(d => (d.size || 7) + 5)
       
       this.simulation.alpha(0.3).restart()
     }

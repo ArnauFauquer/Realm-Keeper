@@ -42,13 +42,14 @@ export function useNotes() {
         }
       })
       
+      const safeData = Array.isArray(data) ? data : []
       if (currentPage.value === 0) {
-        notes.value = data
+        notes.value = safeData
       } else {
-        notes.value.push(...data)
+        notes.value.push(...safeData)
       }
       
-      hasMore.value = data.length === pageSize
+      hasMore.value = safeData.length === pageSize
       currentPage.value++
     } catch (err) {
       console.error('Error loading notes:', err)

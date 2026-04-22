@@ -1,47 +1,51 @@
 <template>
-  <div class="note-view">
-    <div v-if="loading" class="loading">
-      <p>Loading note...</p>
-    </div>
-    
-    <div v-else-if="error" class="error">
-      <h2>Error</h2>
-      <p>{{ error }}</p>
-    </div>
-    
-    <div v-else-if="note" class="note-content">
-      <header class="note-header">
-        <h1>{{ note.title }}</h1>
-        <div class="note-meta">
-          <nav class="note-breadcrumb">
-            <template v-for="(crumb, index) in breadcrumbs" :key="index">
-              <router-link 
-                v-if="crumb.to" 
-                :to="crumb.to"
-                class="breadcrumb-link"
-              >
-                {{ crumb.name }}
-              </router-link>
-              <span v-else class="breadcrumb-current">{{ crumb.name }}</span>
-              <span v-if="index < breadcrumbs.length - 1" class="breadcrumb-separator">/</span>
-            </template>
-          </nav>
-          <div v-if="note.tags.length" class="tags">
-            <span 
-              v-for="tag in note.tags" 
-              :key="tag" 
-              class="tag clickable"
-              @click="filterByTag(tag)"
-              title="Filter by this tag"
-            >
-              #{{ tag }}
-            </span>
-          </div>
-        </div>
-      </header>
+  <div class="note-view-container">
+    <div class="note-main-content">
+      <div v-if="loading" class="loading">
+        <p>Loading note...</p>
+      </div>
       
-      <article class="markdown-content" ref="markdownContent" v-html="renderedContent"></article>
+      <div v-else-if="error" class="error">
+        <h2>Error</h2>
+        <p>{{ error }}</p>
+      </div>
+      
+      <div v-else-if="note" class="note-content">
+        <header class="note-header">
+          <h1>{{ note.title }}</h1>
+          <div class="note-meta">
+            <nav class="note-breadcrumb">
+              <template v-for="(crumb, index) in breadcrumbs" :key="index">
+                <router-link 
+                  v-if="crumb.to" 
+                  :to="crumb.to"
+                  class="breadcrumb-link"
+                >
+                  {{ crumb.name }}
+                </router-link>
+                <span v-else class="breadcrumb-current">{{ crumb.name }}</span>
+                <span v-if="index < breadcrumbs.length - 1" class="breadcrumb-separator">/</span>
+              </template>
+            </nav>
+            <div v-if="note.tags && note.tags.length" class="tags">
+              <span 
+                v-for="tag in note.tags" 
+                :key="tag" 
+                class="tag clickable"
+                @click="filterByTag(tag)"
+                title="Filter by this tag"
+              >
+                #{{ tag }}
+              </span>
+            </div>
+          </div>
+        </header>
+        
+        <article class="markdown-content" ref="markdownContent" v-html="renderedContent"></article>
+      </div>
     </div>
+    
+    <RightSidebar v-if="note && !loading && !error" :note="note" />
   </div>
 </template>
 
@@ -49,9 +53,11 @@
 import axios from 'axios'
 import MarkdownIt from 'markdown-it'
 import { cachedFetch } from '@/api/cache'
+import RightSidebar from '@/components/RightSidebar.vue'
 
 export default {
   name: 'NoteView',
+  components: { RightSidebar },
   inject: {
     addTagFilter: {
       from: 'addTagFilter',
@@ -85,7 +91,7 @@ export default {
       return import.meta.env.VITE_API_URL || ''
     },
     breadcrumbs() {
-      if (!this.note || !this.containerFolders) return []
+      if (!this.note || !this.note.id || !this.containerFolders) return []
       
       const parts = this.note.id.split('/')
       // Start with a link to the root notes view
@@ -114,8 +120,20 @@ export default {
       return crumbs
     },
     renderedContent() {
-      if (!this.note) return ''
+      if (!this.note || !this.note.content) return ''
       let html = this.md.render(this.note.content)
+      
+      // Add IDs to headers for ToC navigation
+      let headerCount = {}
+      html = html.replace(/<h([1-6])>(.*?)<\/h\1>/g, (match, level, content) => {
+        // Strip tags from content to create a clean id
+        const cleanContent = content.replace(/<[^>]+>/g, '')
+        const idBase = cleanContent.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '') || 'header'
+        headerCount[idBase] = (headerCount[idBase] || 0) + 1
+        const id = headerCount[idBase] > 1 ? `${idBase}-${headerCount[idBase] - 1}` : idBase
+        return `<h${level} id="${id}">${content}</h${level}>`
+      })
+      
       html = html.replace(/src="\/assets\//g, `src="${this.apiUrl}/vault-assets/`)
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
@@ -142,7 +160,7 @@ export default {
         
         this.setupLinkPrefetch()
         
-        this.prefetchLinkedNotes(this.note.links)
+        this.prefetchLinkedNotes(this.note.links || [])
       } catch (err) {
         this.error = err.response?.data?.detail || err.message
         this.loading = false
@@ -237,12 +255,19 @@ export default {
 </script>
 
 <style scoped>
-.note-view {
+.note-view-container {
+  display: flex;
   flex: 1;
-  overflow-y: auto;
-  padding: 2rem;
-  max-width: 900px;
+  max-width: 1400px;
   margin: 0 auto;
+  padding: 2rem;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+.note-main-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .note-content {
