@@ -6,6 +6,7 @@ from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from routes.notes import router as notes_router
+from routes.screen import router as screen_router
 
 from config.settings import settings
 from config.logging import setup_logging
@@ -151,6 +152,7 @@ async def get_asset(filename: str):
     )
 
 app.include_router(notes_router)
+app.include_router(screen_router)
 
 @app.get("/")
 async def root():

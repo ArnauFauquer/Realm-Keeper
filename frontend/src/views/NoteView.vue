@@ -134,7 +134,7 @@ export default {
         return `<h${level} id="${id}">${content}</h${level}>`
       })
       
-      html = html.replace(/src="\/assets\//g, `src="${this.apiUrl}/vault-assets/`)
+      html = html.replace(/src="\/(assets|vault-assets)\//g, `src="${this.apiUrl}/vault-assets/`)
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })
@@ -224,6 +224,49 @@ export default {
             this.onLinkMouseEnter(linkId)
           }, { once: false })
         })
+
+        this.setupImageScreenButtons()
+      })
+    },
+    setupImageScreenButtons() {
+      const content = this.$refs.markdownContent
+      if (!content) return
+
+      const images = content.querySelectorAll('img:not([data-screen-wrapped])')
+      images.forEach(img => {
+        img.setAttribute('data-screen-wrapped', '1')
+
+        // Wrap in a relative container
+        const wrapper = document.createElement('span')
+        wrapper.className = 'img-screen-wrapper'
+        img.parentNode.insertBefore(wrapper, img)
+        wrapper.appendChild(img)
+
+        // Build button
+        const btn = document.createElement('button')
+        btn.className = 'img-screen-btn'
+        btn.title = 'Display on screen'
+        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Screen</span>`
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          const url = img.src
+          const title = img.alt || ''
+          
+          try {
+            await axios.post(`${this.apiUrl}/api/screen/display`, { url, title })
+            const originalText = btn.innerHTML
+            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Sent!</span>`
+            btn.classList.add('sent')
+            setTimeout(() => {
+              btn.classList.remove('sent')
+              btn.innerHTML = originalText
+            }, 2000)
+          } catch (err) {
+            console.error('Failed to send to screen:', err)
+          }
+        })
+        wrapper.appendChild(btn)
       })
     },
     async loadContainerFolders() {
@@ -468,8 +511,62 @@ export default {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
-  margin: 1.5rem 0;
+  margin: 0;
   display: block;
+}
+
+/* Screen button wrapper */
+.markdown-content :deep(.img-screen-wrapper) {
+  display: block;
+  position: relative;
+  margin: 1.5rem 0;
+  line-height: 0;
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.markdown-content :deep(.img-screen-btn) {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(10, 10, 25, 0.75);
+  border: 1px solid rgba(138, 92, 245, 0.5);
+  color: #c4b5fd;
+  padding: 0.35rem 0.65rem;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  font-family: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+  z-index: 5;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.markdown-content :deep(.img-screen-wrapper:hover .img-screen-btn) {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.markdown-content :deep(.img-screen-btn:hover) {
+  background: rgba(138, 92, 245, 0.4);
+  border-color: rgba(138, 92, 245, 0.8);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(138, 92, 245, 0.4);
+}
+
+.markdown-content :deep(.img-screen-btn.sent) {
+  background: rgba(34, 211, 238, 0.4) !important;
+  border-color: rgba(34, 211, 238, 0.8) !important;
+  color: #fff !important;
+  box-shadow: 0 0 15px rgba(34, 211, 238, 0.5) !important;
 }
 
 .markdown-content :deep(table) {

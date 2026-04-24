@@ -2,7 +2,7 @@
   <div id="app">
     <NebulaBackground />
     <div class="main-container">
-      <NotesSidebar ref="notesSidebar" />
+      <NotesSidebar v-if="!$route.meta.fullscreen" ref="notesSidebar" />
       <main class="main-content">
         <router-view />
       </main>
