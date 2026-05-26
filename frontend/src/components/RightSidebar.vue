@@ -5,7 +5,10 @@
       <div class="mini-graph-container" ref="graphContainer">
         <div v-if="loading" class="loading">Loading...</div>
         <div v-else-if="error" class="error">{{ error }}</div>
-        <svg v-else ref="svg" class="graph-svg"></svg>
+        <template v-else>
+          <canvas ref="starCanvas" class="star-canvas"></canvas>
+          <svg ref="svg" class="graph-svg"></svg>
+        </template>
       </div>
     </div>
     
@@ -144,7 +147,29 @@ export default {
           }
         })
         
-        this.nodes = data.nodes.filter(n => connectedIds.has(n.id)).map(n => ({ ...n }))
+        // Calculate global connection count (degree) for each node
+        const globalDegrees = {}
+        data.nodes.forEach(n => {
+          globalDegrees[n.id] = 0
+        })
+        data.links.forEach(link => {
+          const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+          const targetId = typeof link.target === 'object' ? link.target.id : link.target
+          if (globalDegrees[sourceId] !== undefined) globalDegrees[sourceId]++
+          if (globalDegrees[targetId] !== undefined) globalDegrees[targetId]++
+        })
+
+        this.nodes = data.nodes.filter(n => connectedIds.has(n.id)).map(n => {
+          const degree = globalDegrees[n.id] || 0
+          const isCurrent = n.id === currentId
+          const radius = (isCurrent ? 6 : 4) + Math.sqrt(degree) * 1.5
+          return {
+            ...n,
+            degree,
+            radius,
+            size: radius
+          }
+        })
         this.links = relevantLinks
         
         this.loading = false
@@ -160,43 +185,72 @@ export default {
     initGraph() {
       const container = this.$refs.svg
       if (!container) return
-      
+
       d3.select(container).selectAll('*').remove()
-      
-      // Fixed small dimensions or fluid
+
       const width = container.clientWidth || 300
       const height = container.clientHeight || 250
-      
+
+      // ── Canvas starfield (drawn once, zero repaint) ──────────────────
+      const canvas = this.$refs.starCanvas
+      if (canvas) {
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        const rand = (a, b) => a + Math.random() * (b - a)
+        const starCount = Math.floor((width * height) / 2000)
+        for (let i = 0; i < starCount; i++) {
+          const r = Math.random()
+          const size = r < 0.7 ? rand(0.2, 0.6) : r < 0.9 ? rand(0.6, 1.1) : rand(1.1, 1.8)
+          const opacity = rand(0.12, 0.5)
+          const hue = rand(210, 260)
+          ctx.beginPath()
+          ctx.arc(rand(0, width), rand(0, height), size, 0, Math.PI * 2)
+          ctx.fillStyle = `hsla(${hue}, 60%, 90%, ${opacity})`
+          ctx.fill()
+        }
+      }
+
       this.svg = d3.select(container)
         .attr('width', '100%')
         .attr('height', '100%')
         .attr('viewBox', `0 0 ${width} ${height}`)
         .attr('preserveAspectRatio', 'xMidYMid meet')
-      
+
       this.g = this.svg.append('g')
-      
+
       this.zoom = d3.zoom()
         .scaleExtent([0.1, 4])
         .on('zoom', (event) => {
           this.g.attr('transform', event.transform)
         })
-      
+
       this.svg.call(this.zoom)
-      
+
+      // ── Hub detection for mini-graph ────────────────────────────────
+      const maxDegree = Math.max(1, ...this.nodes.map(n => n.degree || 0))
+      this.nodes.forEach(n => {
+        n.isHub = n.degree >= maxDegree * 0.35
+      })
+
       this.simulation = d3.forceSimulation(this.nodes)
-        .force('link', d3.forceLink(this.links).id(d => d.id).distance(30))
-        .force('charge', d3.forceManyBody().strength(-100))
+        .force('link', d3.forceLink(this.links).id(d => d.id).distance(45).strength(0.08))
+        .force('charge', d3.forceManyBody().strength(-120))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(15))
-        
+        .force('collision', d3.forceCollide().radius(d => (d.radius || 5) + 8))
+
+      // ── Constellation lines ──────────────────────────────────────────
       const link = this.g.append('g')
         .selectAll('line')
         .data(this.links)
         .enter()
         .append('line')
-        .attr('stroke', 'rgba(138, 92, 245, 0.3)')
-        .attr('stroke-width', 1.5)
-        
+        .attr('stroke', 'rgba(160, 190, 255, 0.3)')
+        .attr('stroke-width', 0.7)
+
+      // ── Star nodes ──────────────────────────────────────────────────
+      const currentNoteId = this.note.id
+
       const node = this.g.append('g')
         .selectAll('g')
         .data(this.nodes)
@@ -212,72 +266,89 @@ export default {
           .on('start', this.dragStarted)
           .on('drag', this.dragged)
           .on('end', this.dragEnded))
-          
-      node.append('circle')
-        .attr('r', d => d.id === this.note.id ? 8 : 5)
-        .attr('fill', d => d.id === this.note.id ? '#f0f0ff' : getNodeColor(d))
-        .attr('stroke', 'var(--bg-primary)')
-        .attr('stroke-width', 1.5)
 
+      // Outer glow ring
+      node.append('circle')
+        .attr('class', 'star-glow3')
+        .attr('r', d => d.radius * (d.id === currentNoteId ? 7 : d.isHub ? 6 : 5))
+        .attr('fill', d => d.id === currentNoteId ? '#ffffff' : getNodeColor(d))
+        .attr('opacity', d => d.id === currentNoteId ? 0.08 : d.isHub ? 0.06 : 0.04)
+        .style('pointer-events', 'none')
+
+      // Mid glow ring
+      node.append('circle')
+        .attr('class', 'star-halo')
+        .attr('r', d => d.radius * (d.id === currentNoteId ? 3.8 : d.isHub ? 3.5 : 2.8))
+        .attr('fill', d => d.id === currentNoteId ? '#c8d8ff' : getNodeColor(d))
+        .attr('opacity', d => d.id === currentNoteId ? 0.18 : d.isHub ? 0.13 : 0.08)
+        .style('pointer-events', 'none')
+
+      // Core star
+      node.append('circle')
+        .attr('class', 'star-core')
+        .attr('r', d => d.radius)
+        .attr('fill', d => d.id === currentNoteId ? '#e8f0ff' : getNodeColor(d))
+
+      // Diffraction spikes for hub nodes and current note
+      node.filter(d => d.isHub || d.id === currentNoteId).append('line')
+        .attr('x1', d => -d.radius * 3).attr('y1', 0)
+        .attr('x2', d => d.radius * 3).attr('y2', 0)
+        .attr('stroke', d => d.id === currentNoteId ? '#c8d8ff' : getNodeColor(d))
+        .attr('stroke-width', 0.7)
+        .attr('opacity', 0.5)
+        .style('pointer-events', 'none')
+
+      node.filter(d => d.isHub || d.id === currentNoteId).append('line')
+        .attr('x1', 0).attr('y1', d => -d.radius * 3)
+        .attr('x2', 0).attr('y2', d => d.radius * 3)
+        .attr('stroke', d => d.id === currentNoteId ? '#c8d8ff' : getNodeColor(d))
+        .attr('stroke-width', 0.7)
+        .attr('opacity', 0.5)
+        .style('pointer-events', 'none')
+
+      // Labels
       node.append('text')
         .text(d => d.title || d.id.split('/').pop())
-        .attr('x', d => d.id === this.note.id ? 11 : 8)
+        .attr('x', d => d.radius + 4)
         .attr('y', 4)
-        .attr('font-size', d => d.id === this.note.id ? '11px' : '9px')
-        .attr('font-weight', d => d.id === this.note.id ? '600' : '400')
-        .attr('fill', 'rgba(220, 215, 255, 1)')
+        .attr('font-size', d => d.id === currentNoteId ? '11px' : '9px')
+        .attr('font-weight', d => d.id === currentNoteId ? '600' : '400')
+        .attr('fill', 'rgba(200, 220, 255, 0.9)')
         .attr('pointer-events', 'none')
-        .attr('opacity', 0.2)
-        .style('text-shadow', '0 1px 3px rgba(0,0,0,0.9)')
-
-      const currentNoteId = this.note.id
+        .attr('opacity', d => d.id === currentNoteId ? 0.9 : 0)
+        .attr('letter-spacing', '0.02em')
 
       node
-        .on('mouseenter', function() {
-          d3.select(this).select('text')
-            .transition().duration(150)
-            .attr('opacity', 1)
-          d3.select(this).select('circle')
-            .transition().duration(150)
-            .attr('r', d => d.id === currentNoteId ? 10 : 7)
+        .on('mouseenter', function(event, d) {
+          d3.select(this).select('text').attr('opacity', 1)
+          d3.select(this).select('.star-core').attr('r', d.radius * 1.8)
+          d3.select(this).select('.star-halo').attr('opacity', 0.28)
         })
-        .on('mouseleave', function() {
-          d3.select(this).select('text')
-            .transition().duration(200)
-            .attr('opacity', 0)
-          d3.select(this).select('circle')
-            .transition().duration(200)
-            .attr('r', d => d.id === currentNoteId ? 8 : 5)
+        .on('mouseleave', function(event, d) {
+          d3.select(this).select('text').attr('opacity', d.id === currentNoteId ? 0.9 : 0)
+          d3.select(this).select('.star-core').attr('r', d.radius)
+          d3.select(this).select('.star-halo').attr('opacity', d.id === currentNoteId ? 0.18 : d.isHub ? 0.13 : 0.08)
         })
 
-
-
-        
       this.simulation.on('tick', () => {
         link
           .attr('x1', d => d.source.x)
           .attr('y1', d => d.source.y)
           .attr('x2', d => d.target.x)
           .attr('y2', d => d.target.y)
-          
         node.attr('transform', d => `translate(${d.x},${d.y})`)
       })
-      
-      // Auto-fit after simulation starts to settle
+
+      // Auto-fit after simulation settles
       setTimeout(() => {
         if (!this.svg) return
-        
-        // Find bounds
         const bounds = this.g.node().getBBox()
         if (bounds.width === 0) return
-        
-        const padding = 20
-        const scale = 0.9 / Math.max(bounds.width / width, bounds.height / height)
+        const scale = 0.85 / Math.max(bounds.width / width, bounds.height / height)
         const transform = d3.zoomIdentity
           .translate(width / 2, height / 2)
           .scale(scale)
           .translate(-(bounds.x + bounds.width / 2), -(bounds.y + bounds.height / 2))
-          
         this.svg.transition().duration(750).call(this.zoom.transform, transform)
       }, 300)
     },
@@ -321,12 +392,21 @@ export default {
 
 .mini-graph-container {
   height: 250px;
-  background: rgba(12, 13, 29, 0.4);
-  border: 1px solid rgba(138, 92, 245, 0.2);
+  background: radial-gradient(ellipse at 40% 40%, rgba(18, 12, 55, 0.95) 0%, rgba(4, 5, 18, 1) 70%);
+  border: 1px solid rgba(100, 140, 255, 0.2);
   border-radius: 12px;
   overflow: hidden;
   position: relative;
-  box-shadow: inset 0 2px 10px rgba(0,0,0,0.2);
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+}
+
+.star-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .graph-svg {

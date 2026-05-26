@@ -18,6 +18,7 @@
     </div>
     
     <div v-else class="graph-container">
+      <canvas ref="starCanvas" class="star-canvas"></canvas>
       <svg ref="svg" class="graph-svg"></svg>
       
       <!-- Mobile toggle button -->
@@ -126,8 +127,8 @@ export default {
       zoomTimeout: null,
       showForceSettings: false,
       forceSettings: {
-        linkDistance: 10,
-        chargeStrength: -200
+        linkDistance: 60,
+        chargeStrength: -400
       }
     }
   },
@@ -216,13 +217,35 @@ export default {
       this.svg = d3.select(container)
         .attr('width', width)
         .attr('height', height)
+
+      // ── Starfield on canvas (drawn once, zero repaint cost) ───────────
+      const canvas = this.$refs.starCanvas
+      if (canvas) {
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        const rand = (min, max) => min + Math.random() * (max - min)
+        const starCount = Math.floor((width * height) / 6000)
+        for (let i = 0; i < starCount; i++) {
+          const x = rand(0, width)
+          const y = rand(0, height)
+          const r = Math.random()
+          const size = r < 0.7 ? rand(0.3, 0.8) : r < 0.9 ? rand(0.8, 1.5) : rand(1.5, 2.4)
+          const opacity = rand(0.15, 0.55)
+          const hue = rand(210, 260)
+          ctx.beginPath()
+          ctx.arc(x, y, size, 0, Math.PI * 2)
+          ctx.fillStyle = `hsla(${hue}, 60%, 90%, ${opacity})`
+          ctx.fill()
+        }
+      }
       
       const debouncedZoom = (event) => {
         this.g.attr('transform', event.transform)
       }
       
       this.zoom = d3.zoom()
-        .scaleExtent([0.1, 10])
+        .scaleExtent([0.05, 10])
         .on('zoom', (event) => {
           clearTimeout(this.zoomTimeout)
           this.zoomTimeout = setTimeout(() => debouncedZoom(event), 8)
@@ -232,29 +255,51 @@ export default {
       
       this.g = this.svg.append('g')
       
+      // ── Degree calculation ─────────────────────────────────────────────
+      const degrees = {}
+      this.nodes.forEach(node => { degrees[node.id] = 0 })
+      this.links.forEach(link => {
+        const sourceId = typeof link.source === 'object' ? link.source.id : link.source
+        const targetId = typeof link.target === 'object' ? link.target.id : link.target
+        if (degrees[sourceId] !== undefined) degrees[sourceId]++
+        if (degrees[targetId] !== undefined) degrees[targetId]++
+      })
+
+      const maxDegree = Math.max(1, ...Object.values(degrees))
+
+      this.nodes.forEach(node => {
+        node.degree = degrees[node.id] || 0
+        // Star constellation: smaller, more subtle sizes. Hubs slightly bigger.
+        node.radius = 2.5 + Math.sqrt(node.degree) * 1.8
+        node.isHub = node.degree >= maxDegree * 0.4
+        node.size = node.radius
+      })
+      
       this.simulation = d3.forceSimulation(this.nodes)
         .force('link', d3.forceLink(this.links)
           .id(d => d.id)
           .distance(this.forceSettings.linkDistance)
-          .strength(0.1))
+          .strength(0.08))
         .force('charge', d3.forceManyBody().strength(this.forceSettings.chargeStrength))
         .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(d => (d.size || 7) + 5))
-        .alphaDecay(0.03)
-        .velocityDecay(0.3)
+        .force('collision', d3.forceCollide().radius(d => (d.radius || 4) + 8))
+        .alphaDecay(0.02)
+        .velocityDecay(0.4)
       
+      // ── Constellation lines ────────────────────────────────────────────
       const link = this.g.append('g')
         .selectAll('line')
         .data(this.links)
         .enter()
         .append('line')
         .attr('class', 'graph-link')
-        .attr('stroke', 'var(--graph-link)')
-        .attr('stroke-opacity', 'var(--graph-linkOpacity)')
-        .attr('stroke-width', 1.5)
+        .attr('stroke', 'rgba(160, 190, 255, 0.3)')
+        .attr('stroke-opacity', 1)
+        .attr('stroke-width', 0.8)
       
       this.linkSelection = link
       
+      // ── Star nodes ────────────────────────────────────────────────────
       const node = this.g.append('g')
         .selectAll('g')
         .data(this.nodes)
@@ -269,48 +314,71 @@ export default {
       this.nodeSelection = node
       
       const self = this
-      
+
+      // Glow rings: 3 cheap concentric circles simulate bloom without any SVG filter
       node.append('circle')
-        .attr('r', 7)
+        .attr('class', 'star-glow3')
+        .attr('r', d => d.radius * (d.isHub ? 6 : 5))
         .attr('fill', d => this.getNodeColor(d))
-        .attr('stroke', 'var(--bg-primary)')
-        .attr('stroke-width', 2)
+        .attr('opacity', d => d.isHub ? 0.06 : 0.04)
+        .style('pointer-events', 'none')
+
+      node.append('circle')
+        .attr('class', 'star-halo')
+        .attr('r', d => d.radius * (d.isHub ? 3.5 : 2.8))
+        .attr('fill', d => this.getNodeColor(d))
+        .attr('opacity', d => d.isHub ? 0.13 : 0.08)
+        .style('pointer-events', 'none')
+
+      // Core star circle (no filter — zero GPU blur cost)
+      node.append('circle')
+        .attr('class', 'star-core')
+        .attr('r', d => d.radius)
+        .attr('fill', d => this.getNodeColor(d))
         .on('click', (event, d) => this.onNodeClick(d))
         .on('mouseover', function(event, d) {
           if (self.highlightedType !== null) return
-          
-          d3.select(this)
-            .attr('r', 10)
-            .attr('stroke-width', 3)
-          
-          // Show this node's label
-          d3.select(this.parentNode).select('text')
-            .transition().duration(150).attr('opacity', 1)
-          
+          d3.select(this).attr('r', d.radius * 1.8)
+          d3.select(this.parentNode).select('.star-halo').attr('opacity', 0.28)
+          d3.select(this.parentNode).select('text').attr('opacity', 1)
           self.highlightConnectedLinks(d, true)
         })
         .on('mouseout', function(event, d) {
           if (self.highlightedType !== null) return
-          
-          d3.select(this)
-            .attr('r', 7)
-            .attr('stroke-width', 2)
-          
-          // Restore label opacity
-          d3.select(this.parentNode).select('text')
-            .transition().duration(200).attr('opacity', 0.2)
-          
+          d3.select(this).attr('r', d.radius)
+          d3.select(this.parentNode).select('.star-halo').attr('opacity', d.isHub ? 0.13 : 0.08)
+          d3.select(this.parentNode).select('text').attr('opacity', d.degree > 2 ? 0.45 : 0.15)
           self.highlightConnectedLinks(d, false)
         })
+
+      // 4-point diffraction spike for hub stars
+      node.filter(d => d.isHub).append('line')
+        .attr('class', 'star-spike-h')
+        .attr('x1', d => -d.radius * 3).attr('y1', 0)
+        .attr('x2', d => d.radius * 3).attr('y2', 0)
+        .attr('stroke', d => this.getNodeColor(d))
+        .attr('stroke-width', 0.8)
+        .attr('opacity', 0.5)
+        .style('pointer-events', 'none')
+
+      node.filter(d => d.isHub).append('line')
+        .attr('class', 'star-spike-v')
+        .attr('x1', 0).attr('y1', d => -d.radius * 3)
+        .attr('x2', 0).attr('y2', d => d.radius * 3)
+        .attr('stroke', d => this.getNodeColor(d))
+        .attr('stroke-width', 0.8)
+        .attr('opacity', 0.5)
+        .style('pointer-events', 'none')
       
       node.append('text')
         .text(d => d.title)
-        .attr('x', 12)
+        .attr('x', d => d.radius + 6)
         .attr('y', 4)
-        .attr('font-size', '11px')
-        .attr('fill', 'var(--text-primary)')
-        .attr('font-weight', '500')
-        .attr('opacity', 0.2)
+        .attr('font-size', d => d.isHub ? '12px' : '10px')
+        .attr('fill', 'rgba(200, 220, 255, 0.9)')
+        .attr('font-weight', d => d.isHub ? '600' : '400')
+        .attr('opacity', d => d.degree > 2 ? 0.45 : 0.15)
+        .attr('letter-spacing', '0.03em')
         .style('pointer-events', 'none')
         .style('user-select', 'none')
       
@@ -323,6 +391,12 @@ export default {
         
         node.attr('transform', d => `translate(${d.x},${d.y})`)
       })
+    },
+
+    getStarColor(node) {
+      // Convert node color to a lighter, more star-like variant
+      const base = this.getNodeColor(node)
+      return base
     },
     
     getNodeColor(node) {
@@ -382,32 +456,28 @@ export default {
           const sourceId = typeof d.source === 'object' ? d.source.id : d.source
           const targetId = typeof d.target === 'object' ? d.target.id : d.target
           const isConnected = sourceId === hoveredNode.id || targetId === hoveredNode.id
-          
           linkEl
-            .attr('stroke', isConnected ? 'var(--interactive-primary)' : 'var(--graph-link)')
-            .attr('stroke-width', isConnected ? 2.5 : 1)
-            .attr('stroke-opacity', isConnected ? 1 : 0.15)
+            .attr('stroke', isConnected ? 'rgba(200, 225, 255, 0.85)' : 'rgba(100, 130, 200, 0.08)')
+            .attr('stroke-width', isConnected ? 1.2 : 0.5)
         })
-        
         this.nodeSelection.each(function(d) {
           const nodeEl = d3.select(this)
           const isConnected = connectedNodeIds.has(d.id)
-          
-          nodeEl.select('circle')
-            .attr('opacity', isConnected ? 1 : 0.3)
-          nodeEl.select('text')
-            .attr('opacity', isConnected ? 1 : 0.1)
+          nodeEl.select('.star-core').attr('opacity', isConnected ? 1 : 0.15)
+          nodeEl.select('.star-halo').attr('opacity', isConnected ? (d.isHub ? 0.13 : 0.08) : 0.01)
+          nodeEl.select('.star-glow3').attr('opacity', isConnected ? (d.isHub ? 0.06 : 0.04) : 0.01)
+          nodeEl.select('text').attr('opacity', isConnected ? 1 : 0.03)
         })
       } else {
         this.linkSelection
-          .attr('stroke', 'var(--graph-link)')
-          .attr('stroke-width', 1.5)
-          .attr('stroke-opacity', 'var(--graph-linkOpacity)')
-        
-        this.nodeSelection.each(function() {
+          .attr('stroke', 'rgba(160, 190, 255, 0.3)')
+          .attr('stroke-width', 0.8)
+        this.nodeSelection.each(function(d) {
           const nodeEl = d3.select(this)
-          nodeEl.select('circle').attr('opacity', 1)
-          nodeEl.select('text').attr('opacity', 0.2)
+          nodeEl.select('.star-core').attr('opacity', 1)
+          nodeEl.select('.star-halo').attr('opacity', d.isHub ? 0.13 : 0.08)
+          nodeEl.select('.star-glow3').attr('opacity', d.isHub ? 0.06 : 0.04)
+          nodeEl.select('text').attr('opacity', d.degree > 2 ? 0.45 : 0.15)
         })
       }
     },
@@ -428,36 +498,35 @@ export default {
       
       this.g.selectAll('.graph-node').each(function(d) {
         const node = d3.select(this)
-        const circle = node.select('circle')
+        const core = node.select('.star-core')
+        const halo = node.select('.star-halo')
+        const glow3 = node.select('.star-glow3')
         const text = node.select('text')
-        
         if (highlightedType === null) {
-          circle
-            .attr('opacity', 1)
-            .attr('r', 7)
-          text.attr('opacity', 0.2)
+          core.attr('opacity', 1).attr('r', d.radius)
+          halo.attr('opacity', d.isHub ? 0.13 : 0.08)
+          glow3.attr('opacity', d.isHub ? 0.06 : 0.04)
+          text.attr('opacity', d.degree > 2 ? 0.45 : 0.15)
         } else {
           const nodeType = d.type || null
           const isMatch = nodeType === highlightedType
-          
-          circle
-            .attr('opacity', isMatch ? 1 : 0.15)
-            .attr('r', isMatch ? 9 : 5)
-          text.attr('opacity', isMatch ? 1 : 0.15)
+          core.attr('opacity', isMatch ? 1 : 0.1).attr('r', isMatch ? d.radius * 1.4 : d.radius * 0.6)
+          halo.attr('opacity', isMatch ? (d.isHub ? 0.2 : 0.15) : 0.01)
+          glow3.attr('opacity', isMatch ? (d.isHub ? 0.08 : 0.05) : 0.01)
+          text.attr('opacity', isMatch ? 1 : 0.03)
         }
       })
-      
       this.g.selectAll('.graph-link').each(function(d) {
         const link = d3.select(this)
-        
         if (highlightedType === null) {
-          link.attr('opacity', 1)
+          link.attr('stroke', 'rgba(160, 190, 255, 0.3)').attr('stroke-width', 0.8)
         } else {
           const sourceType = d.source.type || null
           const targetType = d.target.type || null
           const isConnected = sourceType === highlightedType || targetType === highlightedType
-          
-          link.attr('opacity', isConnected ? 0.6 : 0.05)
+          link
+            .attr('stroke', isConnected ? 'rgba(180, 210, 255, 0.7)' : 'rgba(100, 130, 200, 0.04)')
+            .attr('stroke-width', isConnected ? 1.1 : 0.4)
         }
       })
     },
@@ -472,7 +541,7 @@ export default {
       
       this.simulation.force('link').distance(this.forceSettings.linkDistance)
       this.simulation.force('charge').strength(this.forceSettings.chargeStrength)
-      this.simulation.force('collision').radius(d => (d.size || 7) + 5)
+      this.simulation.force('collision').radius(d => (d.radius || d.size || 4) + 8)
       
       this.simulation.alpha(0.3).restart()
     }
@@ -575,7 +644,7 @@ export default {
   flex: 1;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
 }
 
 .graph-svg {
@@ -586,6 +655,16 @@ export default {
 
 .graph-svg:active {
   cursor: grabbing;
+}
+
+/* No CSS animations — all transitions handled by D3 for perf */
+.star-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .graph-info {
@@ -701,13 +780,11 @@ export default {
   cursor: pointer;
 }
 
-.graph-node circle {
-  transition: all 0.2s ease;
-}
-
 .graph-node text {
-  fill: var(--text-primary);
-  font-weight: 500;
+  fill: rgba(200, 220, 255, 0.9);
+  font-weight: 400;
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0.04em;
 }
 
 /* Mobile toggle button */
