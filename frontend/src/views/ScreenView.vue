@@ -1,5 +1,7 @@
 <template>
   <div class="screen-root" @keydown.esc="close" tabindex="0" ref="root">
+    <!-- Star constellation background -->
+    <canvas ref="starCanvas" class="star-canvas"></canvas>
     <!-- Ambient glow behind image -->
     <div class="ambient-glow" :style="glowStyle"></div>
 
@@ -83,6 +85,27 @@ export default {
     }
   },
   methods: {
+    drawStarfield() {
+      const canvas = this.$refs.starCanvas
+      if (!canvas) return
+      const w = window.innerWidth
+      const h = window.innerHeight
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+      const rand = (a, b) => a + Math.random() * (b - a)
+      const count = Math.floor((w * h) / 3500)
+      for (let i = 0; i < count; i++) {
+        const r = Math.random()
+        const size = r < 0.65 ? rand(0.3, 0.9) : r < 0.88 ? rand(0.9, 1.6) : rand(1.6, 2.8)
+        const opacity = rand(0.12, 0.55)
+        const hue = rand(210, 265)
+        ctx.beginPath()
+        ctx.arc(rand(0, w), rand(0, h), size, 0, Math.PI * 2)
+        ctx.fillStyle = `hsla(${hue}, 55%, 92%, ${opacity})`
+        ctx.fill()
+      }
+    },
     close() {
       // Allow exiting fullscreen mode
       if (window.history.length > 1) {
@@ -211,7 +234,8 @@ export default {
   },
   mounted() {
     this.$refs.root?.focus()
-    
+    this.drawStarfield()
+
     // Check for initial data in query
     const queryUrl = this.$route.query.url
     const queryTitle = this.$route.query.title
@@ -236,13 +260,22 @@ export default {
 .screen-root {
   position: fixed;
   inset: 0;
-  background: #000000; /* Pure black for full immersion */
+  background: radial-gradient(ellipse at 30% 35%, rgba(18, 10, 55, 1) 0%, rgba(5, 4, 20, 1) 45%, rgba(2, 2, 10, 1) 100%);
   display: flex;
   flex-direction: column;
   z-index: 9999;
   outline: none;
   overflow: hidden;
   cursor: none;
+}
+
+.star-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* ─── Ambient glow ─── */
