@@ -6,14 +6,10 @@ metadata:
     app.kubernetes.io/name: realm-keeper-ingress
     app.kubernetes.io/part-of: realm-keeper
   annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
-    nginx.ingress.kubernetes.io/enable-cors: "true"
     cert-manager.io/cluster-issuer: "letsencrypt"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: realmkeeper.faukinator.com
       http:
