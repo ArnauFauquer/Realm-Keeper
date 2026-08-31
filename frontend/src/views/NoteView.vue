@@ -67,7 +67,19 @@ mermaid.initialize({
     primaryBorderColor: '#8a5cf5',
     lineColor: '#a78bfa',
     secondaryColor: '#1a1b3a',
-    tertiaryColor: '#12132a'
+    tertiaryColor: '#12132a',
+    // Gantt task labels that don't fit inside their bar are drawn outside it,
+    // against the diagram background rather than the bar. Mermaid accounts
+    // for that on :done tasks (it swaps in taskTextOutsideColor) but not on
+    // :active ones, which keep taskTextDarkColor — meant for dark text on the
+    // light active-task bar — even when placed outside on our dark bg, making
+    // them invisible. Keeping this light fixes that; it only trades away
+    // contrast for the (currently unused) case of a label short enough to
+    // fit inside the light active bar itself.
+    taskTextDarkColor: '#f0f0ff',
+    taskTextColor: '#f0f0ff',
+    taskTextLightColor: '#f0f0ff',
+    taskTextOutsideColor: '#f0f0ff'
   }
 })
 
