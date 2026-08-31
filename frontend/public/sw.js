@@ -26,6 +26,11 @@ self.addEventListener('install', (event) => {
 });
 
 // Activate event - clean up old caches
+// Note: deliberately does NOT call self.clients.claim() — claiming control of
+// already-open/loading pages races with their in-flight initial API requests
+// (the browser can't hand an in-progress fetch to a SW that just took over),
+// which was turning those requests into fabricated "offline" 503 responses.
+// The new worker takes control starting from the next navigation instead.
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -36,7 +41,6 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
-  self.clients.claim();
 });
 
 // Fetch event - granular caching strategies
@@ -110,7 +114,7 @@ self.addEventListener('fetch', (event) => {
             // No cache available, return error response
             return new Response(
               JSON.stringify({ error: 'Offline - no cached data available' }),
-              { 
+              {
                 status: 503,
                 headers: { 'Content-Type': 'application/json' }
               }

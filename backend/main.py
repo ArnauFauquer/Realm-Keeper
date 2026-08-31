@@ -95,7 +95,7 @@ async def _periodic_sync():
     while True:
         await asyncio.sleep(interval)
         logger.info("Running periodic vault sync...")
-        sync_vault()
+        await asyncio.to_thread(sync_vault)
 
 
 @asynccontextmanager

@@ -52,8 +52,24 @@
 <script>
 import axios from 'axios'
 import MarkdownIt from 'markdown-it'
+import mermaid from 'mermaid'
 import { cachedFetch } from '@/api/cache'
 import RightSidebar from '@/components/RightSidebar.vue'
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  themeVariables: {
+    darkMode: true,
+    background: '#12132a',
+    primaryColor: '#1a1b3a',
+    primaryTextColor: '#f0f0ff',
+    primaryBorderColor: '#8a5cf5',
+    lineColor: '#a78bfa',
+    secondaryColor: '#1a1b3a',
+    tertiaryColor: '#12132a'
+  }
+})
 
 export default {
   name: 'NoteView',
@@ -71,16 +87,30 @@ export default {
     }
   },
   data() {
+    const md = new MarkdownIt({
+      html: true,
+      linkify: true,
+      typographer: true,
+      breaks: true
+    })
+
+    const defaultFence = md.renderer.rules.fence || function (tokens, idx, options, env, self) {
+      return self.renderToken(tokens, idx, options)
+    }
+    md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+      const token = tokens[idx]
+      const lang = token.info.trim().toLowerCase()
+      if (lang === 'mermaid') {
+        return `<pre class="mermaid">${md.utils.escapeHtml(token.content)}</pre>`
+      }
+      return defaultFence(tokens, idx, options, env, self)
+    }
+
     return {
       note: null,
       loading: true,
       error: null,
-      md: new MarkdownIt({
-        html: true,
-        linkify: true,
-        typographer: true,
-        breaks: true
-      }),
+      md,
       prefetchCache: new Set(),
       prefetchTimeout: null,
       containerFolders: {}
@@ -159,7 +189,8 @@ export default {
         this.loading = false
         
         this.setupLinkPrefetch()
-        
+        this.renderMermaidDiagrams()
+
         this.prefetchLinkedNotes(this.note.links || [])
       } catch (err) {
         this.error = err.response?.data?.detail || err.message
@@ -227,6 +258,32 @@ export default {
 
         this.setupImageScreenButtons()
       })
+    },
+    renderMermaidDiagrams() {
+      this.$nextTick(() => {
+        const content = this.$refs.markdownContent
+        if (!content) return
+
+        const diagrams = content.querySelectorAll('pre.mermaid')
+        if (!diagrams.length) return
+
+        // Mermaid sizes diagrams (e.g. gantt) from the container's current
+        // offsetWidth. Right after the DOM patch the layout may not have
+        // settled yet (sibling panels still loading their own content), so
+        // wait until the container actually has width before rendering.
+        this.waitForLayoutWidth(content, () => {
+          mermaid.run({ nodes: diagrams }).catch(err => {
+            console.error('Failed to render Mermaid diagram:', err)
+          })
+        })
+      })
+    },
+    waitForLayoutWidth(el, callback, attempts = 0) {
+      if (el.offsetWidth > 0 || attempts >= 10) {
+        requestAnimationFrame(callback)
+        return
+      }
+      requestAnimationFrame(() => this.waitForLayoutWidth(el, callback, attempts + 1))
     },
     setupImageScreenButtons() {
       const content = this.$refs.markdownContent
@@ -567,6 +624,19 @@ export default {
   border-color: rgba(34, 211, 238, 0.8) !important;
   color: #fff !important;
   box-shadow: 0 0 15px rgba(34, 211, 238, 0.5) !important;
+}
+
+.markdown-content :deep(pre.mermaid) {
+  background: transparent;
+  border: none;
+  padding: 1rem 0;
+  overflow-x: auto;
+}
+
+.markdown-content :deep(pre.mermaid svg) {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
 }
 
 .markdown-content :deep(table) {
