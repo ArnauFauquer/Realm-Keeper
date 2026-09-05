@@ -27,7 +27,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.39
+          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.1.40
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
