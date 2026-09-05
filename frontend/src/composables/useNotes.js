@@ -1,18 +1,17 @@
 import { ref } from 'vue'
 import { getCached } from '@/api/http'
+import { apiUrl } from '@/config/env'
 
 export function useNotes() {
   const notes = ref([])
   const availableTags = ref([])
   const loading = ref(true)
   const error = ref(null)
-  
+
   const pageSize = 500
   const currentPage = ref(0)
   const hasMore = ref(true)
   const isLoadingMore = ref(false)
-  
-  const apiUrl = import.meta.env.VITE_API_URL || ''
 
   const fetchTags = async () => {
     try {

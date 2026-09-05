@@ -29,7 +29,10 @@
 <script>
 import * as d3 from 'd3'
 import { getCached } from '@/api/http'
+import { apiUrl } from '@/config/env'
+import { slugifyHeading } from '@/utils/slugify'
 import { getNodeColor } from '../config/nodeColors'
+import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 
 export default {
   name: 'RightSidebar',
@@ -52,41 +55,32 @@ export default {
     }
   },
   computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || ''
-    },
     headers() {
       if (!this.note || !this.note.content) return []
-      
+
       const lines = this.note.content.split('\n')
       const headers = []
       let headerCount = {}
       let inCodeBlock = false
-      
+
       lines.forEach(line => {
         // Simple code block detection to ignore headers inside code blocks
         if (line.trim().startsWith('```')) {
           inCodeBlock = !inCodeBlock
           return
         }
-        
+
         if (inCodeBlock) return
-        
+
         const match = line.match(/^(#{1,6})\s+(.*)/)
         if (match) {
           const level = match[1].length
           const text = match[2].trim()
-          
-          // Mimic markdown-it/NoteView logic for ID generation
-          const cleanContent = text.replace(/<[^>]+>/g, '')
-          const idBase = cleanContent.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '') || 'header'
-          headerCount[idBase] = (headerCount[idBase] || 0) + 1
-          const id = headerCount[idBase] > 1 ? `${idBase}-${headerCount[idBase] - 1}` : idBase
-          
+          const id = slugifyHeading(text, headerCount)
           headers.push({ level, text, id })
         }
       })
-      
+
       return headers
     }
   },
@@ -119,7 +113,7 @@ export default {
       this.error = null
       
       try {
-        const data = await getCached(`${this.apiUrl}/api/graph/all`, {
+        const data = await getCached(`${apiUrl}/api/graph/all`, {
           useCache: true,
           cacheTtl: 600 // 10 minutos
         })
@@ -137,27 +131,18 @@ export default {
         const relevantLinks = []
         
         data.links.forEach(link => {
-          const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-          const targetId = typeof link.target === 'object' ? link.target.id : link.target
-          
+          const sourceId = getLinkEndpointId(link.source)
+          const targetId = getLinkEndpointId(link.target)
+
           if (sourceId === currentId || targetId === currentId) {
             connectedIds.add(sourceId)
             connectedIds.add(targetId)
             relevantLinks.push({ ...link })
           }
         })
-        
+
         // Calculate global connection count (degree) for each node
-        const globalDegrees = {}
-        data.nodes.forEach(n => {
-          globalDegrees[n.id] = 0
-        })
-        data.links.forEach(link => {
-          const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-          const targetId = typeof link.target === 'object' ? link.target.id : link.target
-          if (globalDegrees[sourceId] !== undefined) globalDegrees[sourceId]++
-          if (globalDegrees[targetId] !== undefined) globalDegrees[targetId]++
-        })
+        const { degrees: globalDegrees } = computeDegrees(data.nodes, data.links)
 
         this.nodes = data.nodes.filter(n => connectedIds.has(n.id)).map(n => {
           const degree = globalDegrees[n.id] || 0
@@ -192,24 +177,11 @@ export default {
       const height = container.clientHeight || 250
 
       // ── Canvas starfield (drawn once, zero repaint) ──────────────────
-      const canvas = this.$refs.starCanvas
-      if (canvas) {
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        const rand = (a, b) => a + Math.random() * (b - a)
-        const starCount = Math.floor((width * height) / 2000)
-        for (let i = 0; i < starCount; i++) {
-          const r = Math.random()
-          const size = r < 0.7 ? rand(0.2, 0.6) : r < 0.9 ? rand(0.6, 1.1) : rand(1.1, 1.8)
-          const opacity = rand(0.12, 0.5)
-          const hue = rand(210, 260)
-          ctx.beginPath()
-          ctx.arc(rand(0, width), rand(0, height), size, 0, Math.PI * 2)
-          ctx.fillStyle = `hsla(${hue}, 60%, 90%, ${opacity})`
-          ctx.fill()
-        }
-      }
+      drawStarfield(this.$refs.starCanvas, width, height, {
+        density: 2000,
+        sizeRanges: [[0.2, 0.6], [0.6, 1.1], [1.1, 1.8]],
+        opacityRange: [0.12, 0.5]
+      })
 
       this.svg = d3.select(container)
         .attr('width', '100%')
@@ -250,6 +222,7 @@ export default {
 
       // ── Star nodes ──────────────────────────────────────────────────
       const currentNoteId = this.note.id
+      const { dragStarted, dragged, dragEnded } = createDragHandlers(() => this.simulation)
 
       const node = this.g.append('g')
         .selectAll('g')
@@ -263,9 +236,9 @@ export default {
           }
         })
         .call(d3.drag()
-          .on('start', this.dragStarted)
-          .on('drag', this.dragged)
-          .on('end', this.dragEnded))
+          .on('start', dragStarted)
+          .on('drag', dragged)
+          .on('end', dragEnded))
 
       // Outer glow ring
       node.append('circle')
@@ -351,20 +324,6 @@ export default {
           .translate(-(bounds.x + bounds.width / 2), -(bounds.y + bounds.height / 2))
         this.svg.transition().duration(750).call(this.zoom.transform, transform)
       }, 300)
-    },
-    dragStarted(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0.3).restart()
-      d.fx = d.x
-      d.fy = d.y
-    },
-    dragged(event, d) {
-      d.fx = event.x
-      d.fy = event.y
-    },
-    dragEnded(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0)
-      d.fx = null
-      d.fy = null
     }
   }
 }

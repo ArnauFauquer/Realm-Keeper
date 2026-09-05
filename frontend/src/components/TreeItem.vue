@@ -93,17 +93,6 @@ export default {
   background: rgba(138, 92, 245, 0.1);
 }
 
-.folder-with-note {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0;
-  border-radius: 4px;
-}
-
-.folder-with-note:hover {
-  background: rgba(138, 92, 245, 0.1);
-}
-
 .folder-toggle {
   margin-right: 0.25rem;
   cursor: pointer;

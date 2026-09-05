@@ -55,7 +55,7 @@ export async function getCached(url, options = {}) {
   return data
 }
 
-export async function postWithCache(url, data, options = {}) {
+export async function post(url, data, options = {}) {
   const response = await httpClient.post(url, data, options)
   return response.data
 }

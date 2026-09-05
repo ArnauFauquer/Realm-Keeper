@@ -54,6 +54,8 @@
 </template>
 
 <script>
+import { apiUrl } from '@/config/env'
+
 export default {
   name: 'ScreenView',
   data() {
@@ -69,9 +71,6 @@ export default {
     }
   },
   computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || ''
-    },
     isImage() {
       if (!this.displayUrl) return false
       const url = this.displayUrl.toLowerCase()
@@ -151,9 +150,9 @@ export default {
       // 1. Use the host from VITE_API_URL if it's set
       // 2. Otherwise, use the current window host (assuming backend is on same host/port, or proxied)
       let host = window.location.host
-      if (this.apiUrl) {
+      if (apiUrl) {
         // Strip protocol
-        const apiHost = this.apiUrl.replace(/^http(s)?:\/\//, '')
+        const apiHost = apiUrl.replace(/^http(s)?:\/\//, '')
         
         // If VITE_API_URL is just 'localhost:8000' but we are accessing via IP, 
         // we should try to use the current hostname but with the same port.

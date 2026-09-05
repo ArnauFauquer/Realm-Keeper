@@ -98,7 +98,9 @@
 <script>
 import * as d3 from 'd3'
 import { getCached } from '@/api/http'
+import { apiUrl } from '@/config/env'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
+import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 
 export default {
   name: 'GraphModal',
@@ -133,9 +135,6 @@ export default {
     }
   },
   computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || ''
-    },
     typeStatistics() {
       const stats = {}
       this.nodes.forEach(node => {
@@ -183,7 +182,7 @@ export default {
       this.error = null
       
       try {
-        const data = await getCached(`${this.apiUrl}/api/graph/all`, {
+        const data = await getCached(`${apiUrl}/api/graph/all`, {
           useCache: true,
           cacheTtl: 600 // 10 minutos
         })
@@ -219,27 +218,13 @@ export default {
         .attr('height', height)
 
       // ── Starfield on canvas (drawn once, zero repaint cost) ───────────
-      const canvas = this.$refs.starCanvas
-      if (canvas) {
-        canvas.width = width
-        canvas.height = height
-        const ctx = canvas.getContext('2d')
-        const rand = (min, max) => min + Math.random() * (max - min)
-        const starCount = Math.floor((width * height) / 6000)
-        for (let i = 0; i < starCount; i++) {
-          const x = rand(0, width)
-          const y = rand(0, height)
-          const r = Math.random()
-          const size = r < 0.7 ? rand(0.3, 0.8) : r < 0.9 ? rand(0.8, 1.5) : rand(1.5, 2.4)
-          const opacity = rand(0.15, 0.55)
-          const hue = rand(210, 260)
-          ctx.beginPath()
-          ctx.arc(x, y, size, 0, Math.PI * 2)
-          ctx.fillStyle = `hsla(${hue}, 60%, 90%, ${opacity})`
-          ctx.fill()
-        }
-      }
-      
+      drawStarfield(this.$refs.starCanvas, width, height, {
+        density: 6000,
+        sizeRanges: [[0.3, 0.8], [0.8, 1.5], [1.5, 2.4]],
+        opacityRange: [0.15, 0.55]
+      })
+
+
       const debouncedZoom = (event) => {
         this.g.attr('transform', event.transform)
       }
@@ -256,16 +241,7 @@ export default {
       this.g = this.svg.append('g')
       
       // ── Degree calculation ─────────────────────────────────────────────
-      const degrees = {}
-      this.nodes.forEach(node => { degrees[node.id] = 0 })
-      this.links.forEach(link => {
-        const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-        const targetId = typeof link.target === 'object' ? link.target.id : link.target
-        if (degrees[sourceId] !== undefined) degrees[sourceId]++
-        if (degrees[targetId] !== undefined) degrees[targetId]++
-      })
-
-      const maxDegree = Math.max(1, ...Object.values(degrees))
+      const { degrees, maxDegree } = computeDegrees(this.nodes, this.links)
 
       this.nodes.forEach(node => {
         node.degree = degrees[node.id] || 0
@@ -298,8 +274,10 @@ export default {
         .attr('stroke-width', 0.8)
       
       this.linkSelection = link
-      
+
       // ── Star nodes ────────────────────────────────────────────────────
+      const { dragStarted, dragged, dragEnded } = createDragHandlers(() => this.simulation)
+
       const node = this.g.append('g')
         .selectAll('g')
         .data(this.nodes)
@@ -307,9 +285,9 @@ export default {
         .append('g')
         .attr('class', 'graph-node')
         .call(d3.drag()
-          .on('start', (event, d) => this.dragStarted(event, d))
-          .on('drag', (event, d) => this.dragged(event, d))
-          .on('end', (event, d) => this.dragEnded(event, d)))
+          .on('start', dragStarted)
+          .on('drag', dragged)
+          .on('end', dragEnded))
       
       this.nodeSelection = node
       
@@ -393,12 +371,6 @@ export default {
       })
     },
 
-    getStarColor(node) {
-      // Convert node color to a lighter, more star-like variant
-      const base = this.getNodeColor(node)
-      return base
-    },
-    
     getNodeColor(node) {
       return getNodeColor(node)
     },
@@ -415,34 +387,17 @@ export default {
     closeModal() {
       this.$emit('close')
     },
-    
-    dragStarted(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0.3).restart()
-      d.fx = d.x
-      d.fy = d.y
-    },
-    
-    dragged(event, d) {
-      d.fx = event.x
-      d.fy = event.y
-    },
-    
-    dragEnded(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0)
-      d.fx = null
-      d.fy = null
-    },
-    
+
     highlightConnectedLinks(hoveredNode, highlight) {
       if (!this.linkSelection || !this.nodeSelection) return
-      
+
       const connectedNodeIds = new Set()
       connectedNodeIds.add(hoveredNode.id)
-      
+
       this.links.forEach(link => {
-        const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-        const targetId = typeof link.target === 'object' ? link.target.id : link.target
-        
+        const sourceId = getLinkEndpointId(link.source)
+        const targetId = getLinkEndpointId(link.target)
+
         if (sourceId === hoveredNode.id) {
           connectedNodeIds.add(targetId)
         } else if (targetId === hoveredNode.id) {
@@ -453,8 +408,8 @@ export default {
       if (highlight) {
         this.linkSelection.each(function(d) {
           const linkEl = d3.select(this)
-          const sourceId = typeof d.source === 'object' ? d.source.id : d.source
-          const targetId = typeof d.target === 'object' ? d.target.id : d.target
+          const sourceId = getLinkEndpointId(d.source)
+          const targetId = getLinkEndpointId(d.target)
           const isConnected = sourceId === hoveredNode.id || targetId === hoveredNode.id
           linkEl
             .attr('stroke', isConnected ? 'rgba(200, 225, 255, 0.85)' : 'rgba(100, 130, 200, 0.08)')
@@ -604,7 +559,7 @@ export default {
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--interactive-secondary);
   color: var(--text-primary);
 }
 
@@ -928,24 +883,6 @@ export default {
   color: var(--text-primary);
   font-size: 1rem;
   font-weight: 600;
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.25rem;
-  border-radius: 4px;
-  font-size: 1.2rem;
-}
-
-.close-btn:hover {
-  color: var(--text-primary);
-  background: var(--interactive-secondary);
 }
 
 .setting-group {

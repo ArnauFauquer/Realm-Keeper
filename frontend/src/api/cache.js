@@ -30,12 +30,3 @@ class CacheManager {
 
 export const apiCache = new CacheManager(5 * 60)
 
-export async function cachedFetch(key, fetchFn) {
-  const cached = apiCache.get(key)
-  if (cached) return cached
-
-  const result = await fetchFn()
-  apiCache.set(key, result)
-  return result
-}
-

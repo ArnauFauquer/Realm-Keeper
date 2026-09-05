@@ -50,10 +50,11 @@
 </template>
 
 <script>
-import axios from 'axios'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { cachedFetch } from '@/api/cache'
+import { getCached, post } from '@/api/http'
+import { apiUrl } from '@/config/env'
+import { slugifyHeading } from '@/utils/slugify'
 import RightSidebar from '@/components/RightSidebar.vue'
 
 mermaid.initialize({
@@ -129,9 +130,6 @@ export default {
     }
   },
   computed: {
-    apiUrl() {
-      return import.meta.env.VITE_API_URL || ''
-    },
     breadcrumbs() {
       if (!this.note || !this.note.id || !this.containerFolders) return []
       
@@ -168,15 +166,11 @@ export default {
       // Add IDs to headers for ToC navigation
       let headerCount = {}
       html = html.replace(/<h([1-6])>(.*?)<\/h\1>/g, (match, level, content) => {
-        // Strip tags from content to create a clean id
-        const cleanContent = content.replace(/<[^>]+>/g, '')
-        const idBase = cleanContent.toLowerCase().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '') || 'header'
-        headerCount[idBase] = (headerCount[idBase] || 0) + 1
-        const id = headerCount[idBase] > 1 ? `${idBase}-${headerCount[idBase] - 1}` : idBase
+        const id = slugifyHeading(content, headerCount)
         return `<h${level} id="${id}">${content}</h${level}>`
       })
-      
-      html = html.replace(/src="\/(assets|vault-assets)\//g, `src="${this.apiUrl}/vault-assets/`)
+
+      html = html.replace(/src="\/(assets|vault-assets)\//g, `src="${apiUrl}/vault-assets/`)
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })
@@ -192,12 +186,7 @@ export default {
       this.error = null
       
       try {
-        const cacheKey = `note:${this.notePath}`
-        
-        this.note = await cachedFetch(cacheKey, () =>
-          axios.get(`${this.apiUrl}/api/note/${this.notePath}`)
-            .then(r => r.data)
-        )
+        this.note = await getCached(`${apiUrl}/api/note/${this.notePath}`, { cacheTtl: 300 })
         this.loading = false
         
         this.setupLinkPrefetch()
@@ -217,14 +206,8 @@ export default {
           if (this.prefetchCache.has(linkId)) return
           
           this.prefetchCache.add(linkId)
-          
-          const cacheKey = `note:${linkId}`
-          cachedFetch(cacheKey, () =>
-            axios.get(`${this.apiUrl}/api/note/${linkId}`, {
-              timeout: 2000
-            })
-              .then(r => r.data)
-          ).catch(() => {
+
+          getCached(`${apiUrl}/api/note/${linkId}`, { cacheTtl: 300, timeout: 2000 }).catch(() => {
           })
         })
       }
@@ -243,14 +226,8 @@ export default {
       if (this.prefetchCache.has(linkId)) return
       
       this.prefetchCache.add(linkId)
-      
-      const cacheKey = `note:${linkId}`
-      cachedFetch(cacheKey, () =>
-        axios.get(`${this.apiUrl}/api/note/${linkId}`, {
-          timeout: 1500
-        })
-          .then(r => r.data)
-      ).catch(() => {
+
+      getCached(`${apiUrl}/api/note/${linkId}`, { cacheTtl: 300, timeout: 1500 }).catch(() => {
       })
     },
     setupLinkPrefetch() {
@@ -323,7 +300,7 @@ export default {
           const title = img.alt || ''
           
           try {
-            await axios.post(`${this.apiUrl}/api/screen/display`, { url, title })
+            await post(`${apiUrl}/api/screen/display`, { url, title })
             const originalText = btn.innerHTML
             btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Sent!</span>`
             btn.classList.add('sent')
@@ -340,8 +317,7 @@ export default {
     },
     async loadContainerFolders() {
       try {
-        const response = await axios.get(`${this.apiUrl}/api/container-folders`)
-        this.containerFolders = response.data
+        this.containerFolders = await getCached(`${apiUrl}/api/container-folders`, { cacheTtl: 300 })
       } catch (err) {
         console.error('Error loading container folders:', err)
       }
