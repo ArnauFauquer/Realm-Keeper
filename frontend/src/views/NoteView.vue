@@ -55,6 +55,7 @@ import mermaid from 'mermaid'
 import { getCached, post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
+import { renderCallouts } from '@/utils/callouts'
 import RightSidebar from '@/components/RightSidebar.vue'
 
 mermaid.initialize({
@@ -161,8 +162,9 @@ export default {
     },
     renderedContent() {
       if (!this.note || !this.note.content) return ''
-      let html = this.md.render(this.note.content)
-      
+      const withCallouts = renderCallouts(this.note.content, (text) => this.md.render(text))
+      let html = this.md.render(withCallouts)
+
       // Add IDs to headers for ToC navigation
       let headerCount = {}
       html = html.replace(/<h([1-6])>(.*?)<\/h\1>/g, (match, level, content) => {
@@ -648,4 +650,49 @@ export default {
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Obsidian-style callouts */
+.markdown-content :deep(.callout) {
+  --callout-color: #a78bfa;
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  border-left: 3px solid var(--callout-color);
+  background: color-mix(in srgb, var(--callout-color) 12%, transparent);
+}
+
+.markdown-content :deep(.callout-title) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-weight: 600;
+  color: var(--callout-color);
+}
+
+.markdown-content :deep(.callout-title .mdi) {
+  font-size: 1.1rem;
+}
+
+.markdown-content :deep(.callout-content) {
+  margin-top: 0.5rem;
+}
+
+.markdown-content :deep(.callout-content) > :first-child {
+  margin-top: 0;
+}
+
+.markdown-content :deep(.callout-content) > :last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content :deep(.callout-blue) { --callout-color: #58a6ff; }
+.markdown-content :deep(.callout-cyan) { --callout-color: #22d3ee; }
+.markdown-content :deep(.callout-teal) { --callout-color: #2dd4bf; }
+.markdown-content :deep(.callout-green) { --callout-color: #3fb950; }
+.markdown-content :deep(.callout-amber) { --callout-color: #d4a72c; }
+.markdown-content :deep(.callout-orange) { --callout-color: #f0883e; }
+.markdown-content :deep(.callout-red) { --callout-color: #f85149; }
+.markdown-content :deep(.callout-purple) { --callout-color: #a78bfa; }
+.markdown-content :deep(.callout-grey) { --callout-color: #8b949e; }
 </style>
