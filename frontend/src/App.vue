@@ -7,17 +7,27 @@
         <router-view />
       </main>
     </div>
+    <template v-if="!$route.meta.fullscreen">
+      <DiceFab />
+      <DicePanel />
+      <DiceToastStack />
+    </template>
+    <DiceOverlay />
   </div>
 </template>
 
 <script>
 import NotesSidebar from './components/NotesSidebar.vue'
 import NebulaBackground from './components/NebulaBackground.vue'
+import DiceFab from './components/DiceFab.vue'
+import DicePanel from './components/DicePanel.vue'
+import DiceOverlay from './components/DiceOverlay.vue'
+import DiceToastStack from './components/DiceToastStack.vue'
 import { applyTheme } from './config/theme'
 
 export default {
   name: 'App',
-  components: { NotesSidebar, NebulaBackground },
+  components: { NotesSidebar, NebulaBackground, DiceFab, DicePanel, DiceOverlay, DiceToastStack },
   provide() { return { addTagFilter: this.addTagFilter } },
   methods: {
     addTagFilter(tag) {

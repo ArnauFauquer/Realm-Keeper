@@ -11,10 +11,12 @@
   "dependencies": {
     "@mdi/font": "^7.4.47",
     "axios": "^1.6.2",
+    "cannon-es": "^0.20.0",
     "d3": "^7.9.0",
     "d3-force": "^3.0.0",
     "markdown-it": "^14.0.0",
     "mermaid": "^11.17.2",
+    "three": "^0.185.1",
     "vue": "^3.3.8",
     "vue-router": "^4.2.5"
   },

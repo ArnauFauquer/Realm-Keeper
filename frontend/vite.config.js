@@ -17,7 +17,9 @@ export default defineConfig({
       output: {
         manualChunks: {
           'd3': ['d3'],  // Separate d3 chunk
-          'vue-vendor': ['vue', 'vue-router']
+          'vue-vendor': ['vue', 'vue-router'],
+          'three': ['three'],
+          'cannon-es': ['cannon-es']
         }
       }
     },

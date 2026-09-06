@@ -56,6 +56,8 @@ import { getCached, post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { renderCallouts } from '@/utils/callouts'
+import { parseDiceFormula } from '@/utils/diceNotation'
+import { useDiceRoller } from '@/composables/useDiceRoller'
 import RightSidebar from '@/components/RightSidebar.vue'
 
 mermaid.initialize({
@@ -118,6 +120,20 @@ export default {
         return `<pre class="mermaid">${md.utils.escapeHtml(token.content)}</pre>`
       }
       return defaultFence(tokens, idx, options, env, self)
+    }
+
+    const defaultCodeInline = md.renderer.rules.code_inline || function (tokens, idx, options, env, self) {
+      return self.renderToken(tokens, idx, options)
+    }
+    md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
+      const token = tokens[idx]
+      const formula = token.content.trim()
+      if (parseDiceFormula(formula)) {
+        const escaped = md.utils.escapeHtml(formula)
+        return `<code class="dice-roll" data-dice-formula="${escaped}" role="button" tabindex="0" title="Roll ${escaped}">` +
+          `<span class="mdi mdi-dice-multiple"></span>${escaped}</code>`
+      }
+      return defaultCodeInline(tokens, idx, options, env, self)
     }
 
     return {
@@ -248,6 +264,26 @@ export default {
         })
 
         this.setupImageScreenButtons()
+        this.setupDiceRolls()
+      })
+    },
+    setupDiceRolls() {
+      const content = this.$refs.markdownContent
+      if (!content) return
+
+      const { roll } = useDiceRoller()
+      const rollEls = content.querySelectorAll('[data-dice-formula]:not([data-dice-wired])')
+      rollEls.forEach(el => {
+        el.setAttribute('data-dice-wired', '1')
+        const formula = el.getAttribute('data-dice-formula')
+        const trigger = (e) => {
+          e.preventDefault()
+          roll(formula)
+        }
+        el.addEventListener('click', trigger)
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') trigger(e)
+        })
       })
     },
     renderMermaidDiagrams() {
@@ -514,6 +550,27 @@ export default {
 .markdown-content :deep(pre code) {
   background: transparent;
   padding: 0;
+}
+
+.markdown-content :deep(code.dice-roll) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(138, 92, 245, 0.18);
+  border: 1px solid rgba(138, 92, 245, 0.4);
+  color: #c4b5fd;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.markdown-content :deep(code.dice-roll .mdi) {
+  font-size: 0.95em;
+}
+
+.markdown-content :deep(code.dice-roll:hover) {
+  background: rgba(138, 92, 245, 0.35);
+  border-color: rgba(138, 92, 245, 0.7);
+  transform: translateY(-1px);
 }
 
 .markdown-content :deep(a) {

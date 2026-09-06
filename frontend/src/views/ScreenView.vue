@@ -8,13 +8,13 @@
     <!-- Media area -->
     <div class="screen-media-area">
       <!-- 1. Waiting for first media -->
-      <div v-if="!displayUrl && !error" class="screen-loading">
+      <div v-if="!displayUrl && !error && !diceRoll" class="screen-loading">
         <div class="loading-spinner"></div>
         <p>Waiting for media…</p>
       </div>
 
       <!-- 2. Loading spinner while media is fetching -->
-      <div v-else-if="loading && !error" class="screen-loading">
+      <div v-else-if="loading && !error && !diceRoll" class="screen-loading">
         <div class="loading-spinner"></div>
         <p v-if="displayTitle" class="loading-text">Loading {{ displayTitle }}…</p>
       </div>
@@ -27,6 +27,24 @@
         <p>Could not load media</p>
         <small>{{ displayUrl }}</small>
         <button @click="retry" class="retry-btn">Retry</button>
+      </div>
+
+      <!-- 5. Dice roll result -->
+      <div v-else-if="diceRoll" class="screen-dice-result" :key="diceRoll.id">
+        <canvas ref="diceCanvas" class="dice-canvas"></canvas>
+        <div class="dice-caption">
+          <div class="dice-formula">{{ diceRoll.formula }}</div>
+          <div class="dice-breakdown">
+            <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
+              <span v-if="i > 0" class="dice-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
+              <span class="dice-rolls">[{{ g.rolls.join(', ') }}]</span>
+            </span>
+            <span v-if="diceRoll.flatModifier" class="dice-flat">
+              {{ diceRoll.flatModifier > 0 ? '+' : '' }}{{ diceRoll.flatModifier }}
+            </span>
+          </div>
+          <div class="dice-total">{{ diceRoll.total }}</div>
+        </div>
       </div>
 
       <!-- 4. The actual media (rendered even if loading to trigger @load) -->
@@ -68,6 +86,10 @@ export default {
       titleTimer: null,
       ws: null,
       dominantColor: null,
+      diceRoll: null,
+      diceClearTimer: null,
+      diceSeq: 0,
+      diceWorld: null,
     }
   },
   computed: {
@@ -175,11 +197,18 @@ export default {
           console.log('WS message received:', data)
           
           if (data.type === 'display_media') {
+            this.clearDiceRoll()
             this.updateMedia(data.url, data.title)
+          } else if (data.type === 'dice_roll') {
+            this.displayUrl = ''
+            this.displayTitle = ''
+            this.loading = false
+            this.showDiceRoll(data)
           } else if (data.type === 'clear_screen') {
             this.displayUrl = ''
             this.displayTitle = ''
             this.loading = false
+            this.clearDiceRoll()
           }
         } catch (e) {
           console.error('Error parsing WS message:', e)
@@ -229,6 +258,57 @@ export default {
       this.error = false
       this.displayUrl = finalUrl
       this.displayTitle = title || ''
+    },
+    showDiceRoll(data) {
+      if (this.diceClearTimer) clearTimeout(this.diceClearTimer)
+      this.diceRoll = {
+        id: ++this.diceSeq,
+        formula: data.formula || '',
+        groups: data.groups || [],
+        flatModifier: data.flatModifier || 0,
+        total: data.total
+      }
+      this.diceClearTimer = setTimeout(() => {
+        this.diceRoll = null
+        this.diceClearTimer = null
+      }, 15000)
+      this.$nextTick(() => this.playDiceReplay(data.groups || []))
+    },
+    clearDiceRoll() {
+      if (this.diceClearTimer) {
+        clearTimeout(this.diceClearTimer)
+        this.diceClearTimer = null
+      }
+      this.diceRoll = null
+      this.teardownDiceWorld()
+    },
+    async playDiceReplay(groups) {
+      const canvas = this.$refs.diceCanvas
+      if (!canvas) return
+
+      this.teardownDiceWorld()
+
+      const [{ createDiceWorld }, { replayGroups }, { DEFAULT_DICE_THEME }] = await Promise.all([
+        import('@/dice/diceWorld'),
+        import('@/dice/diceRoller'),
+        import('@/dice/diceTheme')
+      ])
+
+      // The replay may have been superseded by a newer roll (or cleared)
+      // while those dynamic imports were loading.
+      if (this.$refs.diceCanvas !== canvas || !this.diceRoll) return
+
+      const world = createDiceWorld(canvas)
+      this.diceWorld = world
+      const rect = canvas.getBoundingClientRect()
+      world.resize(rect.width || window.innerWidth, rect.height || window.innerHeight)
+      await replayGroups(world, groups, DEFAULT_DICE_THEME)
+    },
+    teardownDiceWorld() {
+      if (this.diceWorld) {
+        this.diceWorld.dispose()
+        this.diceWorld = null
+      }
     }
   },
   mounted() {
@@ -251,6 +331,8 @@ export default {
       this.ws.close()
     }
     clearTimeout(this.titleTimer)
+    clearTimeout(this.diceClearTimer)
+    this.teardownDiceWorld()
   }
 }
 </script>
@@ -383,5 +465,75 @@ export default {
 .loading-text {
   font-size: 0.9rem;
   opacity: 0.7;
+}
+
+/* ─── Dice roll result ─── */
+.screen-dice-result {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  animation: dice-result-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+
+@keyframes dice-result-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dice-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.dice-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2.5rem 2rem 3rem;
+  background: linear-gradient(to top, rgba(2, 2, 10, 0.85) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.dice-formula {
+  font-size: 1.4rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(199, 178, 255, 0.75);
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.dice-breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+  font-size: 1.4rem;
+  color: rgba(255, 255, 255, 0.65);
+  max-width: 80vw;
+}
+
+.dice-sign {
+  margin-right: 0.4rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.dice-total {
+  font-size: 6rem;
+  font-weight: 700;
+  line-height: 1;
+  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 40px rgba(138, 92, 245, 0.5));
 }
 </style>

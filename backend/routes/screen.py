@@ -67,6 +67,21 @@ async def display_media(data: Dict[str, str]):
     })
     return {"status": "success"}
 
+@router.post("/api/screen/dice")
+async def display_dice(data: dict):
+    """
+    Broadcasts a dice roll result to all connected screens.
+    Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
+    """
+    await manager.broadcast({
+        "type": "dice_roll",
+        "formula": data.get("formula", ""),
+        "groups": data.get("groups", []),
+        "flatModifier": data.get("flatModifier", 0),
+        "total": data.get("total", 0)
+    })
+    return {"status": "success"}
+
 @router.post("/api/screen/clear")
 async def clear_screen():
     """Clears all connected screens."""
