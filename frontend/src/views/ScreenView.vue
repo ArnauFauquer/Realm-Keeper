@@ -8,13 +8,13 @@
     <!-- Media area -->
     <div class="screen-media-area">
       <!-- 1. Waiting for first media -->
-      <div v-if="!displayUrl && !error && !diceRoll" class="screen-loading">
+      <div v-if="!displayUrl && !error" class="screen-loading">
         <div class="loading-spinner"></div>
         <p>Waiting for media…</p>
       </div>
 
       <!-- 2. Loading spinner while media is fetching -->
-      <div v-else-if="loading && !error && !diceRoll" class="screen-loading">
+      <div v-else-if="loading && !error" class="screen-loading">
         <div class="loading-spinner"></div>
         <p v-if="displayTitle" class="loading-text">Loading {{ displayTitle }}…</p>
       </div>
@@ -29,24 +29,6 @@
         <button @click="retry" class="retry-btn">Retry</button>
       </div>
 
-      <!-- 5. Dice roll result -->
-      <div v-else-if="diceRoll" class="screen-dice-result" :key="diceRoll.id">
-        <canvas ref="diceCanvas" class="dice-canvas"></canvas>
-        <div class="dice-caption">
-          <div class="dice-formula">{{ diceRoll.formula }}</div>
-          <div class="dice-breakdown">
-            <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
-              <span v-if="i > 0" class="dice-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
-              <span class="dice-rolls">[{{ g.rolls.join(', ') }}]</span>
-            </span>
-            <span v-if="diceRoll.flatModifier" class="dice-flat">
-              {{ diceRoll.flatModifier > 0 ? '+' : '' }}{{ diceRoll.flatModifier }}
-            </span>
-          </div>
-          <div class="dice-total">{{ diceRoll.total }}</div>
-        </div>
-      </div>
-
       <!-- 4. The actual media (rendered even if loading to trigger @load) -->
       <img
         v-if="displayUrl && isImage"
@@ -59,6 +41,26 @@
         @error="onMediaError"
         draggable="false"
       />
+    </div>
+
+    <!-- Dice roll overlay - sits on top of whatever is showing above (waiting
+         state or an image) without touching its state, so that content is
+         still there, untouched, once the roll's display timer clears it. -->
+    <div v-if="diceRoll" class="screen-dice-result" :key="diceRoll.id">
+      <canvas ref="diceCanvas" class="dice-canvas"></canvas>
+      <div class="dice-caption">
+        <div class="dice-formula">{{ diceRoll.formula }}</div>
+        <div class="dice-breakdown">
+          <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
+            <span v-if="i > 0" class="dice-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
+            <span class="dice-rolls">[{{ g.rolls.join(', ') }}]</span>
+          </span>
+          <span v-if="diceRoll.flatModifier" class="dice-flat">
+            {{ diceRoll.flatModifier > 0 ? '+' : '' }}{{ diceRoll.flatModifier }}
+          </span>
+        </div>
+        <div class="dice-total">{{ diceRoll.total }}</div>
+      </div>
     </div>
 
     <!-- Minimal Title Overlay (Optional, user said remove buttons, but title might be nice. 
@@ -200,9 +202,6 @@ export default {
             this.clearDiceRoll()
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
-            this.displayUrl = ''
-            this.displayTitle = ''
-            this.loading = false
             this.showDiceRoll(data)
           } else if (data.type === 'clear_screen') {
             this.displayUrl = ''
@@ -468,10 +467,13 @@ export default {
 }
 
 /* ─── Dice roll result ─── */
+/* Fixed overlay above everything else - whatever was showing underneath
+   (the waiting state, or an image) is untouched and reappears once this
+   clears, instead of being cleared by the roll itself. */
 .screen-dice-result {
-  position: relative;
-  width: 100vw;
-  height: 100vh;
+  position: fixed;
+  inset: 0;
+  z-index: 20;
   animation: dice-result-in 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3);
 }
 
