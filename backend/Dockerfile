@@ -19,4 +19,9 @@ USER 1000
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
+# --proxy-headers/--forwarded-allow-ips: trust X-Forwarded-Proto from the
+# ingress (Traefik terminates TLS and forwards plain HTTP internally).
+# Without this, request.url_for() in routes/auth.py builds the Google OAuth
+# redirect_uri as http://... instead of https://..., which Google rejects
+# with redirect_uri_mismatch since only the https variant is registered.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--proxy-headers", "--forwarded-allow-ips=*"]
