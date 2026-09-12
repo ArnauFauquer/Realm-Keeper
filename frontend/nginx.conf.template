@@ -1,0 +1,55 @@
+server {
+    listen 8080;
+    server_name localhost;
+
+    # Support running as non-root
+    client_body_temp_path /tmp/client_temp;
+    proxy_temp_path       /tmp/proxy_temp_path;
+    fastcgi_temp_path     /tmp/fastcgi_temp;
+    uwsgi_temp_path       /tmp/uwsgi_temp;
+    scgi_temp_path        /tmp/scgi_temp;
+
+    # This same image also runs in production (k8s), where the "backend"
+    # hostname below doesn't exist — Traefik routes /api directly to the
+    # backend Service there, never through this nginx. NGINX_LOCAL_RESOLVERS
+    # comes from the base image's own entrypoint script (reads the
+    # container's /etc/resolv.conf; enabled via NGINX_ENTRYPOINT_LOCAL_RESOLVERS
+    # in the Dockerfile) and this file is processed by its envsubst-on-templates
+    # step. A variable in proxy_pass makes nginx resolve "backend" lazily
+    # per-request instead of at startup, so a missing hostname 502s a request
+    # instead of crashing the whole process (nginx: emerg "host not found").
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+    set $backend_upstream http://backend:8000;
+
+    # Mirrors the production ingress path routing (.argocd/ingress.yaml): the
+    # backend appears same-origin so the auth session cookie works without
+    # SameSite=None/HTTPS gymnastics. Only reachable in docker-compose, where
+    # "backend" resolves via Docker's embedded DNS.
+    location /api/ {
+        proxy_pass $backend_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /vault-assets/ {
+        proxy_pass $backend_upstream;
+    }
+
+    location /ws/ {
+        proxy_pass $backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
