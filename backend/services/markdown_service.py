@@ -1,4 +1,6 @@
 import os
+import subprocess
+import threading
 from pathlib import Path
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
@@ -8,19 +10,115 @@ from config.logging import get_logger
 
 logger = get_logger(__name__)
 
+
+class NoteSaveError(Exception):
+    """Raised when writing a note to disk or to git fails."""
+    pass
+
+
 class MarkdownService:
     def __init__(self, vault_path: str, ignore_tag: Optional[str] = None):
         self.vault_path = Path(vault_path)
         self.ignore_tag = ignore_tag
         self.parser = MarkdownParser(vault_path=self.vault_path)
-        
+
         self._cache: Dict[str, tuple] = {}
         self._cache_ttl: timedelta = timedelta(minutes=5)
-        
+
         self._all_notes_cache: Optional[List[NoteMetadata]] = None
         self._all_notes_cached_at: Optional[datetime] = None
-        
+
+        self._git_lock = threading.Lock()
+
         self.vault_path.mkdir(parents=True, exist_ok=True)
+
+    def _resolve_note_path(self, note_id: str) -> Path:
+        """Validate a note id and resolve it to a path guaranteed to stay
+        inside the vault. Raises ValueError on any traversal/invalid segment."""
+        normalized = note_id.strip('/')
+        if not normalized:
+            raise ValueError("Note path cannot be empty")
+
+        for segment in normalized.split('/'):
+            if segment in ('', '.', '..') or '\\' in segment or '\x00' in segment:
+                raise ValueError(f"Invalid note path segment: {segment!r}")
+
+        full_path = (self.vault_path / f"{normalized}.md").resolve()
+        vault_resolved = self.vault_path.resolve()
+        try:
+            full_path.relative_to(vault_resolved)
+        except ValueError:
+            raise ValueError("Access denied: path must be within vault")
+
+        return full_path
+
+    def get_raw_content(self, note_id: str) -> Optional[str]:
+        """Returns the note's file content verbatim (frontmatter and
+        [[wikilinks]] untouched), for editing — as opposed to get_note()'s
+        content, which is transformed for rendering."""
+        note_path = self._resolve_note_path(note_id)
+        if not note_path.exists():
+            return None
+        return note_path.read_text(encoding='utf-8')
+
+    def save_note(self, note_id: str, content: str, author_name: str, author_email: str) -> bool:
+        """Writes a note's raw markdown to disk and commits + pushes it to
+        the vault's git repo. Returns True if this created a new note, False
+        if it updated an existing one. Raises NoteSaveError on git failure."""
+        note_path = self._resolve_note_path(note_id)
+        is_new = not note_path.exists()
+
+        with self._git_lock:
+            # Best-effort: reduces (but does not guarantee against) a
+            # rejected push if the remote moved on since our last sync.
+            subprocess.run(
+                ["git", "-C", str(self.vault_path), "pull", "--ff-only"],
+                capture_output=True, text=True, timeout=30
+            )
+
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+            note_path.write_text(content, encoding='utf-8')
+
+            rel_path = str(note_path.relative_to(self.vault_path.resolve()))
+            add_result = subprocess.run(
+                ["git", "-C", str(self.vault_path), "add", rel_path],
+                capture_output=True, text=True, timeout=30
+            )
+            if add_result.returncode != 0:
+                raise NoteSaveError(f"git add failed: {add_result.stderr.strip()}")
+
+            verb = "Create" if is_new else "Update"
+            commit_result = subprocess.run(
+                ["git", "-C", str(self.vault_path),
+                 "-c", f"user.name={author_name}",
+                 "-c", f"user.email={author_email}",
+                 "commit", "-m", f"{verb} note: {note_id}"],
+                capture_output=True, text=True, timeout=30
+            )
+            if commit_result.returncode != 0:
+                output = commit_result.stdout + commit_result.stderr
+                if "nothing to commit" in output:
+                    raise NoteSaveError("No changes to save.")
+                raise NoteSaveError(f"git commit failed: {output.strip()}")
+
+            push_result = subprocess.run(
+                ["git", "-C", str(self.vault_path), "push"],
+                capture_output=True, text=True, timeout=60
+            )
+            if push_result.returncode != 0:
+                subprocess.run(
+                    ["git", "-C", str(self.vault_path), "pull", "--rebase"],
+                    capture_output=True, text=True, timeout=30
+                )
+                push_retry = subprocess.run(
+                    ["git", "-C", str(self.vault_path), "push"],
+                    capture_output=True, text=True, timeout=60
+                )
+                if push_retry.returncode != 0:
+                    raise NoteSaveError(f"git push failed: {push_retry.stderr.strip()}")
+
+        self.invalidate_cache()
+        return is_new
     
     def get_all_notes(self, search: Optional[str] = None, tags: Optional[str] = None) -> List[NoteMetadata]:
         # Simple caching for unfiltered notes

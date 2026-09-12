@@ -2,11 +2,15 @@ import asyncio
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Response
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.middleware.sessions import SessionMiddleware
+from routes.auth import require_auth
+from routes.auth import router as auth_router
 from routes.notes import router as notes_router
 from routes.screen import router as screen_router
+from routes.player import router as player_router
 
 from config.settings import settings
 from config.logging import setup_logging
@@ -126,6 +130,15 @@ app.add_middleware(
     max_age=600,
 )
 
+# Only used for the brief OAuth handshake (state/nonce) — separate from our
+# own long-lived rk_session cookie issued in routes/auth.py.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET_KEY,
+    same_site="lax",
+    https_only=settings.SESSION_COOKIE_SECURE,
+)
+
 assets_path = settings.VAULT_PATH / '_assets'
 
 @app.get("/vault-assets/{filename:path}")
@@ -151,8 +164,10 @@ async def get_asset(filename: str):
         }
     )
 
-app.include_router(notes_router)
-app.include_router(screen_router)
+app.include_router(auth_router)
+app.include_router(notes_router, dependencies=[Depends(require_auth)])
+app.include_router(screen_router)  # stays public: the GM's screen display has no login
+app.include_router(player_router, dependencies=[Depends(require_auth)])
 
 @app.get("/")
 async def root():

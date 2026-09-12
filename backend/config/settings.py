@@ -1,5 +1,6 @@
 import os
 import logging
+import secrets
 from pathlib import Path
 from typing import List
 
@@ -20,6 +21,27 @@ class Settings:
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     LOG_DIR: Path = Path(os.getenv("LOG_DIR", "/app/logs"))
+
+    S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "")
+    S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "")
+    S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "")
+    S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "realm-keeper-audio")
+    S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    # Falls back to a random key generated at process startup if unset, so
+    # auth still works locally without configuration — but every restart
+    # invalidates existing sessions until a real value is set (required in
+    # production, where you want sessions to survive a redeploy).
+    SESSION_SECRET_KEY: str = os.getenv("SESSION_SECRET_KEY") or secrets.token_urlsafe(32)
+    ALLOWED_EMAILS: List[str] = [
+        e.strip().lower()
+        for e in os.getenv("ALLOWED_EMAILS", "").split(",")
+        if e.strip()
+    ]
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    SESSION_COOKIE_SECURE: bool = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
 
     def __init__(self):
         self._validate_paths()

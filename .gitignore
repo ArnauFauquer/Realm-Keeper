@@ -19,8 +19,12 @@ dist/
 # IDEs
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
+
+# Local vault runtime data (synced from REPO_URL on startup)
+backend/vault/
 
 # Environment
 .env

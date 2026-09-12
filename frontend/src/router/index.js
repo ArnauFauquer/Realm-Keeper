@@ -23,7 +23,7 @@ const routes = [
     path: '/screen',
     name: 'Screen',
     component: ScreenView,
-    meta: { fullscreen: true }
+    meta: { fullscreen: true, public: true }
   }
 ]
 

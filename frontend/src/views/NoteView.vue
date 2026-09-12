@@ -4,20 +4,77 @@
       <div v-if="loading" class="loading">
         <p>Loading note...</p>
       </div>
-      
+
+      <div v-else-if="isEditing" class="note-content editor-shell">
+        <header class="editor-header">
+          <h1>{{ isCreating ? 'New note' : note.title }}</h1>
+          <p class="editor-path">{{ notePath }}</p>
+        </header>
+
+        <div class="editor-tabs">
+          <button
+            class="editor-tab"
+            :class="{ active: editorTab === 'write' }"
+            @click="editorTab = 'write'"
+          >Write</button>
+          <button
+            class="editor-tab"
+            :class="{ active: editorTab === 'preview' }"
+            @click="editorTab = 'preview'"
+          >Preview</button>
+        </div>
+
+        <textarea
+          v-if="editorTab === 'write'"
+          v-model="draftContent"
+          class="editor-textarea"
+          placeholder="# Title
+
+Write your note in Markdown..."
+          spellcheck="false"
+        ></textarea>
+        <article
+          v-else
+          class="markdown-content editor-preview"
+          v-html="draftPreviewHtml"
+        ></article>
+
+        <p v-if="saveError" class="editor-error">{{ saveError }}</p>
+
+        <div class="editor-actions">
+          <button class="editor-btn cancel" :disabled="saving" @click="cancelEditing">Cancel</button>
+          <button class="editor-btn save" :disabled="saving" @click="saveNote">
+            <span v-if="saving" class="btn-spinner"></span>
+            {{ saving ? 'Saving…' : 'Save' }}
+          </button>
+        </div>
+      </div>
+
+      <div v-else-if="noteNotFound" class="note-content not-found">
+        <span class="mdi mdi-file-question-outline"></span>
+        <h2>This note doesn't exist yet</h2>
+        <p class="not-found-path">{{ notePath }}</p>
+        <button class="editor-btn save" @click="startCreating">Create this note</button>
+      </div>
+
       <div v-else-if="error" class="error">
         <h2>Error</h2>
         <p>{{ error }}</p>
       </div>
-      
+
       <div v-else-if="note" class="note-content">
         <header class="note-header">
-          <h1>{{ note.title }}</h1>
+          <div class="note-header-top">
+            <h1>{{ note.title }}</h1>
+            <button class="edit-note-btn" title="Edit this note" @click="startEditing">
+              <span class="mdi mdi-pencil-outline"></span>
+            </button>
+          </div>
           <div class="note-meta">
             <nav class="note-breadcrumb">
               <template v-for="(crumb, index) in breadcrumbs" :key="index">
-                <router-link 
-                  v-if="crumb.to" 
+                <router-link
+                  v-if="crumb.to"
                   :to="crumb.to"
                   class="breadcrumb-link"
                 >
@@ -28,9 +85,9 @@
               </template>
             </nav>
             <div v-if="note.tags && note.tags.length" class="tags">
-              <span 
-                v-for="tag in note.tags" 
-                :key="tag" 
+              <span
+                v-for="tag in note.tags"
+                :key="tag"
                 class="tag clickable"
                 @click="filterByTag(tag)"
                 title="Filter by this tag"
@@ -40,19 +97,19 @@
             </div>
           </div>
         </header>
-        
+
         <article class="markdown-content" ref="markdownContent" v-html="renderedContent"></article>
       </div>
     </div>
-    
-    <RightSidebar v-if="note && !loading && !error" :note="note" />
+
+    <RightSidebar v-if="note && !loading && !error && !isEditing" :note="note" />
   </div>
 </template>
 
 <script>
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
-import { getCached, post } from '@/api/http'
+import { getCached, post, put, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { renderCallouts } from '@/utils/callouts'
@@ -140,13 +197,24 @@ export default {
       note: null,
       loading: true,
       error: null,
+      noteNotFound: false,
       md,
       prefetchCache: new Set(),
       prefetchTimeout: null,
-      containerFolders: {}
+      containerFolders: {},
+      isEditing: false,
+      isCreating: false,
+      editorTab: 'write',
+      draftContent: '',
+      saving: false,
+      saveError: null
     }
   },
   computed: {
+    draftPreviewHtml() {
+      if (!this.draftContent.trim()) return '<p class="preview-empty">Nothing to preview yet.</p>'
+      return this.md.render(this.draftContent)
+    },
     breadcrumbs() {
       if (!this.note || !this.note.id || !this.containerFolders) return []
       
@@ -202,18 +270,70 @@ export default {
     async fetchNote() {
       this.loading = true
       this.error = null
-      
+      this.noteNotFound = false
+      this.isEditing = false
+      this.isCreating = false
+
       try {
         this.note = await getCached(`${apiUrl}/api/note/${this.notePath}`, { cacheTtl: 300 })
         this.loading = false
-        
+
         this.setupLinkPrefetch()
         this.renderMermaidDiagrams()
 
         this.prefetchLinkedNotes(this.note.links || [])
       } catch (err) {
-        this.error = err.response?.data?.detail || err.message
         this.loading = false
+        if (err.response?.status === 404) {
+          this.noteNotFound = true
+          if (this.$route.query.new === '1') {
+            this.startCreating()
+          }
+        } else {
+          this.error = err.response?.data?.detail || err.message
+        }
+      }
+    },
+    async startEditing() {
+      this.saveError = null
+      this.editorTab = 'write'
+      try {
+        const data = await getCached(`${apiUrl}/api/note-raw/${this.notePath}`, { useCache: false })
+        this.draftContent = data.content
+        this.isEditing = true
+        this.isCreating = false
+      } catch (err) {
+        this.error = err.response?.data?.detail || err.message
+      }
+    },
+    startCreating() {
+      const title = this.notePath.split('/').pop()
+      this.draftContent = `# ${title}\n\n`
+      this.editorTab = 'write'
+      this.saveError = null
+      this.isCreating = true
+      this.isEditing = true
+    },
+    cancelEditing() {
+      this.isEditing = false
+      this.isCreating = false
+      this.saveError = null
+    },
+    async saveNote() {
+      this.saving = true
+      this.saveError = null
+      try {
+        await put(`${apiUrl}/api/note/${this.notePath}`, { content: this.draftContent })
+        invalidateCached(`${apiUrl}/api/note/${this.notePath}`)
+        invalidateCached(`${apiUrl}/api/note-raw/${this.notePath}`)
+        invalidateCached(`${apiUrl}/api/notes`)
+        this.isEditing = false
+        this.isCreating = false
+        await this.fetchNote()
+      } catch (err) {
+        this.saveError = err.response?.data?.detail || err.message || 'Could not save the note.'
+      } finally {
+        this.saving = false
       }
     },
     prefetchLinkedNotes(links) {
@@ -428,6 +548,214 @@ export default {
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+}
+
+.note-header-top {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.edit-note-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.edit-note-btn:hover {
+  background: rgba(138, 92, 245, 0.15);
+  color: var(--interactive-primaryHover);
+}
+
+.edit-note-btn .mdi {
+  font-size: 1.15rem;
+}
+
+/* ── Editor ─────────────────────────────────────────────────── */
+.editor-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.editor-header {
+  border-bottom: 1px solid var(--border-light);
+  padding-bottom: 1rem;
+}
+
+.editor-header h1 {
+  margin: 0 0 0.25rem 0;
+  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.editor-path {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.editor-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.editor-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.editor-tab:hover {
+  color: var(--text-primary);
+}
+
+.editor-tab.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--interactive-primary);
+}
+
+.editor-textarea {
+  width: 100%;
+  min-height: 50vh;
+  resize: vertical;
+  background: rgba(8, 9, 20, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 1rem;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.editor-textarea:focus {
+  outline: none;
+  border-color: var(--interactive-primary);
+}
+
+.editor-preview {
+  min-height: 50vh;
+  padding: 1rem;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(8, 9, 20, 0.3);
+}
+
+.editor-preview :deep(.preview-empty) {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.editor-error {
+  color: var(--status-error, #f87171);
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.editor-btn {
+  padding: 0.55rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid transparent;
+}
+
+.editor-btn.cancel {
+  background: transparent;
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+}
+
+.editor-btn.cancel:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.editor-btn.save {
+  background: var(--interactive-primary);
+  border-color: var(--interactive-primary);
+  color: white;
+}
+
+.editor-btn.save:hover {
+  background: var(--interactive-primaryHover);
+}
+
+.editor-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: btn-spin 0.7s linear infinite;
+}
+
+@keyframes btn-spin {
+  to { transform: rotate(360deg); }
+}
+
+.not-found {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.75rem;
+  padding: 4rem 2rem;
+}
+
+.not-found .mdi {
+  font-size: 3rem;
+  color: var(--text-tertiary);
+}
+
+.not-found h2 {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.not-found-path {
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  color: var(--text-tertiary);
+  margin: 0 0 0.5rem 0;
 }
 
 .note-meta {

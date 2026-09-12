@@ -30,7 +30,7 @@
 import * as d3 from 'd3'
 import { getCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
-import { slugifyHeading } from '@/utils/slugify'
+import { slugifyHeading, stripInlineLinkSyntax } from '@/utils/slugify'
 import { getNodeColor } from '../config/nodeColors'
 import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 
@@ -75,8 +75,9 @@ export default {
         const match = line.match(/^(#{1,6})\s+(.*)/)
         if (match) {
           const level = match[1].length
-          const text = match[2].trim()
-          const id = slugifyHeading(text, headerCount)
+          const rawText = match[2].trim()
+          const text = stripInlineLinkSyntax(rawText)
+          const id = slugifyHeading(rawText, headerCount)
           headers.push({ level, text, id })
         }
       })

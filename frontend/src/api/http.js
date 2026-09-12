@@ -1,8 +1,10 @@
 import axios from 'axios'
 import { apiCache } from './cache'
+import { useAuth } from '@/composables/useAuth'
 
 const httpClient = axios.create({
   timeout: 30000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json'
   }
@@ -22,6 +24,9 @@ httpClient.interceptors.response.use(
   (error) => {
     if (error.response && error.response.status >= 500) {
       console.warn(`[API Error] ${error.config.method.toUpperCase()} ${error.config.url}:`, error.message)
+    }
+    if (error.response && error.response.status === 401) {
+      useAuth().user.value = null
     }
     return Promise.reject(error)
   }
@@ -58,5 +63,14 @@ export async function getCached(url, options = {}) {
 export async function post(url, data, options = {}) {
   const response = await httpClient.post(url, data, options)
   return response.data
+}
+
+export async function put(url, data, options = {}) {
+  const response = await httpClient.put(url, data, options)
+  return response.data
+}
+
+export function invalidateCached(url) {
+  apiCache.delete(`GET:${url}`)
 }
 

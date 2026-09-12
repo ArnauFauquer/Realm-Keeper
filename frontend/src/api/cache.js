@@ -23,6 +23,10 @@ class CacheManager {
     return item.value
   }
 
+  delete(key) {
+    this.cache.delete(key)
+  }
+
   clear() {
     this.cache.clear()
   }

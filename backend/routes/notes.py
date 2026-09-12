@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
 from pathlib import Path
+from pydantic import BaseModel
 from typing import List, Optional, Dict
 from models.note import Note, NoteMetadata
-from services.markdown_service import MarkdownService
+from services.markdown_service import MarkdownService, NoteSaveError
+from routes.auth import require_auth
 from config.settings import settings
 from config.logging import get_logger
 
@@ -49,11 +51,53 @@ async def get_note(note_path: str, service: MarkdownService = Depends(get_markdo
         )
     
     note = service.get_note(normalized_path)
-    
+
     if not note:
         raise HTTPException(status_code=404, detail=f"Note not found: {note_path}")
-    
+
     return note
+
+
+class NoteSaveRequest(BaseModel):
+    content: str
+
+
+@router.get("/note-raw/{note_path:path}")
+async def get_note_raw(note_path: str, service: MarkdownService = Depends(get_markdown_service)):
+    normalized_path = note_path.strip('/')
+    try:
+        content = service.get_raw_content(normalized_path)
+    except ValueError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+
+    if content is None:
+        raise HTTPException(status_code=404, detail=f"Note not found: {note_path}")
+
+    return {"content": content}
+
+
+@router.put("/note/{note_path:path}")
+async def save_note(
+    note_path: str,
+    body: NoteSaveRequest,
+    user: dict = Depends(require_auth),
+    service: MarkdownService = Depends(get_markdown_service)
+):
+    normalized_path = note_path.strip('/')
+    try:
+        is_new = service.save_note(
+            normalized_path,
+            body.content,
+            author_name=user.get("name") or user["email"],
+            author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except NoteSaveError as e:
+        logger.error(f"Failed to save note {note_path}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+    return {"status": "created" if is_new else "updated"}
 
 @router.get("/tags", response_model=List[str])
 async def get_all_tags(service: MarkdownService = Depends(get_markdown_service)):

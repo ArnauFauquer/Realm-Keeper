@@ -1,0 +1,23 @@
+# Provisions a real S3-compatible bucket for the audio player via the
+# existing Rook-Ceph object store (CephObjectStore "ceph-objectstore" in the
+# rook-ceph namespace, exposed through the "ceph-bucket" StorageClass).
+#
+# Rook's bucket provisioner creates, in this same namespace:
+#   - a ConfigMap "realm-keeper-audio" with BUCKET_NAME / BUCKET_HOST / BUCKET_PORT
+#   - a Secret    "realm-keeper-audio" with AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+# backend-deployment.yaml reads the S3_* env vars from those.
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: realm-keeper-audio
+  namespace: realmkeeper
+  labels:
+    app.kubernetes.io/name: realm-keeper-audio-bucket
+    app.kubernetes.io/part-of: realm-keeper
+  annotations:
+    # Sync before the backend Deployment (default wave "0"), so its
+    # generated Secret/ConfigMap already exist when the pod is scheduled.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  bucketName: realm-keeper-audio
+  storageClassName: ceph-bucket

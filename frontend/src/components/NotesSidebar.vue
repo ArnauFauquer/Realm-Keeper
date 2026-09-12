@@ -24,6 +24,13 @@
           <span class="title-text">RealmKeeper</span>
         </div>
 
+        <div v-if="user" class="user-chip">
+          <div class="user-avatar">{{ userInitial }}</div>
+          <span class="user-email" :title="user.email">{{ user.email }}</span>
+          <button class="logout-btn" title="Sign out" @click="logout">
+            <span class="mdi mdi-logout-variant"></span>
+          </button>
+        </div>
       </div>
 
       <div class="sidebar-header">
@@ -35,8 +42,12 @@
           <span class="mdi mdi-graph-outline"></span>
           <span>View Graph</span>
         </button>
+        <button class="action-btn" @click="isPlayerModalOpen = true">
+          <span class="mdi mdi-music-box-multiple-outline"></span>
+          <span>Player</span>
+        </button>
       </div>
-      
+
       <div v-if="loading && notes.length === 0" class="loading-state">
         <div class="loading-spinner"></div>
         <p>Loading your notes...</p>
@@ -67,28 +78,93 @@
           </div>
         </div>
       </div>
+
+      <div class="sidebar-footer">
+        <button class="new-note-trigger" @click="startNewNote">
+          <span class="mdi mdi-plus"></span>
+          <span>New Note</span>
+        </button>
+      </div>
     </div>
-    
-    <SearchModal 
+
+    <SearchModal
       ref="searchModalRef"
       :is-open="isSearchModalOpen"
       :notes="notes"
       :available-tags="availableTags"
       @close="isSearchModalOpen = false"
     />
-    <GraphModal 
+    <GraphModal
       :is-open="isGraphModalOpen"
       @close="isGraphModalOpen = false"
     />
+    <PlayerModal
+      :is-open="isPlayerModalOpen"
+      @close="isPlayerModalOpen = false"
+    />
+
+    <div v-if="showNewNoteInput" class="modal-overlay" @click.self="showNewNoteInput = false">
+      <div class="new-note-modal">
+        <div class="modal-header">
+          <h2><span class="mdi mdi-note-plus-outline"></span> New Note</h2>
+          <button class="close-btn" @click="showNewNoteInput = false">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <label class="field-label" for="new-note-path">Note path</label>
+          <input
+            id="new-note-path"
+            ref="newNoteInputRef"
+            v-model="newNotePath"
+            class="new-note-input"
+            placeholder="Oneshots/My New Adventure"
+            @keyup.enter="submitNewNote"
+            @keyup.esc="showNewNoteInput = false"
+          />
+          <p class="field-hint">Use <code>/</code> to place it inside a folder.</p>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn cancel" @click="showNewNoteInput = false">Cancel</button>
+          <button class="modal-btn primary" :disabled="!newNotePath.trim()" @click="submitNewNote">Create Note</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import TreeItem from './TreeItem.vue'
 import SearchModal from './SearchModal.vue'
 import GraphModal from './GraphModal.vue'
+import PlayerModal from './PlayerModal.vue'
 import { useNotes } from '@/composables/useNotes'
+import { useAuth } from '@/composables/useAuth'
+
+const router = useRouter()
+const { user, logout } = useAuth()
+
+const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
+
+const showNewNoteInput = ref(false)
+const newNotePath = ref('')
+const newNoteInputRef = ref(null)
+
+function startNewNote() {
+  showNewNoteInput.value = true
+  nextTick(() => newNoteInputRef.value?.focus())
+}
+
+function submitNewNote() {
+  const path = newNotePath.value.trim().replace(/^\/+|\/+$/g, '')
+  if (!path) return
+  newNotePath.value = ''
+  showNewNoteInput.value = false
+  closeSidebar()
+  router.push(`/note/${path.split('/').map(encodeURIComponent).join('/')}?new=1`)
+}
 
 const {
   notes,
@@ -107,6 +183,7 @@ const expandedFolders = ref(new Set())
 const isOpen = ref(false)
 const isSearchModalOpen = ref(false)
 const isGraphModalOpen = ref(false)
+const isPlayerModalOpen = ref(false)
 const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
 let scrollObserver = null
@@ -282,6 +359,60 @@ onBeforeUnmount(() => {
   background-clip: text; /* Added standard property */
 }
 
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.user-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #0c0d1d;
+  background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+}
+
+.user-email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.logout-btn {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.logout-btn:hover {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--status-error, #f87171);
+}
+
+.logout-btn .mdi {
+  font-size: 1.05rem;
+}
+
 /* Action Buttons */
 .action-btn {
   width: 100%;
@@ -308,6 +439,178 @@ onBeforeUnmount(() => {
 
 .action-btn .mdi {
   font-size: 1.1rem;
+}
+
+.sidebar-footer {
+  flex-shrink: 0;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border-light);
+  background: rgba(12, 13, 29, 0.85);
+}
+
+.new-note-trigger {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: 1px dashed var(--border-medium);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: transparent;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.new-note-trigger:hover {
+  border-style: solid;
+  border-color: var(--interactive-primary);
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.new-note-trigger .mdi {
+  font-size: 1.1rem;
+}
+
+/* ── New Note modal ─────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.new-note-modal {
+  background: rgba(18, 19, 42, 0.98);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  width: min(90vw, 420px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.new-note-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem 1.4rem;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.new-note-modal .modal-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.new-note-modal .close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.new-note-modal .close-btn:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.new-note-modal .modal-body {
+  padding: 1.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.field-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.new-note-input {
+  background: rgba(26, 27, 58, 0.6);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 0.65rem 0.8rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.new-note-input:focus {
+  outline: none;
+  border-color: var(--interactive-primary);
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+}
+
+.field-hint code {
+  background: rgba(138, 92, 245, 0.15);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  color: #c4b5fd;
+  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.75rem 1.4rem 1.4rem;
+}
+
+.modal-btn {
+  padding: 0.55rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.modal-btn.cancel {
+  background: transparent;
+  border-color: var(--border-light);
+  color: var(--text-secondary);
+}
+
+.modal-btn.cancel:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.modal-btn.primary {
+  background: var(--interactive-primary);
+  border-color: var(--interactive-primary);
+  color: white;
+}
+
+.modal-btn.primary:hover {
+  background: var(--interactive-primaryHover);
+}
+
+.modal-btn.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .notes-tree-wrapper {

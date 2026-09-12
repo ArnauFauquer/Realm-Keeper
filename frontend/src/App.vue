@@ -1,17 +1,27 @@
 <template>
   <div id="app">
     <NebulaBackground />
-    <div class="main-container">
-      <NotesSidebar v-if="!$route.meta.fullscreen" ref="notesSidebar" />
-      <main class="main-content">
-        <router-view />
-      </main>
+
+    <div v-if="!checked && !$route.meta.public" class="auth-loading">
+      <div class="auth-loading-spinner"></div>
     </div>
-    <template v-if="!$route.meta.fullscreen">
-      <DiceFab />
-      <DicePanel />
-      <DiceToastStack />
+
+    <LoginGate v-else-if="showLoginGate" :error="authError" @login="login" />
+
+    <template v-else>
+      <div class="main-container">
+        <NotesSidebar v-if="!$route.meta.fullscreen" ref="notesSidebar" />
+        <main class="main-content">
+          <router-view />
+        </main>
+      </div>
+      <template v-if="!$route.meta.fullscreen">
+        <DiceFab />
+        <DicePanel />
+        <DiceToastStack />
+      </template>
     </template>
+
     <DiceOverlay />
   </div>
 </template>
@@ -23,12 +33,33 @@ import DiceFab from './components/DiceFab.vue'
 import DicePanel from './components/DicePanel.vue'
 import DiceOverlay from './components/DiceOverlay.vue'
 import DiceToastStack from './components/DiceToastStack.vue'
+import LoginGate from './components/LoginGate.vue'
 import { applyTheme } from './config/theme'
+import { useAuth } from './composables/useAuth'
+
+const AUTH_ERROR_MESSAGES = {
+  not_allowed: "This Google account isn't authorized for this vault.",
+  login_failed: 'Sign-in failed. Please try again.'
+}
 
 export default {
   name: 'App',
-  components: { NotesSidebar, NebulaBackground, DiceFab, DicePanel, DiceOverlay, DiceToastStack },
+  components: { NotesSidebar, NebulaBackground, DiceFab, DicePanel, DiceOverlay, DiceToastStack, LoginGate },
   provide() { return { addTagFilter: this.addTagFilter } },
+  setup() {
+    const { user, checked, checkAuth, login } = useAuth()
+    return { user, checked, checkAuth, login }
+  },
+  data() {
+    return {
+      authError: ''
+    }
+  },
+  computed: {
+    showLoginGate() {
+      return !this.$route.meta.public && !this.user
+    }
+  },
   methods: {
     addTagFilter(tag) {
       this.$nextTick(() => {
@@ -38,7 +69,20 @@ export default {
       })
     }
   },
-  mounted() { applyTheme() }
+  mounted() {
+    applyTheme()
+
+    const params = new URLSearchParams(window.location.search)
+    const authErrorCode = params.get('auth_error')
+    if (authErrorCode) {
+      this.authError = AUTH_ERROR_MESSAGES[authErrorCode] || 'Sign-in failed. Please try again.'
+      params.delete('auth_error')
+      const query = params.toString()
+      window.history.replaceState(null, '', window.location.pathname + (query ? `?${query}` : ''))
+    }
+
+    this.checkAuth()
+  }
 }
 </script>
 
@@ -77,6 +121,33 @@ body {
   height: 100vh;
   overflow: hidden;
   position: relative;
+}
+
+.auth-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(138, 92, 245, 0.2);
+  border-top-color: var(--interactive-primary);
+  border-radius: 50%;
+  animation: auth-spin 0.9s linear infinite;
+  box-shadow: 0 0 16px rgba(138, 92, 245, 0.2);
+}
+
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-loading-spinner { animation-duration: 1.8s; }
 }
 
 .main-container {

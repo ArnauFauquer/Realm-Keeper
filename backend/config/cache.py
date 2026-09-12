@@ -37,6 +37,15 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
                 return "public, max-age=600"
             if path.startswith("/api/graph"):
                 return "public, max-age=600"
+            if path.startswith("/api/player/"):
+                # Player state (albums/tracks) is mutated by the user (upload,
+                # delete, create/delete album) and must never be served stale
+                # from the browser's HTTP cache after such a change.
+                return "no-store, must-revalidate"
+            if path.startswith("/api/auth/"):
+                # Login state must never be cached (stale /me would show a
+                # logged-out user as logged in, or vice versa).
+                return "no-store, must-revalidate"
             if path.startswith("/api/"):
                 return "public, max-age=60"
         
