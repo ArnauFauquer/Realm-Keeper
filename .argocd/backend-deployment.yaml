@@ -12,11 +12,16 @@ spec:
   selector:
     matchLabels:
       app: realm-keeper-backend
+  # Single replica + a ReadWriteOnce PVC (vault-data, RBD-backed) means a
+  # rolling update can never actually overlap: the new pod can't attach the
+  # volume while the old one still holds it, so it deadlocks in
+  # ContainerCreating (Multi-Attach error) until the old pod is force-killed.
+  # Recreate sidesteps this entirely — old pod goes down, volume frees,
+  # new pod starts — at the cost of a short gap (a few seconds) per deploy,
+  # which doesn't matter here since there's no HA benefit from 1 replica
+  # anyway, and vault-data is fully reproducible (re-cloned from REPO_URL).
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+    type: Recreate
   template:
     metadata:
       labels:
