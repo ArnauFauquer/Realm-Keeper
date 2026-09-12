@@ -115,6 +115,8 @@ import { slugifyHeading } from '@/utils/slugify'
 import { renderCallouts } from '@/utils/callouts'
 import { parseDiceFormula } from '@/utils/diceNotation'
 import { useDiceRoller } from '@/composables/useDiceRoller'
+import { parseSongKey } from '@/utils/audioLink'
+import { usePlayer } from '@/composables/usePlayer'
 import RightSidebar from '@/components/RightSidebar.vue'
 
 mermaid.initialize({
@@ -189,6 +191,13 @@ export default {
         const escaped = md.utils.escapeHtml(formula)
         return `<code class="dice-roll" data-dice-formula="${escaped}" role="button" tabindex="0" title="Roll ${escaped}">` +
           `<span class="mdi mdi-dice-multiple"></span>${escaped}</code>`
+      }
+      const song = parseSongKey(formula)
+      if (song) {
+        const escapedKey = md.utils.escapeHtml(song.key)
+        const escapedName = md.utils.escapeHtml(song.filename)
+        return `<code class="song-link" data-song-key="${escapedKey}" role="button" tabindex="0" title="Play ${escapedKey}">` +
+          `<span class="mdi mdi-play-circle-outline"></span>${escapedName}</code>`
       }
       return defaultCodeInline(tokens, idx, options, env, self)
     }
@@ -385,6 +394,7 @@ export default {
 
         this.setupImageScreenButtons()
         this.setupDiceRolls()
+        this.setupSongLinks()
       })
     },
     setupDiceRolls() {
@@ -399,6 +409,35 @@ export default {
         const trigger = (e) => {
           e.preventDefault()
           roll(formula)
+        }
+        el.addEventListener('click', trigger)
+        el.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') trigger(e)
+        })
+      })
+    },
+    setupSongLinks() {
+      const content = this.$refs.markdownContent
+      if (!content) return
+
+      const { playByKey } = usePlayer()
+      const songEls = content.querySelectorAll('[data-song-key]:not([data-song-wired])')
+      songEls.forEach(el => {
+        el.setAttribute('data-song-wired', '1')
+        const key = el.getAttribute('data-song-key')
+        const trigger = async (e) => {
+          e.preventDefault()
+          if (el.classList.contains('loading')) return
+          el.classList.add('loading')
+          try {
+            await playByKey(key)
+          } catch (err) {
+            console.error('Failed to play track:', err)
+            el.classList.add('song-link-error')
+            setTimeout(() => el.classList.remove('song-link-error'), 2000)
+          } finally {
+            el.classList.remove('loading')
+          }
         }
         el.addEventListener('click', trigger)
         el.addEventListener('keydown', (e) => {
@@ -899,6 +938,38 @@ export default {
   background: rgba(138, 92, 245, 0.35);
   border-color: rgba(138, 92, 245, 0.7);
   transform: translateY(-1px);
+}
+
+.markdown-content :deep(code.song-link) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(45, 212, 191, 0.18);
+  border: 1px solid rgba(45, 212, 191, 0.4);
+  color: #5eead4;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+.markdown-content :deep(code.song-link .mdi) {
+  font-size: 0.95em;
+}
+
+.markdown-content :deep(code.song-link:hover) {
+  background: rgba(45, 212, 191, 0.35);
+  border-color: rgba(45, 212, 191, 0.7);
+  transform: translateY(-1px);
+}
+
+.markdown-content :deep(code.song-link.loading) {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.markdown-content :deep(code.song-link.song-link-error) {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.6);
+  color: #fca5a5;
 }
 
 .markdown-content :deep(a) {

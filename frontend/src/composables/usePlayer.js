@@ -46,6 +46,21 @@ function playTrackAt(index) {
   audio.play()
 }
 
+// Plays a track referenced by its key ("Album/filename.mp3"), as used by the
+// song-link buttons rendered from notes. Loads the album's track list first
+// if it isn't the one currently selected.
+async function playByKey(key) {
+  const slashIndex = key.indexOf('/')
+  if (slashIndex === -1) throw new Error(`Invalid track key: ${key}`)
+  const album = key.slice(0, slashIndex)
+  if (currentAlbum.value !== album) {
+    await selectAlbum(album)
+  }
+  const index = tracks.value.findIndex(t => t.key === key)
+  if (index === -1) throw new Error(`Track not found: ${key}`)
+  playTrackAt(index)
+}
+
 function playNext() {
   if (!tracks.value.length) return
   if (isShuffle.value) {
@@ -201,7 +216,7 @@ export function usePlayer() {
     albums, currentAlbum, tracks, currentTrack, currentTrackIndex,
     isPlaying, isShuffle, isRepeat, loadingAlbums, loadingTracks, error,
     progress, duration, volume,
-    loadAlbums, selectAlbum, playTrackAt, togglePlay, playNext, playPrev,
+    loadAlbums, selectAlbum, playTrackAt, playByKey, togglePlay, playNext, playPrev,
     toggleShuffle, toggleRepeat, seek, setVolume,
     createAlbum, deleteAlbum, uploadTrack, deleteTrack
   }
