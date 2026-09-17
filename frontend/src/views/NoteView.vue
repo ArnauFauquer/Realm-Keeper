@@ -54,7 +54,8 @@ Write your note in Markdown..."
         <span class="mdi mdi-file-question-outline"></span>
         <h2>This note doesn't exist yet</h2>
         <p class="not-found-path">{{ notePath }}</p>
-        <button class="editor-btn save" @click="startCreating">Create this note</button>
+        <button v-if="user" class="editor-btn save" @click="startCreating">Create this note</button>
+        <p v-else class="not-found-path">Sign in to create it.</p>
       </div>
 
       <div v-else-if="error" class="error">
@@ -66,7 +67,7 @@ Write your note in Markdown..."
         <header class="note-header">
           <div class="note-header-top">
             <h1>{{ note.title }}</h1>
-            <button class="edit-note-btn" title="Edit this note" @click="startEditing">
+            <button v-if="user" class="edit-note-btn" title="Edit this note" @click="startEditing">
               <span class="mdi mdi-pencil-outline"></span>
             </button>
           </div>
@@ -117,6 +118,7 @@ import { parseDiceFormula } from '@/utils/diceNotation'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { parseSongKey } from '@/utils/audioLink'
 import { usePlayer } from '@/composables/usePlayer'
+import { useAuth } from '@/composables/useAuth'
 import RightSidebar from '@/components/RightSidebar.vue'
 
 mermaid.initialize({
@@ -160,6 +162,10 @@ export default {
       type: String,
       required: true
     }
+  },
+  setup() {
+    const { user } = useAuth()
+    return { user }
   },
   data() {
     const md = new MarkdownIt({
@@ -295,7 +301,7 @@ export default {
         this.loading = false
         if (err.response?.status === 404) {
           this.noteNotFound = true
-          if (this.$route.query.new === '1') {
+          if (this.$route.query.new === '1' && this.user) {
             this.startCreating()
           }
         } else {
@@ -392,9 +398,11 @@ export default {
           }, { once: false })
         })
 
-        this.setupImageScreenButtons()
-        this.setupDiceRolls()
-        this.setupSongLinks()
+        if (this.user) {
+          this.setupImageScreenButtons()
+          this.setupDiceRolls()
+          this.setupSongLinks()
+        }
       })
     },
     setupDiceRolls() {

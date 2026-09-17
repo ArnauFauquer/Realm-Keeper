@@ -9,14 +9,16 @@ const routes = [
   {
     path: '/',
     name: 'Home',
-    component: Home
+    component: Home,
+    meta: { public: true }
   },
 
   {
     path: '/note/:notePath(.*)',
     name: 'Note',
     component: NoteView,
-    props: true
+    props: true,
+    meta: { public: true }
   },
 
   {

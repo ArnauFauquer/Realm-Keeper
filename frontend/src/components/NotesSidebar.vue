@@ -24,13 +24,17 @@
           <span class="title-text">RealmKeeper</span>
         </div>
 
-        <div v-if="user" class="user-chip">
+        <div v-if="user && !user.local" class="user-chip">
           <div class="user-avatar">{{ userInitial }}</div>
           <span class="user-email" :title="user.email">{{ user.email }}</span>
           <button class="logout-btn" title="Sign out" @click="logout">
             <span class="mdi mdi-logout-variant"></span>
           </button>
         </div>
+        <button v-else-if="!user" class="sign-in-btn" @click="login">
+          <span class="mdi mdi-login-variant"></span>
+          <span>Sign in</span>
+        </button>
       </div>
 
       <div class="sidebar-header">
@@ -38,7 +42,13 @@
           <span class="mdi mdi-magnify"></span>
           <span>Search Notes</span>
         </button>
-        <button class="action-btn" @click="isPlayerModalOpen = true">
+        <button
+          class="action-btn"
+          :class="{ disabled: !user }"
+          :disabled="!user"
+          :title="user ? '' : 'Sign in to use the player'"
+          @click="isPlayerModalOpen = true"
+        >
           <span class="mdi mdi-music-box-multiple-outline"></span>
           <span>Player</span>
         </button>
@@ -75,7 +85,7 @@
         </div>
       </div>
 
-      <div class="sidebar-footer">
+      <div v-if="user" class="sidebar-footer">
         <button class="new-note-trigger" @click="startNewNote">
           <span class="mdi mdi-plus"></span>
           <span>New Note</span>
@@ -141,7 +151,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 
 const router = useRouter()
-const { user, logout } = useAuth()
+const { user, login, logout } = useAuth()
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
@@ -411,6 +421,31 @@ onBeforeUnmount(() => {
   font-size: 1.1rem;
 }
 
+.sign-in-btn {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border-medium);
+  border-radius: 8px;
+  font-size: 0.8rem;
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.sign-in-btn:hover {
+  border-color: var(--interactive-primary);
+  background: rgba(138, 92, 245, 0.25);
+}
+
+.sign-in-btn .mdi {
+  font-size: 1.05rem;
+}
+
 /* Action Buttons */
 .action-btn {
   width: 100%;
@@ -437,6 +472,18 @@ onBeforeUnmount(() => {
 
 .action-btn .mdi {
   font-size: 1.1rem;
+}
+
+.action-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn.disabled:hover {
+  border-color: var(--border-light);
+  background: rgba(26, 27, 58, 0.6);
+  color: var(--text-secondary);
+  box-shadow: none;
 }
 
 .sidebar-footer {

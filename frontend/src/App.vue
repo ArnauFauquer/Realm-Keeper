@@ -15,7 +15,7 @@
           <router-view />
         </main>
       </div>
-      <template v-if="!$route.meta.fullscreen">
+      <template v-if="!$route.meta.fullscreen && user">
         <DiceFab />
         <DicePanel />
         <DiceToastStack />

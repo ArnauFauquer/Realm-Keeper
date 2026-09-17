@@ -1,7 +1,8 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from typing import List, Dict
 import json
 from config.logging import get_logger
+from routes.auth import require_auth
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["screen"])
@@ -55,7 +56,7 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 @router.post("/api/screen/display")
-async def display_media(data: Dict[str, str]):
+async def display_media(data: Dict[str, str], user: dict = Depends(require_auth)):
     """
     Broadcasts media to all connected screens.
     Expected data: {"url": "...", "title": "..."}
@@ -68,7 +69,7 @@ async def display_media(data: Dict[str, str]):
     return {"status": "success"}
 
 @router.post("/api/screen/dice")
-async def display_dice(data: dict):
+async def display_dice(data: dict, user: dict = Depends(require_auth)):
     """
     Broadcasts a dice roll result to all connected screens.
     Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
@@ -83,7 +84,7 @@ async def display_dice(data: dict):
     return {"status": "success"}
 
 @router.post("/api/screen/clear")
-async def clear_screen():
+async def clear_screen(user: dict = Depends(require_auth)):
     """Clears all connected screens."""
     await manager.broadcast({
         "type": "clear_screen"

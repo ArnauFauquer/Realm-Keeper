@@ -165,8 +165,8 @@ async def get_asset(filename: str):
     )
 
 app.include_router(auth_router)
-app.include_router(notes_router, dependencies=[Depends(require_auth)])
-app.include_router(screen_router)  # stays public: the GM's screen display has no login
+app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route
+app.include_router(screen_router)  # viewing the screen stays public; posting to it is gated per-route
 app.include_router(player_router, dependencies=[Depends(require_auth)])
 
 @app.get("/")
