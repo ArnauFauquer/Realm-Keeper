@@ -3,6 +3,11 @@ FROM node:20-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+# node:20's bundled npm (10.x) can misread optionalDependencies entries
+# (e.g. esbuild's per-platform binaries) written by a newer npm, and then
+# refuses `npm ci` claiming the lockfile is out of sync. Pin npm to the
+# major version package-lock.json is actually generated with.
+RUN npm install -g npm@11
 COPY package*.json ./
 RUN npm ci
 COPY . .
