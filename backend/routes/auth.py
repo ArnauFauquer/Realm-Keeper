@@ -33,8 +33,8 @@ def get_session_user(request: Request) -> dict | None:
 
 
 async def require_auth(request: Request) -> dict:
-    if settings.DEV_AUTH_BYPASS:
-        return {"email": "dev@local.test", "name": "Dev Tester"}
+    if not settings.ENABLE_AUTH:
+        return {"email": "local@realm-keeper", "name": "Local User"}
     user = get_session_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
@@ -78,6 +78,8 @@ async def callback(request: Request):
 
 @router.get("/me")
 async def me(request: Request):
+    if not settings.ENABLE_AUTH:
+        return {"email": "local@realm-keeper", "name": "Local User"}
     user = get_session_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")

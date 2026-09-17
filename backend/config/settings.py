@@ -30,9 +30,10 @@ class Settings:
 
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    # DEV ONLY — never set true outside a local sandbox. Lets require_auth
-    # through without Google OAuth configured, for local design/UI QA.
-    DEV_AUTH_BYPASS: bool = os.getenv("DEV_AUTH_BYPASS", "false").lower() == "true"
+    # Set to false to run without Google OAuth — e.g. self-hosting solo with
+    # no need to gate access, or local dev without OAuth credentials set up.
+    # require_auth then lets every request through as a fixed local user.
+    ENABLE_AUTH: bool = os.getenv("ENABLE_AUTH", "true").lower() == "true"
     # Falls back to a random key generated at process startup if unset, so
     # auth still works locally without configuration — but every restart
     # invalidates existing sessions until a real value is set (required in
