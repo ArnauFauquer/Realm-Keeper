@@ -221,7 +221,7 @@ async function rollFormula() {
   background: rgba(138, 92, 245, 0.15);
   color: var(--text-primary);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -240,7 +240,7 @@ async function rollFormula() {
 .stepper-value {
   min-width: 1.4rem;
   text-align: center;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -249,7 +249,7 @@ async function rollFormula() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
@@ -258,7 +258,7 @@ async function rollFormula() {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  padding: 0.6rem;
+  padding: 0.625rem;
   border-radius: 8px;
   border: none;
   background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
@@ -281,7 +281,7 @@ async function rollFormula() {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   color: var(--text-tertiary);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -309,7 +309,7 @@ async function rollFormula() {
   padding: 0.5rem 0.65rem;
   color: var(--text-primary);
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  font-size: 0.85rem;
+  font-size: 1rem;
 }
 
 .formula-input:focus {

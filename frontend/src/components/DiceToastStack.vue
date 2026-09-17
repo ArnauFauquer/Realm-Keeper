@@ -86,7 +86,7 @@ const { state, dismissToast } = useDiceRoller()
 }
 
 .toast-breakdown {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
   display: flex;
   flex-wrap: wrap;

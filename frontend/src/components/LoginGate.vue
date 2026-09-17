@@ -6,7 +6,6 @@
       </div>
 
       <div class="brand">
-        <span class="mdi mdi-orbit"></span>
         <span class="brand-name">RealmKeeper</span>
       </div>
 
@@ -99,20 +98,12 @@ defineEmits(['login'])
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
   font-size: 1.35rem;
-  font-weight: 600;
-}
-
-.brand .mdi {
-  font-size: 1.6rem;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-weight: 500;
 }
 
 .brand-name {
+  font-family: var(--font-display);
   background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -121,7 +112,7 @@ defineEmits(['login'])
 
 .tagline {
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   line-height: 1.5;
   margin: 0;
 }
@@ -136,8 +127,8 @@ defineEmits(['login'])
   color: #e3e3e3;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 10px;
-  padding: 0.7rem 1.25rem;
-  font-size: 0.9rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -163,7 +154,7 @@ defineEmits(['login'])
   margin: 0;
   background: rgba(248, 113, 113, 0.1);
   border: 1px solid rgba(248, 113, 113, 0.25);
-  padding: 0.55rem 0.8rem;
+  padding: 0.625rem 0.8rem;
   border-radius: 8px;
 }
 

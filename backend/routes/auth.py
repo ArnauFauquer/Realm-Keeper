@@ -33,6 +33,8 @@ def get_session_user(request: Request) -> dict | None:
 
 
 async def require_auth(request: Request) -> dict:
+    if settings.DEV_AUTH_BYPASS:
+        return {"email": "dev@local.test", "name": "Dev Tester"}
     user = get_session_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")

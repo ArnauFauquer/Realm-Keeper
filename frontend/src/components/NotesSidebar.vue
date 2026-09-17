@@ -38,10 +38,6 @@
           <span class="mdi mdi-magnify"></span>
           <span>Search Notes</span>
         </button>
-        <button class="action-btn" @click="isGraphModalOpen = true">
-          <span class="mdi mdi-graph-outline"></span>
-          <span>View Graph</span>
-        </button>
         <button class="action-btn" @click="isPlayerModalOpen = true">
           <span class="mdi mdi-music-box-multiple-outline"></span>
           <span>Player</span>
@@ -96,7 +92,7 @@
     />
     <GraphModal
       :is-open="isGraphModalOpen"
-      @close="isGraphModalOpen = false"
+      @close="closeGraphModal"
     />
     <PlayerModal
       :is-open="isPlayerModalOpen"
@@ -142,9 +138,11 @@ import GraphModal from './GraphModal.vue'
 import PlayerModal from './PlayerModal.vue'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
+import { useGraphModal } from '@/composables/useGraphModal'
 
 const router = useRouter()
 const { user, logout } = useAuth()
+const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
 
@@ -182,7 +180,6 @@ const {
 const expandedFolders = ref(new Set())
 const isOpen = ref(false)
 const isSearchModalOpen = ref(false)
-const isGraphModalOpen = ref(false)
 const isPlayerModalOpen = ref(false)
 const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
@@ -337,15 +334,15 @@ onBeforeUnmount(() => {
 .app-title {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 1.2rem;
+  gap: 0.6rem;
+  font-size: 2rem;
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 1rem;
 }
 
 .app-title .mdi {
-  font-size: 1.5rem;
+  font-size: 2.35rem;
   background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -353,6 +350,7 @@ onBeforeUnmount(() => {
 }
 
 .app-title .title-text {
+  font-family: var(--font-display);
   background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -373,7 +371,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 700;
   color: #0c0d1d;
   background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
@@ -385,7 +383,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--text-secondary);
 }
 
@@ -410,7 +408,7 @@ onBeforeUnmount(() => {
 }
 
 .logout-btn .mdi {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
 }
 
 /* Action Buttons */
@@ -419,7 +417,7 @@ onBeforeUnmount(() => {
   padding: 0.625rem 0.875rem;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   background: rgba(26, 27, 58, 0.6);
   color: var(--text-secondary);
   transition: all 0.2s ease;
@@ -453,7 +451,7 @@ onBeforeUnmount(() => {
   padding: 0.625rem 0.875rem;
   border: 1px dashed var(--border-medium);
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   background: transparent;
   color: var(--text-secondary);
   display: flex;
@@ -505,7 +503,7 @@ onBeforeUnmount(() => {
 
 .new-note-modal .modal-header h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -525,6 +523,10 @@ onBeforeUnmount(() => {
   transition: all 0.15s ease;
 }
 
+.new-note-modal .close-btn .mdi {
+  font-size: 1.5rem;
+}
+
 .new-note-modal .close-btn:hover {
   background: var(--interactive-secondary);
   color: var(--text-primary);
@@ -538,7 +540,7 @@ onBeforeUnmount(() => {
 }
 
 .field-label {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   font-weight: 500;
 }
@@ -547,9 +549,9 @@ onBeforeUnmount(() => {
   background: rgba(26, 27, 58, 0.6);
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  padding: 0.65rem 0.8rem;
+  padding: 0.625rem 0.8rem;
   color: var(--text-primary);
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .new-note-input:focus {
@@ -579,9 +581,9 @@ onBeforeUnmount(() => {
 }
 
 .modal-btn {
-  padding: 0.55rem 1.25rem;
+  padding: 0.625rem 1.25rem;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
   border: 1px solid transparent;
@@ -674,7 +676,7 @@ onBeforeUnmount(() => {
 }
 
 .loading-state p {
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   opacity: 0.8;
   margin: 0;
   letter-spacing: 0.3px;
@@ -712,7 +714,7 @@ onBeforeUnmount(() => {
   gap: 0.75rem;
   padding: 0.85rem 1.5rem;
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   animation: fadeIn 0.4s ease;
   background: rgba(138, 92, 245, 0.12);
   border-radius: 8px;
@@ -780,7 +782,7 @@ onBeforeUnmount(() => {
   padding: 1.5rem 1rem;
   text-align: center;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .error {

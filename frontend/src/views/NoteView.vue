@@ -582,11 +582,8 @@ export default {
 .note-header h1 {
   margin: 0 0 0.5rem 0;
   display: inline-block;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  background-size: 100% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .note-header-top {
@@ -616,7 +613,7 @@ export default {
 }
 
 .edit-note-btn .mdi {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
 }
 
 /* ── Editor ─────────────────────────────────────────────────── */
@@ -633,16 +630,14 @@ export default {
 
 .editor-header h1 {
   margin: 0 0 0.25rem 0;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .editor-path {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
 }
 
@@ -657,8 +652,8 @@ export default {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-secondary);
-  padding: 0.6rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.625rem 1rem;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -682,7 +677,7 @@ export default {
   padding: 1rem;
   color: var(--text-primary);
   font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  font-size: 0.9rem;
+  font-size: 1rem;
   line-height: 1.6;
 }
 
@@ -708,9 +703,9 @@ export default {
   color: var(--status-error, #f87171);
   background: rgba(248, 113, 113, 0.1);
   border: 1px solid rgba(248, 113, 113, 0.25);
-  padding: 0.6rem 0.9rem;
+  padding: 0.625rem 0.9rem;
   border-radius: 8px;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   margin: 0;
 }
 
@@ -721,9 +716,9 @@ export default {
 }
 
 .editor-btn {
-  padding: 0.55rem 1.25rem;
+  padding: 0.625rem 1.25rem;
   border-radius: 8px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -778,7 +773,9 @@ export default {
   align-items: center;
   text-align: center;
   gap: 0.75rem;
-  padding: 4rem 2rem;
+  max-width: 420px;
+  margin: 3rem auto;
+  padding: 2.5rem 2rem;
 }
 
 .not-found .mdi {
@@ -807,7 +804,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 0.375rem;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 
@@ -842,7 +839,7 @@ export default {
   color: #a78bfa;
   padding: 0.25rem 0.75rem;
   border-radius: 12px;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   border: 1px solid rgba(138, 92, 245, 0.3);
 }
 
@@ -1039,8 +1036,8 @@ export default {
   border: 1px solid rgba(138, 92, 245, 0.5);
   color: #c4b5fd;
   padding: 0.35rem 0.65rem;
-  border-radius: 7px;
-  font-size: 0.78rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
   font-family: inherit;
   cursor: pointer;
   backdrop-filter: blur(8px);

@@ -541,7 +541,7 @@ export default {
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   color: var(--text-primary);
 }
 
@@ -630,7 +630,7 @@ export default {
   backdrop-filter: blur(12px);
   padding: 1rem;
   border-radius: 12px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   box-shadow: 0 4px 16px rgba(75, 0, 130, 0.4);
   min-width: 220px;
@@ -641,7 +641,7 @@ export default {
   margin: 0 0 0.75rem 0;
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 0.95rem;
+  font-size: 1rem;
 }
 
 .stats-toggle {
@@ -649,7 +649,7 @@ export default {
   border: none;
   padding: 0.5rem;
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--interactive-primary);
   display: flex;
   align-items: center;
@@ -692,7 +692,7 @@ export default {
   align-items: center;
   gap: 0.625rem;
   padding: 0.375rem 0.5rem;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   border-radius: 6px;
   transition: all 0.15s ease;
   cursor: pointer;
@@ -720,7 +720,7 @@ export default {
   flex: 1;
   color: var(--text-primary);
   font-style: italic;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .type-count {
@@ -728,7 +728,7 @@ export default {
   font-weight: 600;
   min-width: 32px;
   text-align: right;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .graph-node {
@@ -738,7 +738,7 @@ export default {
 .graph-node text {
   fill: rgba(200, 220, 255, 0.9);
   font-weight: 400;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-body);
   letter-spacing: 0.04em;
 }
 
@@ -850,7 +850,7 @@ export default {
   backdrop-filter: blur(12px);
   padding: 1.25rem;
   border-radius: 12px;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   min-width: 260px;
@@ -895,7 +895,7 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   color: var(--text-secondary);
 }
 

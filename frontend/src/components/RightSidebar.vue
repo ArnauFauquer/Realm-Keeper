@@ -1,7 +1,13 @@
 <template>
   <aside class="right-sidebar">
     <div class="sidebar-section mini-graph-section">
-      <h3>Interactive Graph</h3>
+      <div class="section-header">
+        <h3>Interactive Graph</h3>
+        <button class="full-graph-link" @click="openGraphModal">
+          <span>Full graph</span>
+          <span class="mdi mdi-arrow-expand"></span>
+        </button>
+      </div>
       <div class="mini-graph-container" ref="graphContainer">
         <div v-if="loading" class="loading">Loading...</div>
         <div v-else-if="error" class="error">{{ error }}</div>
@@ -33,6 +39,7 @@ import { apiUrl } from '@/config/env'
 import { slugifyHeading, stripInlineLinkSyntax } from '@/utils/slugify'
 import { getNodeColor } from '../config/nodeColors'
 import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
+import { useGraphModal } from '@/composables/useGraphModal'
 
 export default {
   name: 'RightSidebar',
@@ -101,6 +108,9 @@ export default {
     }
   },
   methods: {
+    openGraphModal() {
+      useGraphModal().open()
+    },
     scrollTo(id) {
       const element = document.getElementById(id)
       if (element) {
@@ -342,12 +352,47 @@ export default {
 }
 
 .sidebar-section h3 {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-tertiary);
   margin-bottom: 1rem;
   font-weight: 600;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.section-header h3 {
+  margin-bottom: 0;
+}
+
+.full-graph-link {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.full-graph-link:hover {
+  color: var(--interactive-primaryHover);
+}
+
+.full-graph-link .mdi {
+  font-size: 0.85rem;
 }
 
 .mini-graph-container {
@@ -386,7 +431,7 @@ export default {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .toc-nav {

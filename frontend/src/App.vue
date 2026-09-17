@@ -101,6 +101,8 @@ export default {
   --interactive-primaryHover: #a78bfa;
   --interactive-secondary: rgba(138, 43, 226, 0.15);
   --shadow-md: 0 2px 8px rgba(75, 0, 130, 0.3);
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  --font-display: 'Space Grotesk Variable', 'Space Grotesk', var(--font-body);
 }
 
 * {
@@ -110,9 +112,14 @@ export default {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+  font-family: var(--font-body);
   background: transparent;
   color: var(--text-primary);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 #app {

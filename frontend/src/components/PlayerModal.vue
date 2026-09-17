@@ -298,7 +298,7 @@ function formatTime(seconds) {
 
 .modal-header h2 {
   margin: 0;
-  font-size: 1.35rem;
+  font-size: 1.25rem;
   color: var(--text-primary);
   display: flex;
   align-items: center;
@@ -353,7 +353,7 @@ function formatTime(seconds) {
 }
 
 .album-list-header h3 {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   text-transform: uppercase;
   letter-spacing: 1px;
   color: var(--text-tertiary);
@@ -374,7 +374,7 @@ function formatTime(seconds) {
   border-radius: 6px;
   padding: 0.4rem 0.6rem;
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 1rem;
 }
 
 .new-album-form input:focus {
@@ -418,7 +418,7 @@ function formatTime(seconds) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 /* ── Track panel ────────────────────────────────────────────── */
@@ -468,7 +468,7 @@ function formatTime(seconds) {
   border-radius: 8px;
   background: rgba(138, 92, 245, 0.15);
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
@@ -567,7 +567,7 @@ function formatTime(seconds) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .track-size {
@@ -578,7 +578,7 @@ function formatTime(seconds) {
 
 .empty-hint {
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   font-style: italic;
   padding: 0.5rem;
 }
@@ -586,7 +586,7 @@ function formatTime(seconds) {
 .hint-state {
   padding: 1rem 0.5rem;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 0.875rem;
 }
 
 .hint-state.error {
@@ -641,7 +641,7 @@ function formatTime(seconds) {
   width: 200px;
   flex-shrink: 0;
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   overflow: hidden;
 }
 

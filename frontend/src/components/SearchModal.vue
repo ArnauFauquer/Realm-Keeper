@@ -284,7 +284,7 @@ defineExpose({
   padding: 0.75rem 1rem;
   border: 1px solid var(--border-light);
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 1rem;
   background: rgba(26, 27, 58, 0.6);
   color: var(--text-primary);
   transition: all 0.2s ease;
@@ -318,7 +318,7 @@ defineExpose({
   background: rgba(26, 27, 58, 0.6);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   transition: all 0.2s ease;
 }
 
@@ -365,7 +365,7 @@ defineExpose({
   border-bottom: 1px solid var(--border-light);
   background: transparent;
   color: var(--text-primary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   box-sizing: border-box;
 }
 
@@ -394,7 +394,7 @@ defineExpose({
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   border-radius: 4px;
   transition: all 0.15s ease;
   text-align: left;
@@ -417,7 +417,7 @@ defineExpose({
   padding: 1rem;
   text-align: center;
   color: var(--text-tertiary);
-  font-size: 0.85rem;
+  font-size: 0.875rem;
 }
 
 .clear-tags-btn {
@@ -466,7 +466,7 @@ defineExpose({
 }
 
 .selected-tag .mdi {
-  font-size: 0.85rem;
+  font-size: 0.875rem;
   opacity: 0.7;
 }
 
