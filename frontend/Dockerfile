@@ -3,13 +3,14 @@ FROM node:20-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
-# node:20's bundled npm (10.x) can misread optionalDependencies entries
-# (e.g. esbuild's per-platform binaries) written by a newer npm, and then
-# refuses `npm ci` claiming the lockfile is out of sync. Pin npm to the
-# major version package-lock.json is actually generated with.
-RUN npm install -g npm@11
 COPY package*.json ./
-RUN npm ci
+# npm ci demands the lockfile's optionalDependencies entries (e.g. esbuild's
+# per-platform binaries) match byte-for-byte what the installing npm would
+# write itself, which breaks across npm major versions — contributors on a
+# newer local npm than node:20-alpine's bundled 10.x hit this constantly.
+# npm install resolves from package.json instead of demanding that exact
+# match, so it isn't affected.
+RUN npm install
 COPY . .
 RUN npm run build
 
