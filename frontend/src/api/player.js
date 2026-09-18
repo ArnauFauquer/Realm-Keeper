@@ -21,6 +21,10 @@ export async function deleteAlbum(name) {
   await client.delete(`${base}/albums/${encodeURIComponent(name)}`)
 }
 
+export async function renameAlbum(oldName, newName) {
+  await client.put(`${base}/albums/${encodeURIComponent(oldName)}`, { name: newName })
+}
+
 export async function fetchTracks(album) {
   const res = await client.get(`${base}/albums/${encodeURIComponent(album)}/tracks`)
   return res.data.tracks

@@ -47,6 +47,17 @@ async def delete_album(album: str):
     return {"status": "success"}
 
 
+@router.put("/albums/{album}")
+async def rename_album(album: str, data: Dict[str, str]):
+    try:
+        storage_service.rename_album(album, data.get("name", ""))
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise _storage_unavailable(e)
+    return {"status": "success"}
+
+
 @router.get("/albums/{album}/tracks")
 async def get_tracks(album: str):
     try:

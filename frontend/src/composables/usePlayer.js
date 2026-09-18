@@ -3,6 +3,7 @@ import {
   fetchAlbums,
   createAlbum as apiCreateAlbum,
   deleteAlbum as apiDeleteAlbum,
+  renameAlbum as apiRenameAlbum,
   fetchTracks,
   uploadTrack as apiUploadTrack,
   deleteTrack as apiDeleteTrack,
@@ -198,6 +199,15 @@ async function deleteAlbum(name) {
   await loadAlbums()
 }
 
+async function renameAlbum(oldName, newName) {
+  await apiRenameAlbum(oldName, newName)
+  if (currentAlbum.value === oldName) {
+    resetPlayback()
+    await selectAlbum(newName)
+  }
+  await loadAlbums()
+}
+
 async function uploadTrack(file, onProgress) {
   if (!currentAlbum.value) return
   await apiUploadTrack(currentAlbum.value, file, onProgress)
@@ -218,6 +228,6 @@ export function usePlayer() {
     progress, duration, volume,
     loadAlbums, selectAlbum, playTrackAt, playByKey, togglePlay, playNext, playPrev,
     toggleShuffle, toggleRepeat, seek, setVolume,
-    createAlbum, deleteAlbum, uploadTrack, deleteTrack
+    createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack
   }
 }

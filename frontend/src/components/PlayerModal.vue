@@ -31,17 +31,34 @@
 
           <div v-if="loadingAlbums" class="hint-state">Loading…</div>
           <div v-else-if="error && !albums.length" class="hint-state error">{{ error }}</div>
-          <ul v-else class="album-items">
+          <ul v-else ref="albumListRef" class="album-items">
             <li
               v-for="album in albums"
               :key="album"
               class="album-item"
               :class="{ active: album === currentAlbum }"
-              @click="selectAlbum(album)"
+              @click="renamingAlbum !== album && selectAlbum(album)"
               @mouseleave="pendingDeleteAlbum = null"
             >
               <span class="mdi mdi-folder-music-outline"></span>
-              <span class="album-name">{{ album }}</span>
+              <input
+                v-if="renamingAlbum === album"
+                v-model="renameValue"
+                class="album-rename-input"
+                @click.stop
+                @keyup.enter="submitRenameAlbum(album)"
+                @keyup.esc="renamingAlbum = null"
+                @blur="submitRenameAlbum(album)"
+              />
+              <span v-else class="album-name">{{ album }}</span>
+              <button
+                v-if="renamingAlbum !== album"
+                class="icon-btn"
+                title="Rename album"
+                @click.stop="startRenameAlbum(album)"
+              >
+                <span class="mdi mdi-pencil-outline"></span>
+              </button>
               <button
                 class="icon-btn danger"
                 :title="pendingDeleteAlbum === album ? 'Confirm delete' : 'Delete album'"
@@ -165,7 +182,7 @@ const {
   progress, duration, volume,
   loadAlbums, selectAlbum, playTrackAt, togglePlay, playNext, playPrev,
   toggleShuffle, toggleRepeat, seek, setVolume,
-  createAlbum, deleteAlbum, uploadTrack, deleteTrack: removeTrack
+  createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack
 } = usePlayer()
 
 const showNewAlbumInput = ref(false)
@@ -173,6 +190,9 @@ const newAlbumName = ref('')
 const newAlbumInputRef = ref(null)
 const pendingDeleteAlbum = ref(null)
 const uploading = ref([])
+const renamingAlbum = ref(null)
+const renameValue = ref('')
+const albumListRef = ref(null)
 
 let albumsLoaded = false
 watch(() => props.isOpen, (open) => {
@@ -213,6 +233,28 @@ async function confirmDeleteAlbum(album) {
     await deleteAlbum(album)
   } catch (e) {
     error.value = e.response?.data?.detail || 'Could not delete the album.'
+  }
+}
+
+function startRenameAlbum(album) {
+  renamingAlbum.value = album
+  renameValue.value = album
+  nextTick(() => {
+    const el = albumListRef.value?.querySelector('.album-rename-input')
+    el?.focus()
+    el?.select()
+  })
+}
+
+async function submitRenameAlbum(oldName) {
+  if (renamingAlbum.value !== oldName) return
+  const newName = renameValue.value.trim()
+  renamingAlbum.value = null
+  if (!newName || newName === oldName) return
+  try {
+    await renameAlbum(oldName, newName)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Could not rename the album.'
   }
 }
 
@@ -419,6 +461,21 @@ function formatTime(seconds) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.875rem;
+}
+
+.album-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(26, 27, 58, 0.6);
+  border: 1px solid var(--interactive-primary);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.album-rename-input:focus {
+  outline: none;
 }
 
 /* ── Track panel ────────────────────────────────────────────── */
