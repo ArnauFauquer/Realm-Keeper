@@ -11,6 +11,7 @@ from routes.auth import router as auth_router
 from routes.notes import router as notes_router
 from routes.screen import router as screen_router
 from routes.player import router as player_router
+from routes.charts import router as charts_router
 
 from config.settings import settings
 from config.logging import setup_logging
@@ -168,6 +169,7 @@ app.include_router(auth_router)
 app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route
 app.include_router(screen_router)  # viewing the screen stays public; posting to it is gated per-route
 app.include_router(player_router, dependencies=[Depends(require_auth)])
+app.include_router(charts_router)  # reading charts stays public; writes are gated per-route
 
 @app.get("/")
 async def root():

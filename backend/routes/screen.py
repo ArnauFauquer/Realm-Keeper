@@ -90,3 +90,17 @@ async def clear_screen(user: dict = Depends(require_auth)):
         "type": "clear_screen"
     })
     return {"status": "success"}
+
+@router.post("/api/screen/chart")
+async def display_chart(data: Dict[str, str], user: dict = Depends(require_auth)):
+    """
+    Tells all connected screens which chart to show. Screens fetch the chart
+    themselves from the public GET /api/charts/{id} endpoint — this only
+    broadcasts the pointer, same as display_media only broadcasting a URL.
+    Expected data: {"chart_id": "..."}
+    """
+    await manager.broadcast({
+        "type": "display_chart",
+        "chart_id": data.get("chart_id")
+    })
+    return {"status": "success"}

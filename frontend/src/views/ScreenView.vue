@@ -5,8 +5,13 @@
     <!-- Ambient glow behind image -->
     <div class="ambient-glow" :style="glowStyle"></div>
 
+    <!-- Chart area -->
+    <div v-if="activeChart" class="screen-chart-area">
+      <ChartCanvas :chart="activeChart" :editable="false" :zoomable="false" />
+    </div>
+
     <!-- Media area -->
-    <div class="screen-media-area">
+    <div v-else class="screen-media-area">
       <!-- 1. Waiting for first media -->
       <div v-if="!displayUrl && !error" class="screen-loading">
         <div class="loading-spinner"></div>
@@ -75,9 +80,12 @@
 
 <script>
 import { apiUrl } from '@/config/env'
+import ChartCanvas from '@/components/ChartCanvas.vue'
+import { fetchChart } from '@/api/charts'
 
 export default {
   name: 'ScreenView',
+  components: { ChartCanvas },
   data() {
     return {
       loading: true,
@@ -92,6 +100,7 @@ export default {
       diceClearTimer: null,
       diceSeq: 0,
       diceWorld: null,
+      activeChart: null,
     }
   },
   computed: {
@@ -200,13 +209,20 @@ export default {
           
           if (data.type === 'display_media') {
             this.clearDiceRoll()
+            this.activeChart = null
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
             this.showDiceRoll(data)
+          } else if (data.type === 'display_chart') {
+            this.clearDiceRoll()
+            this.displayUrl = ''
+            this.loading = false
+            this.showChart(data.chart_id)
           } else if (data.type === 'clear_screen') {
             this.displayUrl = ''
             this.displayTitle = ''
             this.loading = false
+            this.activeChart = null
             this.clearDiceRoll()
           }
         } catch (e) {
@@ -257,6 +273,18 @@ export default {
       this.error = false
       this.displayUrl = finalUrl
       this.displayTitle = title || ''
+    },
+    async showChart(chartId) {
+      if (!chartId) {
+        this.activeChart = null
+        return
+      }
+      try {
+        this.activeChart = await fetchChart(chartId)
+      } catch (e) {
+        console.error('Failed to load chart for screen:', e)
+        this.activeChart = null
+      }
     },
     showDiceRoll(data) {
       if (this.diceClearTimer) clearTimeout(this.diceClearTimer)
@@ -366,6 +394,14 @@ export default {
   z-index: 0;
   opacity: 0.5;
   transition: background 1.5s ease;
+}
+
+/* ─── Chart area ─── */
+.screen-chart-area {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100vh;
 }
 
 /* ─── Media area ─── */

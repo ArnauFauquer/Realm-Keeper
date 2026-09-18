@@ -1,11 +1,11 @@
 import os
-import subprocess
 import threading
 from pathlib import Path
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from models.note import Note, NoteMetadata
 from services.markdown_parser import MarkdownParser
+from services.git_sync_utils import commit_and_push, GitCommitError
 from config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -68,54 +68,19 @@ class MarkdownService:
         note_path = self._resolve_note_path(note_id)
         is_new = not note_path.exists()
 
-        with self._git_lock:
-            # Best-effort: reduces (but does not guarantee against) a
-            # rejected push if the remote moved on since our last sync.
-            subprocess.run(
-                ["git", "-C", str(self.vault_path), "pull", "--ff-only"],
-                capture_output=True, text=True, timeout=30
-            )
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        note_path.write_text(content, encoding='utf-8')
+        rel_path = str(note_path.relative_to(self.vault_path.resolve()))
 
-            note_path.parent.mkdir(parents=True, exist_ok=True)
-            note_path.write_text(content, encoding='utf-8')
-
-            rel_path = str(note_path.relative_to(self.vault_path.resolve()))
-            add_result = subprocess.run(
-                ["git", "-C", str(self.vault_path), "add", rel_path],
-                capture_output=True, text=True, timeout=30
+        verb = "Create" if is_new else "Update"
+        try:
+            commit_and_push(
+                self.vault_path, self._git_lock, [rel_path],
+                message=f"{verb} note: {note_id}",
+                author_name=author_name, author_email=author_email,
             )
-            if add_result.returncode != 0:
-                raise NoteSaveError(f"git add failed: {add_result.stderr.strip()}")
-
-            verb = "Create" if is_new else "Update"
-            commit_result = subprocess.run(
-                ["git", "-C", str(self.vault_path),
-                 "-c", f"user.name={author_name}",
-                 "-c", f"user.email={author_email}",
-                 "commit", "-m", f"{verb} note: {note_id}"],
-                capture_output=True, text=True, timeout=30
-            )
-            if commit_result.returncode != 0:
-                output = commit_result.stdout + commit_result.stderr
-                if "nothing to commit" in output:
-                    raise NoteSaveError("No changes to save.")
-                raise NoteSaveError(f"git commit failed: {output.strip()}")
-
-            push_result = subprocess.run(
-                ["git", "-C", str(self.vault_path), "push"],
-                capture_output=True, text=True, timeout=60
-            )
-            if push_result.returncode != 0:
-                subprocess.run(
-                    ["git", "-C", str(self.vault_path), "pull", "--rebase"],
-                    capture_output=True, text=True, timeout=30
-                )
-                push_retry = subprocess.run(
-                    ["git", "-C", str(self.vault_path), "push"],
-                    capture_output=True, text=True, timeout=60
-                )
-                if push_retry.returncode != 0:
-                    raise NoteSaveError(f"git push failed: {push_retry.stderr.strip()}")
+        except GitCommitError as e:
+            raise NoteSaveError(str(e))
 
         self.invalidate_cache()
         return is_new
