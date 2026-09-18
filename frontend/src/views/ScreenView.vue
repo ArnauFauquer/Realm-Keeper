@@ -10,6 +10,11 @@
       <ChartCanvas :chart="activeChart" :editable="false" :zoomable="false" />
     </div>
 
+    <!-- Vista area -->
+    <div v-else-if="activeVista" class="screen-vista-area">
+      <VistaCanvas :vista="activeVista" :editable="false" />
+    </div>
+
     <!-- Media area -->
     <div v-else class="screen-media-area">
       <!-- 1. Waiting for first media -->
@@ -81,11 +86,13 @@
 <script>
 import { apiUrl } from '@/config/env'
 import ChartCanvas from '@/components/ChartCanvas.vue'
+import VistaCanvas from '@/components/VistaCanvas.vue'
 import { fetchChart } from '@/api/charts'
+import { fetchVista } from '@/api/vistas'
 
 export default {
   name: 'ScreenView',
-  components: { ChartCanvas },
+  components: { ChartCanvas, VistaCanvas },
   data() {
     return {
       loading: true,
@@ -101,6 +108,7 @@ export default {
       diceSeq: 0,
       diceWorld: null,
       activeChart: null,
+      activeVista: null,
     }
   },
   computed: {
@@ -210,6 +218,7 @@ export default {
           if (data.type === 'display_media') {
             this.clearDiceRoll()
             this.activeChart = null
+            this.activeVista = null
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
             this.showDiceRoll(data)
@@ -217,12 +226,20 @@ export default {
             this.clearDiceRoll()
             this.displayUrl = ''
             this.loading = false
+            this.activeVista = null
             this.showChart(data.chart_id)
+          } else if (data.type === 'display_vista') {
+            this.clearDiceRoll()
+            this.displayUrl = ''
+            this.loading = false
+            this.activeChart = null
+            this.showVista(data.vista_id)
           } else if (data.type === 'clear_screen') {
             this.displayUrl = ''
             this.displayTitle = ''
             this.loading = false
             this.activeChart = null
+            this.activeVista = null
             this.clearDiceRoll()
           }
         } catch (e) {
@@ -284,6 +301,18 @@ export default {
       } catch (e) {
         console.error('Failed to load chart for screen:', e)
         this.activeChart = null
+      }
+    },
+    async showVista(vistaId) {
+      if (!vistaId) {
+        this.activeVista = null
+        return
+      }
+      try {
+        this.activeVista = await fetchVista(vistaId)
+      } catch (e) {
+        console.error('Failed to load vista for screen:', e)
+        this.activeVista = null
       }
     },
     showDiceRoll(data) {
@@ -398,6 +427,14 @@ export default {
 
 /* ─── Chart area ─── */
 .screen-chart-area {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ─── Vista area ─── */
+.screen-vista-area {
   position: relative;
   z-index: 1;
   width: 100vw;

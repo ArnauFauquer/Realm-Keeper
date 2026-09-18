@@ -56,6 +56,10 @@
           <span class="mdi mdi-map-marker-radius"></span>
           <span>Charts</span>
         </button>
+        <button class="action-btn" @click="openVistas">
+          <span class="mdi mdi-image-frame"></span>
+          <span>Vistas</span>
+        </button>
       </div>
 
       <div v-if="loading && notes.length === 0" class="loading-state">
@@ -113,6 +117,7 @@
       @close="isPlayerModalOpen = false"
     />
     <ChartsModal :notes="notes" />
+    <VistasModal />
 
     <div v-if="showNewNoteInput" class="modal-overlay" @click.self="showNewNoteInput = false">
       <div class="new-note-modal">
@@ -152,15 +157,18 @@ import SearchModal from './SearchModal.vue'
 import GraphModal from './GraphModal.vue'
 import PlayerModal from './PlayerModal.vue'
 import ChartsModal from './ChartsModal.vue'
+import VistasModal from './VistasModal.vue'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useChartsModal } from '@/composables/useChartsModal'
+import { useVistasModal } from '@/composables/useVistasModal'
 
 const router = useRouter()
 const { user, login, logout } = useAuth()
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const { open: openCharts } = useChartsModal()
+const { open: openVistas } = useVistasModal()
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
 

@@ -60,6 +60,25 @@ class CacheControlMiddleware:
                 # Login state must never be cached (stale /me would show a
                 # logged-out user as logged in, or vice versa).
                 return "no-store, must-revalidate"
+            if (
+                path.startswith("/api/vistas/assets/")
+                or path.startswith("/api/charts/assets/")
+                or path.startswith("/api/asset-library/assets/")
+            ):
+                # The binary image itself, keyed by its own filename — safe to
+                # cache hard like /assets/.
+                return "public, max-age=31536000, immutable"
+            if (
+                path.startswith("/api/vistas")
+                or path.startswith("/api/charts")
+                or path.startswith("/api/asset-library")
+            ):
+                # A GM repositions/saves and immediately hits "Send to
+                # screen" — the screen's fetch of this same vista/chart must
+                # never be answered from a 60s-old cache, or the live
+                # display can show a stale character position while the GM
+                # is mid-session.
+                return "no-store, must-revalidate"
             if path.startswith("/api/"):
                 return "public, max-age=60"
         

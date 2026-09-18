@@ -104,3 +104,17 @@ async def display_chart(data: Dict[str, str], user: dict = Depends(require_auth)
         "chart_id": data.get("chart_id")
     })
     return {"status": "success"}
+
+@router.post("/api/screen/vista")
+async def display_vista(data: Dict[str, str], user: dict = Depends(require_auth)):
+    """
+    Tells all connected screens which vista to show. Screens fetch the vista
+    themselves from the public GET /api/vistas/{id} endpoint — this only
+    broadcasts the pointer, same as display_chart only broadcasting an id.
+    Expected data: {"vista_id": "..."}
+    """
+    await manager.broadcast({
+        "type": "display_vista",
+        "vista_id": data.get("vista_id")
+    })
+    return {"status": "success"}

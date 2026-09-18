@@ -1,5 +1,5 @@
-"""S3-compatible object storage client (Ceph Rook RGW) for the audio player
-and for chart map/pin images."""
+"""S3-compatible object storage client (Ceph Rook RGW) for the audio player,
+chart map/pin images, vista backgrounds, and the reusable asset library."""
 import re
 from typing import BinaryIO, Optional
 
@@ -16,7 +16,7 @@ ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 # Top-level prefixes used by other features sharing this bucket — never
 # real albums, so list_albums() must skip them and create/rename must
 # refuse to collide with them.
-RESERVED_ALBUM_NAMES = {"charts"}
+RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library"}
 
 
 class StorageError(Exception):
@@ -206,6 +206,46 @@ def delete_chart_assets(chart_id: str) -> None:
     chart_id = _sanitize_segment(chart_id)
     client = _client()
     prefix = f"charts/{chart_id}/"
+    paginator = client.get_paginator("list_objects_v2")
+    keys = []
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
+        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
+    for i in range(0, len(keys), 1000):
+        batch = keys[i:i + 1000]
+        if batch:
+            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
+
+
+def upload_vista_background(vista_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
+    vista_id = _sanitize_segment(vista_id)
+    filename = _sanitize_segment(filename)
+    return _upload_image(f"vistas/{vista_id}/background/{filename}", filename, file_obj, content_type)
+
+
+def upload_library_asset_image(item_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
+    item_id = _sanitize_segment(item_id)
+    filename = _sanitize_segment(filename)
+    return _upload_image(f"asset-library/{item_id}/{filename}", filename, file_obj, content_type)
+
+
+def delete_library_asset(item_id: str) -> None:
+    item_id = _sanitize_segment(item_id)
+    client = _client()
+    prefix = f"asset-library/{item_id}/"
+    paginator = client.get_paginator("list_objects_v2")
+    keys = []
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
+        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
+    for i in range(0, len(keys), 1000):
+        batch = keys[i:i + 1000]
+        if batch:
+            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
+
+
+def delete_vista_assets(vista_id: str) -> None:
+    vista_id = _sanitize_segment(vista_id)
+    client = _client()
+    prefix = f"vistas/{vista_id}/"
     paginator = client.get_paginator("list_objects_v2")
     keys = []
     for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
