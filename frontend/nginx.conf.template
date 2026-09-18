@@ -2,6 +2,10 @@ server {
     listen 8080;
     server_name localhost;
 
+    # nginx's 1MB default rejects map images, pin icons and audio track
+    # uploads before they even reach the backend.
+    client_max_body_size 50M;
+
     # Support running as non-root
     client_body_temp_path /tmp/client_temp;
     proxy_temp_path       /tmp/proxy_temp_path;
@@ -27,7 +31,11 @@ server {
     # "backend" resolves via Docker's embedded DNS.
     location /api/ {
         proxy_pass $backend_upstream;
-        proxy_set_header Host $host;
+        # $http_host (not $host) — nginx's $host strips the port, so a
+        # request to localhost:5173 would forward "Host: localhost" and the
+        # backend's request.url_for() would build the Google OAuth
+        # redirect_uri without the port, mismatching what's registered.
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
