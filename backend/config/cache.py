@@ -1,28 +1,42 @@
-from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.datastructures import MutableHeaders
 import logging
 
 logger = logging.getLogger(__name__)
 
-class CacheControlMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next) -> Response:
-        response = await call_next(request)
-        
-        if "cache-control" in response.headers:
-            return response
-            
-        path = request.url.path
-        method = request.method
-        
+class CacheControlMiddleware:
+    """Plain ASGI middleware — deliberately NOT BaseHTTPMiddleware.
+
+    BaseHTTPMiddleware buffers/re-streams the whole response through an
+    in-memory channel, which raises anyio.WouldBlock -> EndOfStream (and
+    takes the request down with an unhandled 500) if that stream gets
+    interrupted — e.g. a client disconnecting mid-download of a streamed
+    chart/audio asset. Plain ASGI middleware only touches the
+    "http.response.start" message and passes everything else through
+    untouched, so there's no stream to break.
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope["path"]
+        method = scope["method"]
         cache_control = self._get_cache_control(path, method)
-        
-        if cache_control:
-            response.headers["Cache-Control"] = cache_control
-            logger.debug(f"[Cache] {method} {path} → {cache_control}")
-            
-        return response
-        
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start" and cache_control:
+                headers = MutableHeaders(raw=message["headers"])
+                if "cache-control" not in headers:
+                    headers["cache-control"] = cache_control
+                    logger.debug(f"[Cache] {method} {path} → {cache_control}")
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
     @staticmethod
     def _get_cache_control(path: str, method: str) -> str:
         if method in ["POST", "PUT", "DELETE", "PATCH"]:
