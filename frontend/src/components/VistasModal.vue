@@ -67,6 +67,9 @@
           </div>
           <div v-else class="vista-grid">
             <div v-for="v in vistas" :key="v.id" class="vista-card" @click="openVista(v.id)">
+              <button v-if="user" class="vista-card-delete" title="Delete vista" @click.stop="onDeleteVista(v)">
+                <span class="mdi mdi-trash-can-outline"></span>
+              </button>
               <div class="vista-card-thumb">
                 <img v-if="v.background_url" :src="resolveUrl(v.background_url)" :alt="v.name" />
                 <span v-else class="mdi mdi-image-outline"></span>
@@ -108,7 +111,7 @@ import * as vistasApi from '@/api/vistas'
 
 const { isOpen, close } = useVistasModal()
 const { user } = useAuth()
-const { vistas, loading, error, fetchVistas, createVista } = useVistas()
+const { vistas, loading, error, fetchVistas, createVista, removeVista } = useVistas()
 
 const view = ref('gallery')
 const showNewVistaInput = ref(false)
@@ -165,6 +168,15 @@ async function submitNewVista() {
   try {
     const vista = await createVista(name, '')
     openVista(vista.id)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onDeleteVista(vista) {
+  if (!window.confirm(`Delete vista "${vista.name}"? This cannot be undone.`)) return
+  try {
+    await removeVista(vista.id)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }
@@ -459,12 +471,41 @@ async function sendToScreen() {
 }
 
 .vista-card {
+  position: relative;
   border: 1px solid var(--border-light);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
   background: rgba(26, 27, 58, 0.4);
   transition: all 0.2s ease;
+}
+
+.vista-card-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(12, 13, 29, 0.85);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.vista-card:hover .vista-card-delete {
+  opacity: 1;
+}
+
+.vista-card-delete:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--status-error, #f87171);
 }
 
 .vista-card:hover {

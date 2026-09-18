@@ -67,6 +67,9 @@
           </div>
           <div v-else class="chart-grid">
             <div v-for="c in charts" :key="c.id" class="chart-card" @click="openChart(c.id)">
+              <button v-if="user" class="chart-card-delete" title="Delete chart" @click.stop="onDeleteChart(c)">
+                <span class="mdi mdi-trash-can-outline"></span>
+              </button>
               <div class="chart-card-thumb">
                 <img v-if="c.image_url" :src="resolveUrl(c.image_url)" :alt="c.name" />
                 <span v-else class="mdi mdi-map-outline"></span>
@@ -117,7 +120,7 @@ defineProps({
 const router = useRouter()
 const { isOpen, close } = useChartsModal()
 const { user } = useAuth()
-const { charts, loading, error, fetchCharts, createChart } = useCharts()
+const { charts, loading, error, fetchCharts, createChart, removeChart } = useCharts()
 
 const view = ref('gallery')
 const showNewChartInput = ref(false)
@@ -174,6 +177,15 @@ async function submitNewChart() {
   try {
     const chart = await createChart(name, '')
     openChart(chart.id)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onDeleteChart(chart) {
+  if (!window.confirm(`Delete chart "${chart.name}"? This cannot be undone.`)) return
+  try {
+    await removeChart(chart.id)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }
@@ -488,12 +500,41 @@ function onOpenNote(notePath) {
 }
 
 .chart-card {
+  position: relative;
   border: 1px solid var(--border-light);
   border-radius: 10px;
   overflow: hidden;
   cursor: pointer;
   background: rgba(26, 27, 58, 0.4);
   transition: all 0.2s ease;
+}
+
+.chart-card-delete {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(12, 13, 29, 0.85);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.chart-card:hover .chart-card-delete {
+  opacity: 1;
+}
+
+.chart-card-delete:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--status-error, #f87171);
 }
 
 .chart-card:hover {

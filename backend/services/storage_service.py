@@ -1,6 +1,7 @@
 """S3-compatible object storage client (Ceph Rook RGW) for the audio player,
 chart map/pin images, vista backgrounds, and the reusable asset library."""
 import re
+import uuid
 from typing import BinaryIO, Optional
 
 import boto3
@@ -177,6 +178,17 @@ def delete_track(key: str) -> None:
     client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
 
 
+def _unique_filename(filename: str) -> str:
+    """Prefixes a short random id onto the filename so replacing an image
+    with a new upload of the same name never reuses the old S3 key. Reusing
+    the key would return the same image_url as before, which Vue treats as
+    unchanged (skips re-rendering the <img>) and which browsers hold onto
+    under this endpoint's long immutable cache — so a GM's replacement
+    would silently never show up, with no error anywhere.
+    """
+    return f"{uuid.uuid4().hex[:8]}-{filename}"
+
+
 def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     ext = filename[filename.rfind("."):].lower() if "." in filename else ""
     if ext not in ALLOWED_IMAGE_EXTENSIONS:
@@ -192,14 +204,14 @@ def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Opt
 def upload_chart_image(chart_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     chart_id = _sanitize_segment(chart_id)
     filename = _sanitize_segment(filename)
-    return _upload_image(f"charts/{chart_id}/map/{filename}", filename, file_obj, content_type)
+    return _upload_image(f"charts/{chart_id}/map/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def upload_pin_icon(chart_id: str, pin_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     chart_id = _sanitize_segment(chart_id)
     pin_id = _sanitize_segment(pin_id)
     filename = _sanitize_segment(filename)
-    return _upload_image(f"charts/{chart_id}/pins/{pin_id}/{filename}", filename, file_obj, content_type)
+    return _upload_image(f"charts/{chart_id}/pins/{pin_id}/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def delete_chart_assets(chart_id: str) -> None:
@@ -219,13 +231,13 @@ def delete_chart_assets(chart_id: str) -> None:
 def upload_vista_background(vista_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     vista_id = _sanitize_segment(vista_id)
     filename = _sanitize_segment(filename)
-    return _upload_image(f"vistas/{vista_id}/background/{filename}", filename, file_obj, content_type)
+    return _upload_image(f"vistas/{vista_id}/background/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def upload_library_asset_image(item_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     item_id = _sanitize_segment(item_id)
     filename = _sanitize_segment(filename)
-    return _upload_image(f"asset-library/{item_id}/{filename}", filename, file_obj, content_type)
+    return _upload_image(f"asset-library/{item_id}/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def delete_library_asset(item_id: str) -> None:
