@@ -50,10 +50,27 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
+    # Vite's own build output uses content-hashed filenames (a new build
+    # never reuses an old one), so these are safe to cache hard.
+    location /assets/ {
+        root /usr/share/nginx/html;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
     location / {
         root /usr/share/nginx/html;
         index index.html index.htm;
         try_files $uri $uri/ /index.html;
+    }
+
+    # index.html references the current build's hashed bundle by name. A
+    # browser holding onto a cached copy of it (nothing below sets
+    # Cache-Control otherwise, so this is left to browser heuristics) keeps
+    # pointing at whatever bundle existed at the time — one a later deploy
+    # may have changed or removed outright — so every load must revalidate.
+    location = /index.html {
+        root /usr/share/nginx/html;
+        add_header Cache-Control "no-cache, must-revalidate";
     }
 
     error_page 500 502 503 504 /50x.html;
