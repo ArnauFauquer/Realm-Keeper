@@ -36,7 +36,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: realm-keeper-backend
-          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.56
+          image: ghcr.io/arnaufauquer/realm-keeper/backend:0.1.57
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true
