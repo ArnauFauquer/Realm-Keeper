@@ -213,6 +213,7 @@ async function saveNow() {
       name: vista.name,
       description: vista.description,
       vanishing_point: vista.vanishing_point,
+      background_offset_y: vista.background_offset_y,
       assets: vista.assets
     })
     hasUnsavedChanges.value = false

@@ -19,9 +19,9 @@ export async function createVista(name, description) {
   return res.data
 }
 
-export async function saveVista(vistaId, { name, description, vanishing_point, assets }) {
+export async function saveVista(vistaId, { name, description, vanishing_point, background_offset_y, assets }) {
   const res = await client.put(`${base}/${encodeURIComponent(vistaId)}`, {
-    name, description, vanishing_point, assets
+    name, description, vanishing_point, background_offset_y, assets
   })
   return res.data
 }

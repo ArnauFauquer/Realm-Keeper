@@ -87,6 +87,7 @@ class VistaService:
         name: str,
         description: Optional[str],
         vanishing_point: VanishingPoint,
+        background_offset_y: float,
         assets: List[VistaAsset],
         author_name: str,
         author_email: str,
@@ -101,6 +102,7 @@ class VistaService:
             description=description,
             background_url=existing.background_url,
             vanishing_point=vanishing_point,
+            background_offset_y=background_offset_y,
             assets=assets,
         )
         self._write(vista, author_name, author_email, verb="Update")

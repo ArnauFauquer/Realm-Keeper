@@ -38,6 +38,7 @@ class VistaSaveRequest(BaseModel):
     name: str
     description: Optional[str] = None
     vanishing_point: VanishingPoint = VanishingPoint()
+    background_offset_y: float = 50.0
     assets: List[VistaAsset] = []
 
 
@@ -99,7 +100,7 @@ async def save_vista(
 ):
     try:
         return service.save_vista(
-            vista_id, body.name, body.description, body.vanishing_point, body.assets,
+            vista_id, body.name, body.description, body.vanishing_point, body.background_offset_y, body.assets,
             author_name=user.get("name") or user["email"], author_email=user["email"],
         )
     except ValueError as e:

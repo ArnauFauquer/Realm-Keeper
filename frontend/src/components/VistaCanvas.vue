@@ -26,7 +26,12 @@
            background directly onto the viewport would crop it differently
            in each place, throwing off every x/y percent coordinate). -->
       <div class="stage-frame" :style="frameStyle">
-        <div class="stage-background" :class="{ ambient: !editable }" :style="backgroundStyle"></div>
+        <div
+          class="stage-background"
+          :class="{ ambient: !editable, panning: editable && mode === 'select' }"
+          :style="backgroundStyle"
+          @pointerdown="startBackgroundPan"
+        ></div>
 
         <!-- Assets, painter's-algorithm ordered: farther (smaller y) behind, nearer (larger y) in front -->
         <div
@@ -272,9 +277,44 @@ function resolveUrl(url) {
   return url.startsWith('http') ? url : `${apiUrl}${url}`
 }
 
+// Natural size of the background image, needed to work out how far it can
+// be panned vertically once it's cover-fit into the stage frame (see
+// verticalPanRangePx below) — a plain img/href sizing trick like the chart
+// canvas uses won't do here since this background is a CSS background-image,
+// not an <img>, so nothing else already knows its intrinsic dimensions.
+const bgNaturalWidth = ref(0)
+const bgNaturalHeight = ref(0)
+
+function loadBackgroundNaturalSize(url) {
+  if (!url) {
+    bgNaturalWidth.value = 0
+    bgNaturalHeight.value = 0
+    return
+  }
+  const img = new Image()
+  img.onload = () => {
+    bgNaturalWidth.value = img.naturalWidth
+    bgNaturalHeight.value = img.naturalHeight
+  }
+  img.src = resolveUrl(url)
+}
+watch(() => props.vista.background_url, loadBackgroundNaturalSize, { immediate: true })
+
 const backgroundStyle = computed(() => ({
-  backgroundImage: props.vista.background_url ? `url(${resolveUrl(props.vista.background_url)})` : 'none'
+  backgroundImage: props.vista.background_url ? `url(${resolveUrl(props.vista.background_url)})` : 'none',
+  backgroundPositionY: `${props.vista.background_offset_y ?? 50}%`
 }))
+
+// How many pixels of the cover-fit background are hidden above/below the
+// frame — 0 once the image is proportionally wider than the frame, since
+// "cover" then crops horizontally instead and there's nothing to pan.
+function verticalPanRangePx() {
+  const frame = frameRect.value
+  if (!bgNaturalWidth.value || !bgNaturalHeight.value || !frame.width || !frame.height) return 0
+  const coverScale = Math.max(frame.width / bgNaturalWidth.value, frame.height / bgNaturalHeight.value)
+  const renderedHeight = bgNaturalHeight.value * coverScale
+  return Math.max(0, renderedHeight - frame.height)
+}
 
 // Distance-based scale: an asset's apparent size is derived from how close
 // its y position is to the vanishing point's y (the horizon for this
@@ -343,6 +383,7 @@ function uuid() {
 function emitChange() {
   emit('change', {
     vanishing_point: props.vista.vanishing_point,
+    background_offset_y: props.vista.background_offset_y,
     assets: props.vista.assets
   })
 }
@@ -425,6 +466,16 @@ function startDrag(kind, id) {
   if (kind === 'asset') selectedId.value = id
 }
 
+function startBackgroundPan(evt) {
+  if (!props.editable || mode.value !== 'select') return
+  dragState = {
+    kind: 'backgroundPan',
+    startY: evt.clientY,
+    startOffset: props.vista.background_offset_y ?? 50
+  }
+  dragMoved = false
+}
+
 function startRotate(evt, asset) {
   const el = evt.currentTarget.closest('.vista-asset')
   if (!el) return
@@ -447,6 +498,19 @@ function onScaleWheel(evt, asset) {
 
 function onPointerMove(evt) {
   if (!dragState) return
+
+  if (dragState.kind === 'backgroundPan') {
+    dragMoved = true
+    const range = verticalPanRangePx()
+    if (range > 0) {
+      const dy = evt.clientY - dragState.startY
+      // Dragging down should drag the art down with the cursor (revealing
+      // more of its top edge), which means the offset percentage decreases.
+      const deltaPct = (dy / range) * 100
+      props.vista.background_offset_y = clamp(dragState.startOffset - deltaPct, 0, 100)
+    }
+    return
+  }
 
   if (dragState.kind === 'rotate') {
     dragMoved = true
@@ -571,8 +635,12 @@ function onBackgroundSelected(evt) {
   position: absolute;
   inset: 0;
   background-size: cover;
-  background-position: center;
+  background-position-x: center;
   background-repeat: no-repeat;
+}
+
+.stage-background.panning {
+  cursor: ns-resize;
 }
 
 .stage-background.ambient {

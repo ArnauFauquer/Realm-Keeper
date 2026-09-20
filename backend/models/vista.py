@@ -39,4 +39,10 @@ class VistaMetadata(BaseModel):
 
 class Vista(VistaMetadata):
     vanishing_point: VanishingPoint = VanishingPoint()
+    # CSS background-position-y equivalent (0 = top of the art at the top of
+    # the stage, 100 = its bottom at the stage's bottom, 50 = centered).
+    # Independent of vanishing_point/assets so a tall background can be
+    # panned to a different vertical slice without moving anything already
+    # placed against it.
+    background_offset_y: float = 50.0
     assets: List[VistaAsset] = []
