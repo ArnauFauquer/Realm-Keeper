@@ -22,6 +22,11 @@ class VistaAsset(BaseModel):
     # closest possible point (y = 100, the bottom edge of the stage).
     width_pct: float = 20.0
     flip_h: bool = False
+    rotation: float = 0.0
+    opacity: float = 1.0
+    brightness: float = 1.0
+    saturation: float = 1.0
+    hue_rotate: float = 0.0
 
 
 class VistaMetadata(BaseModel):

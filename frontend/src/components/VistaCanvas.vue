@@ -40,15 +40,42 @@
           @mousedown.stop.prevent
           @touchstart.stop
         >
-          <img
-            v-if="asset.image_url"
-            :src="resolveUrl(asset.image_url)"
-            :alt="asset.name"
-            class="vista-asset-image"
-            :class="{ flipped: asset.flip_h }"
-            draggable="false"
-          />
-          <span v-else class="mdi mdi-account-outline placeholder-icon"></span>
+          <!-- Rotates as one unit with the artwork, so the handles stay glued
+               to its corners instead of staying behind at the unrotated
+               position while only the image spins. -->
+          <div class="vista-asset-spin" :style="spinStyle(asset)">
+            <img
+              v-if="asset.image_url"
+              :src="resolveUrl(asset.image_url)"
+              :alt="asset.name"
+              class="vista-asset-image"
+              :style="imageStyle(asset)"
+              draggable="false"
+            />
+            <span v-else class="mdi mdi-account-outline placeholder-icon" :style="imageStyle(asset)"></span>
+
+            <template v-if="editable && selectedId === asset.id">
+              <div
+                class="rotate-handle"
+                title="Drag to rotate"
+                @pointerdown.stop="startRotate($event, asset)"
+                @click.stop="justDragged = false"
+                @mousedown.stop.prevent
+                @touchstart.stop
+              >
+                <span class="mdi mdi-rotate-right"></span>
+              </div>
+              <div
+                class="scale-handle"
+                title="Drag or scroll to resize"
+                @pointerdown.stop="startScale($event, asset)"
+                @wheel.stop.prevent="onScaleWheel($event, asset)"
+                @click.stop="justDragged = false"
+                @mousedown.stop.prevent
+                @touchstart.stop
+              ></div>
+            </template>
+          </div>
         </div>
 
         <!-- Vanishing point marker -->
@@ -58,7 +85,7 @@
           :style="vanishingPointStyle"
           title="Vanishing point — drag to calibrate perspective for this background"
           @pointerdown.stop="startDrag('vanishingPoint', null)"
-          @click.stop
+          @click.stop="justDragged = false"
           @mousedown.stop.prevent
           @touchstart.stop
         >
@@ -99,24 +126,42 @@
           </button>
         </div>
 
-        <button class="upload-btn small" @click="openLibraryForAsset(selectedAsset)">
-          <span class="mdi mdi-folder-multiple-image"></span> {{ selectedAsset.image_url ? 'Change image' : 'Choose image' }}
-        </button>
-
-        <div class="size-control">
-          <span class="mdi mdi-arrow-expand-horizontal"></span>
-          <input
-            type="range"
-            min="4" max="60" step="1"
-            v-model.number="selectedAsset.width_pct"
-            @input="emitChange"
-          />
-          <span class="size-value">{{ Math.round(selectedAsset.width_pct) }}%</span>
+        <div class="panel-row">
+          <button class="upload-btn small" @click="openLibraryForAsset(selectedAsset)">
+            <span class="mdi mdi-folder-multiple-image"></span> {{ selectedAsset.image_url ? 'Change image' : 'Choose image' }}
+          </button>
+          <button class="upload-btn small" title="Reset scale, rotation, flip and color adjustments" @click="resetAsset(selectedAsset)">
+            <span class="mdi mdi-restore"></span> Reset to default
+          </button>
         </div>
 
         <button class="flip-btn" :class="{ active: selectedAsset.flip_h }" @click="toggleFlip(selectedAsset)">
           <span class="mdi mdi-flip-horizontal"></span> Flip
         </button>
+
+        <div class="slider-row">
+          <span class="mdi mdi-opacity"></span>
+          <input type="range" min="0" max="100" step="1" v-model.number="opacityPct" @input="emitChange" />
+          <span class="slider-value">{{ Math.round(opacityPct) }}%</span>
+        </div>
+
+        <div class="slider-row">
+          <span class="mdi mdi-brightness-6"></span>
+          <input type="range" min="0" max="200" step="1" v-model.number="brightnessPct" @input="emitChange" />
+          <span class="slider-value">{{ Math.round(brightnessPct) }}%</span>
+        </div>
+
+        <div class="slider-row">
+          <span class="mdi mdi-contrast-circle"></span>
+          <input type="range" min="0" max="200" step="1" v-model.number="saturationPct" @input="emitChange" />
+          <span class="slider-value">{{ Math.round(saturationPct) }}%</span>
+        </div>
+
+        <div class="slider-row">
+          <span class="mdi mdi-palette"></span>
+          <input type="range" min="0" max="360" step="1" v-model.number="selectedAsset.hue_rotate" @input="emitChange" />
+          <span class="slider-value">{{ Math.round(selectedAsset.hue_rotate) }}°</span>
+        </div>
       </div>
     </div>
 
@@ -149,6 +194,12 @@ let libraryTargetAsset = null
 const MIN_SCALE = 0.06
 const GROUND_Y = 100
 
+// Bounds for an asset's own base width_pct (before the distance scale above
+// is applied), and how much one wheel notch (~100 deltaY) nudges it.
+const ASSET_SCALE_MIN = 2
+const ASSET_SCALE_MAX = 150
+const SCALE_WHEEL_SENSITIVITY = 0.05
+
 // Every x/y on a vista is a percentage of this fixed-ratio "stage", not of
 // whatever container happens to be showing it. The editor modal and a
 // fullscreen /screen display are almost never the same shape — without a
@@ -165,6 +216,14 @@ const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
 
 let dragState = null
 let dragMoved = false
+// True for the one click event that immediately follows a real drag (asset
+// move, rotate, scale, or vanishing point). That click's target often lands
+// just outside the dragged element — e.g. an asset is anchored at its foot
+// point, so dropping it right on that point can hit the background by a
+// pixel — which would otherwise bubble to onStageClick and deselect
+// whatever was just placed. Consumed (and reset) by whichever click handler
+// runs next, so it never leaks into an unrelated later click.
+let justDragged = false
 let resizeObserver = null
 
 function updateFrameRect() {
@@ -238,6 +297,23 @@ function assetStyle(asset) {
   }
 }
 
+function imageStyle(asset) {
+  const flip = asset.flip_h ? -1 : 1
+  return {
+    opacity: asset.opacity ?? 1,
+    filter: `drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45)) brightness(${asset.brightness ?? 1}) saturate(${asset.saturation ?? 1}) hue-rotate(${asset.hue_rotate ?? 0}deg)`,
+    transform: `scaleX(${flip})`
+  }
+}
+
+function spinStyle(asset) {
+  return { transform: `rotate(${asset.rotation ?? 0}deg)` }
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value))
+}
+
 const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => a.y - b.y))
 
 const vanishingPointStyle = computed(() => ({
@@ -246,6 +322,19 @@ const vanishingPointStyle = computed(() => ({
 }))
 
 const selectedAsset = computed(() => props.vista.assets.find(a => a.id === selectedId.value) || null)
+
+const opacityPct = computed({
+  get: () => (selectedAsset.value?.opacity ?? 1) * 100,
+  set: (v) => { if (selectedAsset.value) selectedAsset.value.opacity = v / 100 }
+})
+const brightnessPct = computed({
+  get: () => (selectedAsset.value?.brightness ?? 1) * 100,
+  set: (v) => { if (selectedAsset.value) selectedAsset.value.brightness = v / 100 }
+})
+const saturationPct = computed({
+  get: () => (selectedAsset.value?.saturation ?? 1) * 100,
+  set: (v) => { if (selectedAsset.value) selectedAsset.value.saturation = v / 100 }
+})
 
 function uuid() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -303,6 +392,7 @@ function clientToPercent(evt) {
 
 function onStageClick(evt) {
   if (!props.editable) return
+  if (justDragged) { justDragged = false; return }
   if (mode.value !== 'asset') {
     selectedId.value = null
     return
@@ -311,7 +401,10 @@ function onStageClick(evt) {
   const pos = clientToPercent(evt)
   if (!pos) return
   const item = pendingLibraryItem.value
-  const asset = { id: uuid(), name: item.name, image_url: item.image_url, x: pos.x, y: pos.y, width_pct: 20, flip_h: false }
+  const asset = {
+    id: uuid(), name: item.name, image_url: item.image_url, x: pos.x, y: pos.y,
+    width_pct: 20, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
+  }
   props.vista.assets.push(asset)
   pendingLibraryItem.value = null
   emitChange()
@@ -320,7 +413,7 @@ function onStageClick(evt) {
 }
 
 function onAssetClick(asset) {
-  if (dragMoved) return
+  if (justDragged) { justDragged = false; return }
   if (props.editable) {
     selectedId.value = asset.id
   }
@@ -332,8 +425,53 @@ function startDrag(kind, id) {
   if (kind === 'asset') selectedId.value = id
 }
 
+function startRotate(evt, asset) {
+  const el = evt.currentTarget.closest('.vista-asset')
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  dragState = { kind: 'rotate', id: asset.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 }
+  dragMoved = false
+  selectedId.value = asset.id
+}
+
+function startScale(evt, asset) {
+  dragState = { kind: 'scale', id: asset.id, startX: evt.clientX, startWidthPct: asset.width_pct }
+  dragMoved = false
+  selectedId.value = asset.id
+}
+
+function onScaleWheel(evt, asset) {
+  asset.width_pct = clamp(asset.width_pct - evt.deltaY * SCALE_WHEEL_SENSITIVITY, ASSET_SCALE_MIN, ASSET_SCALE_MAX)
+  emitChange()
+}
+
 function onPointerMove(evt) {
   if (!dragState) return
+
+  if (dragState.kind === 'rotate') {
+    dragMoved = true
+    const asset = props.vista.assets.find(a => a.id === dragState.id)
+    if (asset) {
+      const angle = Math.atan2(evt.clientY - dragState.cy, evt.clientX - dragState.cx) * (180 / Math.PI) + 90
+      asset.rotation = ((angle % 360) + 360) % 360
+    }
+    return
+  }
+
+  if (dragState.kind === 'scale') {
+    dragMoved = true
+    const asset = props.vista.assets.find(a => a.id === dragState.id)
+    if (asset && frameRect.value.width) {
+      // The box is horizontally centered on its anchor (translate(-50%, ...)),
+      // so dragging the corner out by dx grows the total width by 2x that.
+      const dx = evt.clientX - dragState.startX
+      const scaleY = scaleForY(asset.y) || 1
+      const deltaPct = ((dx * 2) / frameRect.value.width) * 100 / scaleY
+      asset.width_pct = clamp(dragState.startWidthPct + deltaPct, ASSET_SCALE_MIN, ASSET_SCALE_MAX)
+    }
+    return
+  }
+
   const pos = clientToPercent(evt)
   if (!pos) return
   dragMoved = true
@@ -349,6 +487,7 @@ function onPointerMove(evt) {
 
 function onPointerUp() {
   if (dragState) {
+    justDragged = dragMoved
     dragState = null
     if (dragMoved) emitChange()
   }
@@ -362,6 +501,17 @@ function deleteAsset(id) {
 
 function toggleFlip(asset) {
   asset.flip_h = !asset.flip_h
+  emitChange()
+}
+
+function resetAsset(asset) {
+  asset.width_pct = 20
+  asset.flip_h = false
+  asset.rotation = 0
+  asset.opacity = 1
+  asset.brightness = 1
+  asset.saturation = 1
+  asset.hue_rotate = 0
   emitChange()
 }
 
@@ -445,6 +595,11 @@ function onBackgroundSelected(evt) {
   position: absolute;
   transform: translate(-50%, -100%);
   cursor: pointer;
+}
+
+.vista-asset-spin {
+  position: relative;
+  width: 100%;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -454,12 +609,7 @@ function onBackgroundSelected(evt) {
   width: 100%;
   height: auto;
   display: block;
-  filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45));
   pointer-events: none;
-}
-
-.vista-asset-image.flipped {
-  transform: scaleX(-1);
 }
 
 .placeholder-icon {
@@ -476,6 +626,53 @@ function onBackgroundSelected(evt) {
   outline: 2px solid var(--interactive-primary);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+.rotate-handle,
+.scale-handle {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--interactive-primary);
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  z-index: 700;
+  pointer-events: auto;
+}
+
+.rotate-handle {
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, calc(-100% - 20px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.85rem;
+  cursor: grab;
+}
+
+.rotate-handle:active {
+  cursor: grabbing;
+}
+
+.rotate-handle::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 2px;
+  height: 20px;
+  background: var(--interactive-primary);
+  transform: translateX(-50%);
+}
+
+.scale-handle {
+  bottom: 0;
+  right: 0;
+  transform: translate(50%, 50%);
+  cursor: ns-resize;
 }
 
 .vanishing-point {
@@ -641,18 +838,24 @@ function onBackgroundSelected(evt) {
   align-self: flex-start;
 }
 
-.size-control {
+.panel-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.slider-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   color: var(--text-secondary);
 }
 
-.size-control input[type="range"] {
+.slider-row input[type="range"] {
   flex: 1;
 }
 
-.size-value {
+.slider-value {
   font-size: 0.75rem;
   min-width: 2.5em;
   text-align: right;
