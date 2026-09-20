@@ -42,16 +42,6 @@
           <span class="mdi mdi-magnify"></span>
           <span>Search Notes</span>
         </button>
-        <button
-          class="action-btn"
-          :class="{ disabled: !user }"
-          :disabled="!user"
-          :title="user ? '' : 'Sign in to use the player'"
-          @click="isPlayerModalOpen = true"
-        >
-          <span class="mdi mdi-music-box-multiple-outline"></span>
-          <span>Player</span>
-        </button>
         <button class="action-btn" @click="openCharts">
           <span class="mdi mdi-map-marker-radius"></span>
           <span>Charts</span>
@@ -98,6 +88,48 @@
           <span class="mdi mdi-plus"></span>
           <span>New Note</span>
         </button>
+
+        <div class="mini-player-controls">
+          <button class="icon-btn" :class="{ active: isShuffle }" title="Shuffle" @click="toggleShuffle">
+            <span class="mdi mdi-shuffle-variant"></span>
+          </button>
+          <button class="icon-btn" title="Previous" @click="playPrev">
+            <span class="mdi mdi-skip-previous"></span>
+          </button>
+          <button class="icon-btn play-btn" title="Play/Pause" @click="togglePlay">
+            <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
+          </button>
+          <button class="icon-btn" title="Next" @click="playNext">
+            <span class="mdi mdi-skip-next"></span>
+          </button>
+          <button
+            class="icon-btn"
+            :class="{ active: isRepeat }"
+            title="Repeat"
+            @click="toggleRepeat"
+          >
+            <span class="mdi mdi-repeat"></span>
+          </button>
+          <button class="icon-btn player-open-btn" title="Open player" @click="isPlayerModalOpen = true">
+            <span class="mdi mdi-music-box-multiple-outline"></span>
+            <span>Player</span>
+          </button>
+        </div>
+
+        <div class="mini-now-playing">
+          <span class="mdi mdi-music-note"></span>
+          <span class="mini-track-title">{{ currentTrack ? currentTrack.name : 'Nothing playing' }}</span>
+        </div>
+
+        <div class="mini-volume-row">
+          <span class="mdi" :class="volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high'"></span>
+          <input
+            type="range" min="0" max="1" step="0.01"
+            :value="volume"
+            class="mini-volume-bar"
+            @input="setVolume($event.target.valueAsNumber)"
+          />
+        </div>
       </div>
     </div>
 
@@ -163,12 +195,17 @@ import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useChartsModal } from '@/composables/useChartsModal'
 import { useVistasModal } from '@/composables/useVistasModal'
+import { usePlayer } from '@/composables/usePlayer'
 
 const router = useRouter()
 const { user, login, logout } = useAuth()
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const { open: openCharts } = useChartsModal()
 const { open: openVistas } = useVistasModal()
+const {
+  isPlaying, isRepeat, isShuffle, currentTrack, volume,
+  togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
+} = usePlayer()
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
 
@@ -534,6 +571,107 @@ onBeforeUnmount(() => {
 
 .new-note-trigger .mdi {
   font-size: 1.1rem;
+}
+
+.mini-player-controls {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: rgba(26, 27, 58, 0.6);
+}
+
+.mini-player-controls .icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0.3rem;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.mini-player-controls .icon-btn:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.mini-player-controls .icon-btn.active {
+  color: var(--interactive-primary);
+  background: rgba(138, 92, 245, 0.2);
+}
+
+.mini-player-controls .play-btn {
+  width: 28px;
+  height: 28px;
+  background: var(--interactive-primary);
+  color: white;
+}
+
+.mini-player-controls .play-btn:hover {
+  background: var(--interactive-primaryHover);
+  color: white;
+}
+
+.player-open-btn {
+  flex: 1;
+  min-width: 0;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  width: auto;
+}
+
+.player-open-btn span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-now-playing {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.2rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+.mini-now-playing .mdi {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.mini-track-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-volume-row {
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.2rem;
+  color: var(--text-secondary);
+}
+
+.mini-volume-row .mdi {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+}
+
+.mini-volume-bar {
+  flex: 1;
+  accent-color: var(--interactive-primary);
 }
 
 /* ── New Note modal ─────────────────────────────────────────── */

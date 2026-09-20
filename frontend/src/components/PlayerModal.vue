@@ -53,14 +53,16 @@
               <span v-else class="album-name">{{ album }}</span>
               <button
                 v-if="renamingAlbum !== album"
-                class="icon-btn"
+                class="icon-btn album-hover-btn"
+                :class="{ 'force-visible': pendingDeleteAlbum === album }"
                 title="Rename album"
                 @click.stop="startRenameAlbum(album)"
               >
                 <span class="mdi mdi-pencil-outline"></span>
               </button>
               <button
-                class="icon-btn danger"
+                class="icon-btn danger album-hover-btn"
+                :class="{ 'force-visible': pendingDeleteAlbum === album }"
                 :title="pendingDeleteAlbum === album ? 'Confirm delete' : 'Delete album'"
                 @click.stop="confirmDeleteAlbum(album)"
               >
@@ -476,6 +478,17 @@ function formatTime(seconds) {
 
 .album-rename-input:focus {
   outline: none;
+}
+
+.album-hover-btn {
+  opacity: 0;
+  visibility: hidden;
+}
+
+.album-item:hover .album-hover-btn,
+.album-hover-btn.force-visible {
+  opacity: 1;
+  visibility: visible;
 }
 
 /* ── Track panel ────────────────────────────────────────────── */
