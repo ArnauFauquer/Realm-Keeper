@@ -33,7 +33,7 @@
             <path d="M0,0 L10,5 L0,10 z" :fill="path.color || DEFAULT_PATH_COLOR" />
           </marker>
           <clipPath v-for="pin in chart.pins" :key="'clip-' + pin.id" :id="`pin-clip-${pin.id}`">
-            <circle :cy="-needleLength" :r="headRadius" />
+            <circle :cy="-pinNeedleLength(pin)" :r="pinHeadRadius(pin)" />
           </clipPath>
         </defs>
 
@@ -142,19 +142,37 @@
             @mouseenter="hoveredPin = pin"
             @mouseleave="hoveredPin = hoveredPin === pin ? null : hoveredPin"
           >
-            <circle class="pin-halo" :cy="-needleLength" :r="headRadius * 1.6" />
-            <line class="pin-needle" x1="0" y1="0" x2="0" :y2="-needleLength" :stroke-width="pinStrokeWidth" />
-            <circle class="pin-head" :cy="-needleLength" :r="headRadius" :fill="pin.icon_url ? '#1a1b3a' : '#a78bfa'" :stroke-width="pinStrokeWidth" />
+            <circle
+              class="pin-halo"
+              :cy="-pinNeedleLength(pin)"
+              :r="pinHeadRadius(pin) * 1.6"
+              :style="{ fill: hexToRgba(pinColor(pin), 0.25) }"
+            />
+            <line class="pin-needle" x1="0" y1="0" x2="0" :y2="-pinNeedleLength(pin)" :stroke-width="pinStrokeWidthFor(pin)" />
+            <circle
+              class="pin-head"
+              :cy="-pinNeedleLength(pin)"
+              :r="pinHeadRadius(pin)"
+              :fill="pin.icon_url ? '#1a1b3a' : pinColor(pin)"
+              :stroke-width="pinStrokeWidthFor(pin)"
+            />
             <image
               v-if="pin.icon_url"
               :href="resolveUrl(pin.icon_url)"
-              :x="-headRadius" :y="-needleLength - headRadius"
-              :width="headRadius * 2" :height="headRadius * 2"
+              :x="-pinHeadRadius(pin)" :y="-pinNeedleLength(pin) - pinHeadRadius(pin)"
+              :width="pinHeadRadius(pin) * 2" :height="pinHeadRadius(pin) * 2"
               :clip-path="`url(#pin-clip-${pin.id})`"
               preserveAspectRatio="xMidYMid slice"
               class="pin-icon-image"
             />
-            <circle v-if="pin.icon_url" class="pin-head-ring" :cy="-needleLength" :r="headRadius" :stroke-width="pinStrokeWidth * 0.6" />
+            <circle
+              v-if="pin.icon_url"
+              class="pin-head-ring"
+              :cy="-pinNeedleLength(pin)"
+              :r="pinHeadRadius(pin)"
+              :stroke="pinColor(pin)"
+              :stroke-width="pinStrokeWidthFor(pin) * 0.6"
+            />
           </g>
         </g>
       </svg>
@@ -229,6 +247,32 @@
           </div>
         </div>
 
+        <div class="pin-color-row">
+          <button
+            v-for="c in PIN_COLORS"
+            :key="c"
+            class="pin-color-swatch"
+            :class="{ active: pinColor(selectedPin) === c }"
+            :style="{ background: c }"
+            :title="c"
+            @click="setPinColor(selectedPin, c)"
+          ></button>
+        </div>
+
+        <div class="pin-size-row">
+          <span class="mdi mdi-map-marker-outline"></span>
+          <input
+            type="range"
+            class="pin-size-slider"
+            :min="PIN_SCALE_MIN"
+            :max="PIN_SCALE_MAX"
+            step="0.1"
+            :value="pinScale(selectedPin)"
+            @input="setPinScale(selectedPin, $event.target.value)"
+          />
+          <span class="mdi mdi-map-marker"></span>
+        </div>
+
         <label class="upload-btn small">
           <span class="mdi mdi-upload"></span> {{ selectedPin.icon_url ? 'Replace icon' : 'Upload icon' }}
           <input type="file" accept="image/*" hidden @change="(e) => onPinIconSelected(e, selectedPin.id)" />
@@ -287,6 +331,38 @@ const props = defineProps({
 const PATH_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
 const DEFAULT_PATH_COLOR = PATH_COLORS[0]
 const nextPathColor = computed(() => PATH_COLORS[props.chart.paths.length % PATH_COLORS.length])
+
+// Same palette pins cycle through as they're placed, so consecutive pins
+// read as distinct. DEFAULT_PIN_COLOR covers pins saved before this field
+// existed (it matches their old hard-coded fill).
+const PIN_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
+const DEFAULT_PIN_COLOR = PIN_COLORS[0]
+const nextPinColor = computed(() => PIN_COLORS[props.chart.pins.length % PIN_COLORS.length])
+const PIN_SCALE_MIN = 0.5
+const PIN_SCALE_MAX = 3
+
+function hexToRgba(hex, alpha) {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '')
+  if (!m) return `rgba(167, 139, 250, ${alpha})`
+  const [r, g, b] = m.slice(1).map(v => parseInt(v, 16))
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
+function pinColor(pin) { return pin.color || DEFAULT_PIN_COLOR }
+function pinScale(pin) { return pin.scale || 1 }
+function pinHeadRadius(pin) { return headRadius.value * pinScale(pin) }
+function pinNeedleLength(pin) { return needleLength.value * pinScale(pin) }
+function pinStrokeWidthFor(pin) { return pinStrokeWidth.value * pinScale(pin) }
+
+function setPinColor(pin, color) {
+  pin.color = color
+  emitChange()
+}
+
+function setPinScale(pin, scale) {
+  pin.scale = parseFloat(scale)
+  emitChange()
+}
 
 const emit = defineEmits(['change', 'upload-map-image', 'upload-pin-icon', 'open-note'])
 
@@ -470,7 +546,7 @@ function onCanvasClick(evt) {
   if (!pos) return
 
   if (mode.value === 'pin') {
-    props.chart.pins.push({ id: uuid(), x: pos.x, y: pos.y, name: '', icon_url: null, note_path: null })
+    props.chart.pins.push({ id: uuid(), x: pos.x, y: pos.y, name: '', icon_url: null, note_path: null, color: nextPinColor.value, scale: 1 })
     emitChange()
     mode.value = 'select'
     selectedId.value = props.chart.pins[props.chart.pins.length - 1].id
@@ -976,6 +1052,41 @@ function onPinIconSelected(evt, pinId) {
 .icon-btn.danger:hover {
   background: rgba(248, 113, 113, 0.15);
   color: var(--status-error, #f87171);
+}
+
+.pin-color-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.pin-color-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.pin-color-swatch.active {
+  border-color: var(--text-primary);
+}
+
+.pin-size-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+}
+
+.pin-size-row .mdi {
+  font-size: 1rem;
+}
+
+.pin-size-slider {
+  flex: 1;
+  accent-color: var(--interactive-primary);
 }
 
 .upload-btn {

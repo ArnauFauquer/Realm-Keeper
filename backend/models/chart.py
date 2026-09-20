@@ -9,6 +9,8 @@ class Pin(BaseModel):
     name: str
     icon_url: Optional[str] = None
     note_path: Optional[str] = None
+    color: Optional[str] = None
+    scale: Optional[float] = 1.0
 
 
 class PathPoint(BaseModel):
