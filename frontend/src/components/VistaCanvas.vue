@@ -172,6 +172,7 @@
 
     <AssetLibraryModal
       :is-open="libraryModalOpen"
+      picker-mode
       @close="libraryModalOpen = false"
       @select="onLibrarySelect"
     />
@@ -180,7 +181,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
-import { apiUrl } from '@/config/env'
+import { resolveUrl } from '@/utils/resolveUrl'
 import AssetLibraryModal from './AssetLibraryModal.vue'
 
 const props = defineProps({
@@ -271,11 +272,6 @@ const frameStyle = computed(() => ({
   width: `${frameRect.value.width}px`,
   height: `${frameRect.value.height}px`
 }))
-
-function resolveUrl(url) {
-  if (!url) return url
-  return url.startsWith('http') ? url : `${apiUrl}${url}`
-}
 
 // Natural size of the background image, needed to work out how far it can
 // be panned vertically once it's cover-fit into the stage frame (see

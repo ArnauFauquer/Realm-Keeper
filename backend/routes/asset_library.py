@@ -5,17 +5,13 @@ from pydantic import BaseModel
 
 from config.logging import get_logger
 from routes.auth import require_auth
+from routes.errors import storage_unavailable
 from services import storage_service
 from services.storage_service import StorageError
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/asset-library", tags=["asset-library"])
-
-
-def _storage_unavailable(e: Exception) -> HTTPException:
-    logger.error(f"Object storage error: {e}")
-    return HTTPException(status_code=502, detail="Could not reach object storage")
 
 
 class FolderCreateRequest(BaseModel):
@@ -26,6 +22,16 @@ class FolderRenameRequest(BaseModel):
     name: str
 
 
+class FolderMoveRequest(BaseModel):
+    path: str
+    dest_parent_path: str = ""
+
+
+class AssetMoveRequest(BaseModel):
+    key: str
+    folder_path: str = ""
+
+
 @router.get("")
 async def list_library(path: str = ""):
     try:
@@ -33,7 +39,7 @@ async def list_library(path: str = ""):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
 
 
 @router.post("/folders")
@@ -43,7 +49,7 @@ async def create_folder(body: FolderCreateRequest, user: dict = Depends(require_
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
@@ -54,7 +60,7 @@ async def rename_folder(path: str, body: FolderRenameRequest, user: dict = Depen
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
@@ -65,8 +71,30 @@ async def delete_folder(path: str, user: dict = Depends(require_auth)):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
+
+
+@router.post("/folders/move")
+async def move_folder(body: FolderMoveRequest, user: dict = Depends(require_auth)):
+    try:
+        storage_service.move_asset_folder(body.path, body.dest_parent_path)
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise storage_unavailable(logger, e)
+    return {"status": "success"}
+
+
+@router.post("/assets/move")
+async def move_asset(body: AssetMoveRequest, user: dict = Depends(require_auth)):
+    try:
+        result = storage_service.move_library_asset(body.key, body.folder_path)
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise storage_unavailable(logger, e)
+    return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
 
 
 @router.post("/assets")
@@ -76,7 +104,7 @@ async def upload_asset(path: str = Form(""), file: UploadFile = File(...), user:
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
 
 
@@ -107,5 +135,5 @@ async def delete_asset(key: str, user: dict = Depends(require_auth)):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}

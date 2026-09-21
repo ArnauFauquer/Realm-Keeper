@@ -212,20 +212,20 @@ def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Opt
 
 
 def upload_chart_image(chart_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    chart_id = _sanitize_segment(chart_id)
+    chart_id = _sanitize_path(chart_id)
     filename = _sanitize_segment(filename)
     return _upload_image(f"charts/{chart_id}/map/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def upload_pin_icon(chart_id: str, pin_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    chart_id = _sanitize_segment(chart_id)
+    chart_id = _sanitize_path(chart_id)
     pin_id = _sanitize_segment(pin_id)
     filename = _sanitize_segment(filename)
     return _upload_image(f"charts/{chart_id}/pins/{pin_id}/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
 def delete_chart_assets(chart_id: str) -> None:
-    chart_id = _sanitize_segment(chart_id)
+    chart_id = _sanitize_path(chart_id)
     client = _client()
     prefix = f"charts/{chart_id}/"
     paginator = client.get_paginator("list_objects_v2")
@@ -239,7 +239,7 @@ def delete_chart_assets(chart_id: str) -> None:
 
 
 def upload_vista_background(vista_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    vista_id = _sanitize_segment(vista_id)
+    vista_id = _sanitize_path(vista_id)
     filename = _sanitize_segment(filename)
     return _upload_image(f"vistas/{vista_id}/background/{_unique_filename(filename)}", filename, file_obj, content_type)
 
@@ -284,6 +284,34 @@ def create_asset_folder(path: str) -> None:
     client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{ASSET_LIBRARY_PREFIX}{path}/.keep", Body=b"")
 
 
+def _move_prefix(old_prefix: str, new_prefix: str, not_found_label: str, exists_label: str) -> None:
+    """Copies every object under `old_prefix` to the same relative key under
+    `new_prefix`, then deletes the originals — the S3 equivalent of `mv` for
+    a "directory" of objects, since S3 has no native move/rename."""
+    client = _client()
+
+    if list(client.list_objects_v2(Bucket=settings.S3_BUCKET_NAME, Prefix=new_prefix, MaxKeys=1).get("Contents", [])):
+        raise StorageError(exists_label)
+
+    keys = []
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=old_prefix):
+        keys.extend(obj["Key"] for obj in page.get("Contents", []))
+    if not keys:
+        raise StorageError(not_found_label)
+
+    for key in keys:
+        client.copy_object(
+            Bucket=settings.S3_BUCKET_NAME,
+            CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": key},
+            Key=new_prefix + key[len(old_prefix):],
+        )
+    for i in range(0, len(keys), 1000):
+        batch = keys[i:i + 1000]
+        if batch:
+            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
+
+
 def rename_asset_folder(path: str, new_name: str) -> None:
     """Renames the leaf segment of `path`, keeping it under the same parent —
     e.g. rename_asset_folder("monsters/goblins", "orcs") -> "monsters/orcs"."""
@@ -297,30 +325,77 @@ def rename_asset_folder(path: str, new_name: str) -> None:
     if path == new_path:
         return
 
+    _move_prefix(
+        f"{ASSET_LIBRARY_PREFIX}{path}/", f"{ASSET_LIBRARY_PREFIX}{new_path}/",
+        not_found_label=f"Folder not found: {path}",
+        exists_label=f"A folder already exists at '{new_path}'",
+    )
+
+
+def move_asset_folder(path: str, dest_parent_path: str) -> None:
+    """Moves the folder at `path` to be a child of `dest_parent_path`,
+    keeping its own leaf name — e.g. move_asset_folder("goblins", "monsters")
+    -> "monsters/goblins". Used for drag-and-drop between folders."""
+    path = _sanitize_path(path)
+    dest_parent_path = _sanitize_path(dest_parent_path)
+    if not path:
+        raise StorageError("Folder path is required")
+
+    leaf = path.rsplit("/", 1)[-1]
+    new_path = f"{dest_parent_path}/{leaf}" if dest_parent_path else leaf
+    if new_path == path:
+        return
+    if new_path == dest_parent_path or new_path.startswith(f"{path}/"):
+        raise StorageError("Cannot move a folder into itself or one of its own subfolders")
+
+    _move_prefix(
+        f"{ASSET_LIBRARY_PREFIX}{path}/", f"{ASSET_LIBRARY_PREFIX}{new_path}/",
+        not_found_label=f"Folder not found: {path}",
+        exists_label=f"A folder already exists at '{new_path}'",
+    )
+
+
+def _move_object(old_key: str, new_key: str) -> None:
+    """Copies a single S3 object to `new_key` then deletes the original —
+    the S3 equivalent of `mv` for one object, since S3 has no native
+    move/rename. Shared by every "drag a single item into a folder" move."""
+    if old_key == new_key:
+        return
     client = _client()
-    old_prefix = f"{ASSET_LIBRARY_PREFIX}{path}/"
-    new_prefix = f"{ASSET_LIBRARY_PREFIX}{new_path}/"
+    client.copy_object(
+        Bucket=settings.S3_BUCKET_NAME,
+        CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": old_key},
+        Key=new_key,
+    )
+    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=old_key)
 
-    if list(client.list_objects_v2(Bucket=settings.S3_BUCKET_NAME, Prefix=new_prefix, MaxKeys=1).get("Contents", [])):
-        raise StorageError(f"A folder already exists at '{new_path}'")
 
-    keys = []
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=old_prefix):
-        keys.extend(obj["Key"] for obj in page.get("Contents", []))
-    if not keys:
-        raise StorageError(f"Folder not found: {path}")
+def move_library_asset(key: str, dest_folder_path: str) -> dict:
+    """Moves a single asset (by its full S3 key) into `dest_folder_path`,
+    keeping its filename. Used for drag-and-drop between folders."""
+    _validate_key(key)
+    if not key.startswith(ASSET_LIBRARY_PREFIX):
+        raise StorageError(f"Invalid asset key: {key!r}")
+    dest_folder_path = _sanitize_path(dest_folder_path)
 
-    for key in keys:
-        client.copy_object(
-            Bucket=settings.S3_BUCKET_NAME,
-            CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": key},
-            Key=new_prefix + key[len(old_prefix):],
-        )
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
+    filename = key.rsplit("/", 1)[-1]
+    new_key = f"{ASSET_LIBRARY_PREFIX}{dest_folder_path}/{filename}" if dest_folder_path else f"{ASSET_LIBRARY_PREFIX}{filename}"
+    _move_object(key, new_key)
+    return {"key": new_key}
+
+
+def move_track(key: str, dest_album: str) -> dict:
+    """Moves a single track (by its "album/filename" key) into
+    `dest_album`, keeping its filename. Used for drag-and-drop between
+    albums in the player."""
+    _split_key(key)
+    dest_album = _sanitize_segment(dest_album)
+    _check_not_reserved(dest_album)
+
+    filename = key.rsplit("/", 1)[-1]
+    new_key = f"{dest_album}/{filename}"
+    _move_object(key, new_key)
+    return {"key": new_key}
 
 
 def delete_asset_folder(path: str) -> None:
@@ -356,7 +431,7 @@ def delete_library_asset(key: str) -> None:
 
 
 def delete_vista_assets(vista_id: str) -> None:
-    vista_id = _sanitize_segment(vista_id)
+    vista_id = _sanitize_path(vista_id)
     client = _client()
     prefix = f"vistas/{vista_id}/"
     paginator = client.get_paginator("list_objects_v2")

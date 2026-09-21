@@ -1,13 +1,10 @@
-import { ref } from 'vue'
+import { createModalState } from './useModalState'
 
-// Module-level (singleton): lets any component (sidebar, right-panel link, etc.)
-// open the same graph modal instance without prop-drilling through the tree.
-const isOpen = ref(false)
+// Module-level (singleton): lets any component (sidebar, right-panel link,
+// etc.) open the same graph modal instance without prop-drilling through
+// the tree, same pattern as the other *Modal composables.
+const state = createModalState()
 
 export function useGraphModal() {
-  return {
-    isOpen,
-    open: () => { isOpen.value = true },
-    close: () => { isOpen.value = false }
-  }
+  return state
 }

@@ -44,6 +44,11 @@ export async function deleteTrack(key) {
   await client.delete(`${base}/tracks/${encodeKey(key)}`)
 }
 
+export async function moveTrack(key, album) {
+  const res = await client.post(`${base}/tracks/move`, { key, album })
+  return res.data
+}
+
 export function streamUrl(key) {
   return `${base}/stream/${encodeKey(key)}`
 }

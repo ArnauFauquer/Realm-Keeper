@@ -314,7 +314,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
-import { apiUrl } from '@/config/env'
+import { resolveUrl } from '@/utils/resolveUrl'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -382,11 +382,6 @@ const pinPickerOpen = ref(false)
 let dragState = null
 let dragMoved = false
 let zoomBehavior = null
-
-function resolveUrl(url) {
-  if (!url) return url
-  return url.startsWith('http') ? url : `${apiUrl}${url}`
-}
 
 const resolvedImageUrl = computed(() => resolveUrl(props.chart.image_url))
 

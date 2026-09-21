@@ -21,6 +21,15 @@ export async function deleteLibraryFolder(path) {
   await client.delete(`${base}/folders/${path.split('/').map(encodeURIComponent).join('/')}`)
 }
 
+export async function moveLibraryFolder(path, destParentPath) {
+  await client.post(`${base}/folders/move`, { path, dest_parent_path: destParentPath })
+}
+
+export async function moveLibraryAsset(key, folderPath) {
+  const res = await client.post(`${base}/assets/move`, { key, folder_path: folderPath })
+  return res.data
+}
+
 export async function uploadLibraryAsset(path, file, onProgress) {
   const formData = new FormData()
   formData.append('path', path)

@@ -1,85 +1,72 @@
 <template>
   <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
     <div class="modal-content charts-modal-content">
-      <div class="modal-header">
-        <h2>
-          <button v-if="view === 'editor'" class="back-btn" title="Back to charts" @click="backToGallery">
-            <span class="mdi mdi-arrow-left"></span>
-          </button>
-          <span class="mdi mdi-map-marker-radius"></span>
-          {{ view === 'editor' && activeChart ? activeChart.name : 'Charts' }}
-        </h2>
-        <div class="header-actions">
-          <button
-            v-if="view === 'editor' && user"
-            class="header-btn primary"
-            :disabled="!hasUnsavedChanges || saving"
-            title="Save changes"
-            @click="saveNow"
-          >
-            <span class="mdi mdi-content-save"></span>
-            <span>{{ saving ? 'Saving...' : (hasUnsavedChanges ? 'Save' : 'Saved') }}</span>
-          </button>
-          <button
-            v-if="view === 'editor' && user"
-            class="header-btn"
-            :disabled="!activeChart?.image_url || sendingToScreen"
-            title="Send to screen"
-            @click="sendToScreen"
-          >
-            <span class="mdi mdi-monitor-share"></span>
-            <span>{{ sendingToScreen ? 'Sent!' : 'Send to screen' }}</span>
-          </button>
-          <button class="close-btn" @click="closeModal">
-            <span class="mdi mdi-close"></span>
-          </button>
-        </div>
-      </div>
+      <DocumentModalHeader
+        :view="view"
+        icon="mdi-map-marker-radius"
+        gallery-title="Charts"
+        :item-title="activeChart?.name"
+        :can-edit="!!user"
+        :has-unsaved-changes="hasUnsavedChanges"
+        :saving="saving"
+        :can-send-to-screen="!!activeChart?.image_url"
+        :sending-to-screen="sendingToScreen"
+        @back="backToGallery"
+        @save="saveNow"
+        @send-to-screen="sendToScreen"
+        @close="closeModal"
+      />
 
       <div class="modal-body charts-body">
         <!-- Gallery -->
         <div v-if="view === 'gallery'" class="gallery-view">
-          <div v-if="user" class="gallery-header">
-            <div v-if="showNewChartInput" class="new-chart-form">
-              <input
-                ref="newChartInputRef"
-                v-model="newChartName"
-                placeholder="Chart name"
-                @keyup.enter="submitNewChart"
-                @keyup.esc="showNewChartInput = false"
-              />
-              <button class="icon-btn" @click="submitNewChart"><span class="mdi mdi-check"></span></button>
-              <button class="icon-btn" @click="showNewChartInput = false"><span class="mdi mdi-close"></span></button>
-            </div>
-            <button v-else class="new-chart-btn" @click="startNewChart">
-              <span class="mdi mdi-plus"></span> New chart
-            </button>
-          </div>
-
-          <div v-if="loading" class="hint-state">Loading charts...</div>
-          <div v-else-if="error" class="hint-state error">{{ error }}</div>
-          <div v-else-if="!charts.length" class="empty-state">
-            <span class="mdi mdi-compass-outline"></span>
-            <p>No charts yet.</p>
-            <button v-if="user" class="new-chart-btn" @click="startNewChart">
-              <span class="mdi mdi-plus"></span> New chart
-            </button>
-          </div>
-          <div v-else class="chart-grid">
-            <div v-for="c in charts" :key="c.id" class="chart-card" @click="openChart(c.id)">
-              <button v-if="user" class="chart-card-delete" title="Delete chart" @click.stop="onDeleteChart(c)">
-                <span class="mdi mdi-trash-can-outline"></span>
+          <FolderGallery
+            :folders="folders"
+            :items="charts"
+            :item-key="(c) => c.id"
+            :current-path="currentPath"
+            :loading="loading"
+            :error="error"
+            :can-edit="!!user"
+            root-label="Charts"
+            root-icon="mdi-map-marker-radius"
+            loading-text="Loading charts..."
+            empty-icon="mdi-compass-outline"
+            empty-text="No charts yet."
+            @navigate="goToPath"
+            @enter-folder="enterFolder"
+            @open-item="(c) => openChart(c.id)"
+            @delete-folder="onDeleteFolder"
+            @delete-item="onDeleteChart"
+            @create-folder="onCreateFolder"
+            @move="onMove"
+          >
+            <template #actions>
+              <div v-if="showNewChartInput" class="new-chart-form">
+                <input
+                  ref="newChartInputRef"
+                  v-model="newChartName"
+                  placeholder="Chart name"
+                  @keyup.enter="submitNewChart"
+                  @keyup.esc="showNewChartInput = false"
+                />
+                <button class="icon-btn" @click="submitNewChart"><span class="mdi mdi-check"></span></button>
+                <button class="icon-btn" @click="showNewChartInput = false"><span class="mdi mdi-close"></span></button>
+              </div>
+              <button v-else class="gallery-action-btn" @click="startNewChart">
+                <span class="mdi mdi-plus"></span> New chart
               </button>
-              <div class="chart-card-thumb">
-                <img v-if="c.image_url" :src="resolveUrl(c.image_url)" :alt="c.name" />
-                <span v-else class="mdi mdi-map-outline"></span>
-              </div>
-              <div class="chart-card-info">
-                <span class="chart-card-name">{{ c.name }}</span>
-                <span v-if="c.description" class="chart-card-desc">{{ c.description }}</span>
-              </div>
-            </div>
-          </div>
+            </template>
+            <template #empty-actions>
+              <button v-if="user" class="gallery-action-btn" @click="startNewChart">
+                <span class="mdi mdi-plus"></span> New chart
+              </button>
+            </template>
+            <template #thumb="{ item }">
+              <img v-if="item.image_url" :src="resolveUrl(item.image_url)" :alt="item.name" />
+              <span v-else class="mdi mdi-map-outline"></span>
+            </template>
+          </FolderGallery>
         </div>
 
         <!-- Editor / viewer -->
@@ -103,14 +90,18 @@
 </template>
 
 <script setup>
-import { ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import ChartCanvas from './ChartCanvas.vue'
+import FolderGallery from './FolderGallery.vue'
+import DocumentModalHeader from './DocumentModalHeader.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useChartsModal } from '@/composables/useChartsModal'
 import { useCharts } from '@/composables/useCharts'
+import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
+import { resolveUrl } from '@/utils/resolveUrl'
 import * as chartsApi from '@/api/charts'
 
 defineProps({
@@ -120,9 +111,14 @@ defineProps({
 const router = useRouter()
 const { isOpen, close } = useChartsModal()
 const { user } = useAuth()
-const { charts, loading, error, fetchCharts, createChart, removeChart } = useCharts()
+const {
+  folders, charts, loading, error,
+  fetchTree, createChart, removeChart, moveChart,
+  createFolder, removeFolder, moveFolder
+} = useCharts()
 
 const view = ref('gallery')
+const currentPath = ref('')
 const showNewChartInput = ref(false)
 const newChartName = ref('')
 const newChartInputRef = ref(null)
@@ -135,26 +131,32 @@ const saving = ref(false)
 
 watch(isOpen, (open) => {
   if (open && view.value === 'gallery') {
-    fetchCharts()
+    currentPath.value = ''
+    fetchTree('')
   }
 })
 
-function onBeforeUnload(evt) {
-  if (!hasUnsavedChanges.value) return
-  evt.preventDefault()
-  evt.returnValue = ''
-}
-onMounted(() => window.addEventListener('beforeunload', onBeforeUnload))
-onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload))
-
-function confirmDiscard() {
-  return !hasUnsavedChanges.value || window.confirm('You have unsaved changes to this chart. Discard them?')
+function folderPath(folder) {
+  return currentPath.value ? `${currentPath.value}/${folder}` : folder
 }
 
-function resolveUrl(url) {
-  if (!url) return url
-  return url.startsWith('http') ? url : `${apiUrl}${url}`
+async function onMove(dragItem, destPath) {
+  try {
+    if (dragItem.type === 'folder') {
+      const sourcePath = folderPath(dragItem.name)
+      if (sourcePath === destPath) return
+      await moveFolder(currentPath.value, sourcePath, destPath)
+    } else {
+      await moveChart(currentPath.value, dragItem.item.id, destPath)
+    }
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
 }
+
+const { confirmDiscard } = useUnsavedChangesGuard(
+  hasUnsavedChanges, 'You have unsaved changes to this chart. Discard them?'
+)
 
 function closeModal() {
   if (!confirmDiscard()) return
@@ -175,7 +177,7 @@ async function submitNewChart() {
   newChartName.value = ''
   showNewChartInput.value = false
   try {
-    const chart = await createChart(name, '')
+    const chart = await createChart(name, '', currentPath.value)
     openChart(chart.id)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
@@ -185,7 +187,34 @@ async function submitNewChart() {
 async function onDeleteChart(chart) {
   if (!window.confirm(`Delete chart "${chart.name}"? This cannot be undone.`)) return
   try {
-    await removeChart(chart.id)
+    await removeChart(currentPath.value, chart.id)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+function enterFolder(folder) {
+  currentPath.value = folderPath(folder)
+  fetchTree(currentPath.value)
+}
+
+function goToPath(path) {
+  currentPath.value = path
+  fetchTree(path)
+}
+
+async function onCreateFolder(name) {
+  try {
+    await createFolder(currentPath.value, name)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onDeleteFolder(folder) {
+  if (!window.confirm(`Delete folder "${folder}" and everything inside it?`)) return
+  try {
+    await removeFolder(currentPath.value, folderPath(folder))
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }
@@ -210,7 +239,7 @@ function backToGallery() {
   view.value = 'gallery'
   activeChart.value = null
   hasUnsavedChanges.value = false
-  fetchCharts()
+  fetchTree(currentPath.value)
 }
 
 async function saveNow() {
@@ -302,100 +331,6 @@ function onOpenNote(notePath) {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
 }
 
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.back-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-}
-
-.back-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.header-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-medium);
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.header-btn:hover:not(:disabled) {
-  border-color: var(--interactive-primary);
-}
-
-.header-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.header-btn.primary:not(:disabled) {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
-}
-
-.header-btn.primary:not(:disabled):hover {
-  background: var(--interactive-primaryHover);
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.close-btn .mdi {
-  font-size: 1.5rem;
-}
-
 .modal-body.charts-body {
   flex: 1;
   overflow: hidden;
@@ -407,34 +342,6 @@ function onOpenNote(notePath) {
   flex: 1;
   overflow-y: auto;
   padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.gallery-header {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.new-chart-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 1rem;
-  border: 1px dashed var(--border-medium);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.new-chart-btn:hover {
-  border-style: solid;
-  border-color: var(--interactive-primary);
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
 }
 
 .new-chart-form {
@@ -476,111 +383,6 @@ function onOpenNote(notePath) {
 
 .hint-state.error {
   color: var(--status-error);
-}
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  color: var(--text-secondary);
-}
-
-.empty-state .mdi {
-  font-size: 3rem;
-  opacity: 0.5;
-}
-
-.chart-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1.25rem;
-}
-
-.chart-card {
-  position: relative;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  overflow: hidden;
-  cursor: pointer;
-  background: rgba(26, 27, 58, 0.4);
-  transition: all 0.2s ease;
-}
-
-.chart-card-delete {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: rgba(12, 13, 29, 0.85);
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.15s ease;
-  z-index: 2;
-}
-
-.chart-card:hover .chart-card-delete {
-  opacity: 1;
-}
-
-.chart-card-delete:hover {
-  background: rgba(248, 113, 113, 0.2);
-  color: var(--status-error, #f87171);
-}
-
-.chart-card:hover {
-  border-color: var(--interactive-primary);
-  transform: translateY(-2px);
-}
-
-.chart-card-thumb {
-  aspect-ratio: 16 / 10;
-  background: rgba(12, 13, 29, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-}
-
-.chart-card-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.chart-card-thumb .mdi {
-  font-size: 2.5rem;
-  color: var(--text-secondary);
-  opacity: 0.5;
-}
-
-.chart-card-info {
-  padding: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.chart-card-name {
-  color: var(--text-primary);
-  font-weight: 500;
-}
-
-.chart-card-desc {
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .editor-view {

@@ -2,15 +2,18 @@ import { ref } from 'vue'
 import * as chartsApi from '@/api/charts'
 
 export function useCharts() {
+  const folders = ref([])
   const charts = ref([])
   const loading = ref(false)
   const error = ref(null)
 
-  const fetchCharts = async () => {
+  const fetchTree = async (path = '') => {
     loading.value = true
     error.value = null
     try {
-      charts.value = await chartsApi.fetchCharts()
+      const data = await chartsApi.fetchChartTree(path)
+      folders.value = data.folders
+      charts.value = data.charts
     } catch (err) {
       error.value = err.response?.data?.detail || err.message
     } finally {
@@ -18,16 +21,39 @@ export function useCharts() {
     }
   }
 
-  const createChart = async (name, description) => {
-    const chart = await chartsApi.createChart(name, description)
-    charts.value.push(chart)
-    return chart
+  const createChart = async (name, description, folderPath = '') => {
+    return chartsApi.createChart(name, description, folderPath)
   }
 
-  const removeChart = async (chartId) => {
+  const removeChart = async (path, chartId) => {
     await chartsApi.deleteChart(chartId)
-    charts.value = charts.value.filter(c => c.id !== chartId)
+    await fetchTree(path)
   }
 
-  return { charts, loading, error, fetchCharts, createChart, removeChart }
+  const createFolder = async (path, name) => {
+    const newPath = path ? `${path}/${name}` : name
+    await chartsApi.createChartFolder(newPath)
+    await fetchTree(path)
+  }
+
+  const removeFolder = async (path, folderPath) => {
+    await chartsApi.deleteChartFolder(folderPath)
+    await fetchTree(path)
+  }
+
+  const moveFolder = async (path, folderPath, destParentPath) => {
+    await chartsApi.moveChartFolder(folderPath, destParentPath)
+    await fetchTree(path)
+  }
+
+  const moveChart = async (path, chartId, destFolderPath) => {
+    await chartsApi.moveChart(chartId, destFolderPath)
+    await fetchTree(path)
+  }
+
+  return {
+    folders, charts, loading, error,
+    fetchTree, createChart, removeChart, moveChart,
+    createFolder, removeFolder, moveFolder
+  }
 }

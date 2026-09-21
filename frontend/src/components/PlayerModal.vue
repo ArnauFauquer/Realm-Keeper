@@ -36,9 +36,12 @@
               v-for="album in albums"
               :key="album"
               class="album-item"
-              :class="{ active: album === currentAlbum }"
+              :class="{ active: album === currentAlbum, 'drag-over': dragOverTarget === album }"
               @click="renamingAlbum !== album && selectAlbum(album)"
               @mouseleave="pendingDeleteAlbum = null"
+              @dragover.prevent="dragOver(album)"
+              @dragleave="dragLeave(album)"
+              @drop.prevent="drop(album, onMove)"
             >
               <span class="mdi mdi-folder-music-outline"></span>
               <input
@@ -102,7 +105,10 @@
                 :key="track.key"
                 class="track-item"
                 :class="{ active: idx === currentTrackIndex }"
+                draggable="true"
                 @dblclick="playTrackAt(idx)"
+                @dragstart="startDrag(track)"
+                @dragend="endDrag"
               >
                 <button class="track-play-btn" @click="playTrackAt(idx)">
                   <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
@@ -172,6 +178,7 @@
 <script setup>
 import { nextTick, ref, watch } from 'vue'
 import { usePlayer } from '@/composables/usePlayer'
+import { useDragMove } from '@/composables/useDragMove'
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true }
@@ -184,8 +191,18 @@ const {
   progress, duration, volume,
   loadAlbums, selectAlbum, playTrackAt, togglePlay, playNext, playPrev,
   toggleShuffle, toggleRepeat, seek, setVolume,
-  createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack
+  createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack, moveTrack
 } = usePlayer()
+const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
+
+async function onMove(track, destAlbum) {
+  if (destAlbum === currentAlbum.value) return
+  try {
+    await moveTrack(track, destAlbum)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Could not move the track.'
+  }
+}
 
 const showNewAlbumInput = ref(false)
 const newAlbumName = ref('')
@@ -454,6 +471,12 @@ function formatTime(seconds) {
   background: rgba(138, 92, 245, 0.2);
   border-color: rgba(138, 92, 245, 0.5);
   color: var(--text-primary);
+}
+
+.album-item.drag-over {
+  background: var(--interactive-primary);
+  border-color: var(--interactive-primary);
+  color: white;
 }
 
 .album-name {

@@ -2,15 +2,18 @@ import { ref } from 'vue'
 import * as vistasApi from '@/api/vistas'
 
 export function useVistas() {
+  const folders = ref([])
   const vistas = ref([])
   const loading = ref(false)
   const error = ref(null)
 
-  const fetchVistas = async () => {
+  const fetchTree = async (path = '') => {
     loading.value = true
     error.value = null
     try {
-      vistas.value = await vistasApi.fetchVistas()
+      const data = await vistasApi.fetchVistaTree(path)
+      folders.value = data.folders
+      vistas.value = data.vistas
     } catch (err) {
       error.value = err.response?.data?.detail || err.message
     } finally {
@@ -18,16 +21,39 @@ export function useVistas() {
     }
   }
 
-  const createVista = async (name, description) => {
-    const vista = await vistasApi.createVista(name, description)
-    vistas.value.push(vista)
-    return vista
+  const createVista = async (name, description, folderPath = '') => {
+    return vistasApi.createVista(name, description, folderPath)
   }
 
-  const removeVista = async (vistaId) => {
+  const removeVista = async (path, vistaId) => {
     await vistasApi.deleteVista(vistaId)
-    vistas.value = vistas.value.filter(v => v.id !== vistaId)
+    await fetchTree(path)
   }
 
-  return { vistas, loading, error, fetchVistas, createVista, removeVista }
+  const createFolder = async (path, name) => {
+    const newPath = path ? `${path}/${name}` : name
+    await vistasApi.createVistaFolder(newPath)
+    await fetchTree(path)
+  }
+
+  const removeFolder = async (path, folderPath) => {
+    await vistasApi.deleteVistaFolder(folderPath)
+    await fetchTree(path)
+  }
+
+  const moveFolder = async (path, folderPath, destParentPath) => {
+    await vistasApi.moveVistaFolder(folderPath, destParentPath)
+    await fetchTree(path)
+  }
+
+  const moveVista = async (path, vistaId, destFolderPath) => {
+    await vistasApi.moveVista(vistaId, destFolderPath)
+    await fetchTree(path)
+  }
+
+  return {
+    folders, vistas, loading, error,
+    fetchTree, createVista, removeVista, moveVista,
+    createFolder, removeFolder, moveFolder
+  }
 }

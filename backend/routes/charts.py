@@ -1,14 +1,15 @@
 from typing import List, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from config.logging import get_logger
 from config.settings import settings
-from models.chart import Annotation, Chart, ChartMetadata, ChartPath, Pin
+from models.chart import Annotation, Chart, ChartPath, Pin
 from routes.auth import require_auth
+from routes.errors import storage_unavailable
 from services import storage_service
 from services.chart_service import ChartSaveError, ChartService
 from services.storage_service import StorageError
@@ -24,14 +25,10 @@ def get_chart_service() -> ChartService:
     return chart_service_instance
 
 
-def _storage_unavailable(e: Exception) -> HTTPException:
-    logger.error(f"Object storage error: {e}")
-    return HTTPException(status_code=502, detail="Could not reach object storage")
-
-
 class ChartCreateRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    folder_path: str = ""
 
 
 class ChartSaveRequest(BaseModel):
@@ -42,9 +39,30 @@ class ChartSaveRequest(BaseModel):
     annotations: List[Annotation] = []
 
 
-@router.get("", response_model=List[ChartMetadata])
-async def list_charts(service: ChartService = Depends(get_chart_service)):
-    return service.list_charts()
+class FolderCreateRequest(BaseModel):
+    path: str
+
+
+class FolderRenameRequest(BaseModel):
+    name: str
+
+
+class FolderMoveRequest(BaseModel):
+    path: str
+    dest_parent_path: str = ""
+
+
+class ChartMoveRequest(BaseModel):
+    chart_id: str
+    folder_path: str = ""
+
+
+@router.get("")
+async def list_charts(path: str = "", service: ChartService = Depends(get_chart_service)):
+    try:
+        return service.list_tree(path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.post("", response_model=Chart)
@@ -55,9 +73,11 @@ async def create_chart(
 ):
     try:
         return service.create_chart(
-            body.name, body.description,
+            body.name, body.description, body.folder_path,
             author_name=user.get("name") or user["email"], author_email=user["email"],
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except ChartSaveError as e:
         logger.error(f"Failed to create chart {body.name}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
@@ -83,7 +103,113 @@ async def get_chart_asset(key: str):
     )
 
 
-@router.get("/{chart_id}", response_model=Chart)
+# ── folders ────────────────────────────────────────────────────────────
+# Declared ahead of the "/{chart_id}" routes below — those use a `:path`
+# converter and would otherwise swallow "/folders/..." as a chart id.
+
+@router.post("/folders")
+async def create_folder(
+    body: FolderCreateRequest,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        service.create_folder(
+            body.path, author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to create chart folder {body.path}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "success"}
+
+
+@router.put("/folders/{path:path}")
+async def rename_folder(
+    path: str,
+    body: FolderRenameRequest,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        service.rename_folder(
+            path, body.name, author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to rename chart folder {path}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "success"}
+
+
+@router.delete("/folders/{path:path}")
+async def delete_folder(
+    path: str,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        doomed_ids = service.delete_folder(
+            path, author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to delete chart folder {path}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+
+    for chart_id in doomed_ids:
+        try:
+            storage_service.delete_chart_assets(chart_id)
+        except (ClientError, BotoCoreError) as e:
+            logger.error(f"Failed to delete assets for chart {chart_id}: {e}")
+
+    return {"status": "success"}
+
+
+@router.post("/folders/move")
+async def move_folder(
+    body: FolderMoveRequest,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        service.move_folder(
+            body.path, body.dest_parent_path,
+            author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to move chart folder {body.path}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "success"}
+
+
+@router.post("/move")
+async def move_chart(
+    body: ChartMoveRequest,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        new_id = service.move_chart(
+            body.chart_id, body.folder_path,
+            author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to move chart {body.chart_id}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"status": "success", "id": new_id}
+
+
+# ── charts (by id) ───────────────────────────────────────────────────────
+
+@router.get("/{chart_id:path}", response_model=Chart)
 async def get_chart(chart_id: str, service: ChartService = Depends(get_chart_service)):
     chart = service.get_chart(chart_id)
     if chart is None:
@@ -91,7 +217,7 @@ async def get_chart(chart_id: str, service: ChartService = Depends(get_chart_ser
     return chart
 
 
-@router.put("/{chart_id}", response_model=Chart)
+@router.put("/{chart_id:path}", response_model=Chart)
 async def save_chart(
     chart_id: str,
     body: ChartSaveRequest,
@@ -110,7 +236,7 @@ async def save_chart(
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@router.delete("/{chart_id}")
+@router.delete("/{chart_id:path}")
 async def delete_chart(
     chart_id: str,
     user: dict = Depends(require_auth),
@@ -132,7 +258,7 @@ async def delete_chart(
     return {"status": "success"}
 
 
-@router.post("/{chart_id}/image", response_model=Chart)
+@router.post("/{chart_id:path}/image", response_model=Chart)
 async def upload_chart_image(
     chart_id: str,
     file: UploadFile = File(...),
@@ -144,7 +270,7 @@ async def upload_chart_image(
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
 
     image_url = f"/api/charts/assets/{result['key']}"
     try:
@@ -159,7 +285,7 @@ async def upload_chart_image(
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@router.post("/{chart_id}/pins/{pin_id}/icon")
+@router.post("/{chart_id:path}/pins/{pin_id}/icon")
 async def upload_pin_icon(
     chart_id: str,
     pin_id: str,
@@ -171,6 +297,6 @@ async def upload_pin_icon(
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
 
     return {"icon_url": f"/api/charts/assets/{result['key']}"}

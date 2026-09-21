@@ -1,13 +1,13 @@
 import json
 import re
-import shutil
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from models.vista import Vista, VistaAsset, VistaMetadata, VanishingPoint
-from services.git_sync_utils import GitCommitError, commit_and_push
+from services.document_store import DocumentStore, DocumentStoreError
+from services.folder_tree import FolderTree, FolderTreeError, sanitize_folder_path
 from config.logging import get_logger
 
 logger = get_logger(__name__)
@@ -28,38 +28,36 @@ def _slugify(name: str) -> str:
 class VistaService:
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
-        self.vistas_path = self.vault_path / VISTAS_DIRNAME
-        self.vistas_path.mkdir(parents=True, exist_ok=True)
         self._git_lock = threading.Lock()
-
-    def _vista_file(self, vista_id: str) -> Path:
-        normalized = vista_id.strip("/")
-        if not normalized or any(c in ("", ".", "..") for c in normalized.split("/")) or "\\" in normalized:
-            raise ValueError(f"Invalid vista id: {vista_id!r}")
-
-        full_path = (self.vistas_path / normalized / "vista.json").resolve()
-        try:
-            full_path.relative_to(self.vistas_path.resolve())
-        except ValueError:
-            raise ValueError("Access denied: path must be within the vistas folder")
-        return full_path
+        self._tree = FolderTree(self.vault_path, VISTAS_DIRNAME, "vista.json", self._git_lock)
+        self._store = DocumentStore(self._tree)
+        self.vistas_path = self._tree.root
 
     def _read(self, vista_id: str) -> Optional[Vista]:
-        vista_file = self._vista_file(vista_id)
-        if not vista_file.exists():
+        raw = self._store.read_raw(vista_id)
+        if raw is None:
             return None
-        return Vista.model_validate(json.loads(vista_file.read_text(encoding="utf-8")))
+        vista = Vista.model_validate(raw)
+        # The id embedded in the file can go stale after a folder rename/move;
+        # the file's actual location relative to vistas_path is authoritative.
+        vista.id = vista_id.strip("/")
+        return vista
 
-    def list_vistas(self) -> List[VistaMetadata]:
-        vistas = []
-        for vista_file in self.vistas_path.glob("*/vista.json"):
+    def list_tree(self, path: str = "") -> dict:
+        def read_metadata(vista_file: Path) -> Optional[VistaMetadata]:
             try:
-                data = json.loads(vista_file.read_text(encoding="utf-8"))
-                vistas.append(VistaMetadata.model_validate(data))
+                return VistaMetadata.model_validate(json.loads(vista_file.read_text(encoding="utf-8")))
             except Exception as e:
                 logger.error(f"Error reading vista {vista_file}: {e}")
-                continue
-        return sorted(vistas, key=lambda v: v.name.lower())
+                return None
+
+        raw = self._tree.list_tree(path, read_metadata)
+        vistas = []
+        for item_id, meta in raw["items"]:
+            meta.id = item_id
+            vistas.append(meta)
+        vistas.sort(key=lambda v: v.name.lower())
+        return {"folders": raw["folders"], "vistas": vistas}
 
     def get_vista(self, vista_id: str) -> Optional[Vista]:
         try:
@@ -68,16 +66,14 @@ class VistaService:
             return None
 
     def create_vista(
-        self, name: str, description: Optional[str], author_name: str, author_email: str
+        self, name: str, description: Optional[str], folder_path: str, author_name: str, author_email: str
     ) -> Vista:
-        base_slug = _slugify(name)
-        slug = base_slug
-        suffix = 2
-        while (self.vistas_path / slug / "vista.json").exists():
-            slug = f"{base_slug}-{suffix}"
-            suffix += 1
+        folder_path = sanitize_folder_path(folder_path)
+        slug = self._store.unique_slug(_slugify(name), folder_path)
 
-        vista = Vista(id=slug, name=name, description=description)
+        vista_id = f"{folder_path}/{slug}" if folder_path else slug
+        self._tree.check_not_reserved(vista_id)
+        vista = Vista(id=vista_id, name=name, description=description)
         self._write(vista, author_name, author_email, verb="Create")
         return vista
 
@@ -118,34 +114,56 @@ class VistaService:
 
     def _write(self, vista: Vista, author_name: str, author_email: str, verb: str) -> None:
         vista.updated_at = datetime.now(timezone.utc).isoformat()
-        vista_file = self._vista_file(vista.id)
-        vista_file.parent.mkdir(parents=True, exist_ok=True)
-        vista_file.write_text(vista.model_dump_json(indent=2), encoding="utf-8")
-
-        rel_path = str(vista_file.relative_to(self.vault_path.resolve()))
         try:
-            commit_and_push(
-                self.vault_path, self._git_lock, [rel_path],
+            self._store.write(
+                vista.id, vista.model_dump_json(indent=2), author_name, author_email,
                 message=f"{verb} vista: {vista.name}",
-                author_name=author_name, author_email=author_email,
             )
-        except GitCommitError as e:
+        except DocumentStoreError as e:
             raise VistaSaveError(str(e))
 
     def delete_vista(self, vista_id: str, author_name: str, author_email: str) -> None:
-        vista_file = self._vista_file(vista_id)
-        if not vista_file.exists():
-            raise ValueError(f"Vista not found: {vista_id}")
-
-        vista_dir = vista_file.parent
-        rel_dir = str(vista_dir.relative_to(self.vault_path.resolve()))
-        shutil.rmtree(vista_dir)
-
         try:
-            commit_and_push(
-                self.vault_path, self._git_lock, [rel_dir],
+            self._store.delete(
+                vista_id, author_name, author_email,
                 message=f"Delete vista: {vista_id}",
-                author_name=author_name, author_email=author_email,
+                not_found_message=f"Vista not found: {vista_id}",
             )
-        except GitCommitError as e:
+        except DocumentStoreError as e:
+            raise VistaSaveError(str(e))
+
+    def move_vista(self, vista_id: str, dest_folder_path: str, author_name: str, author_email: str) -> str:
+        """Moves a single vista into `dest_folder_path`, keeping its own
+        directory name. Used for drag-and-drop between folders."""
+        try:
+            return self._tree.move_item(vista_id, dest_folder_path, author_name, author_email, label="vista")
+        except FolderTreeError as e:
+            raise VistaSaveError(str(e))
+
+    # ── folders ─────────────────────────────────────────────────────────
+
+    def create_folder(self, path: str, author_name: str, author_email: str) -> None:
+        try:
+            self._tree.create_folder(path, author_name, author_email, label="vista")
+        except FolderTreeError as e:
+            raise VistaSaveError(str(e))
+
+    def rename_folder(self, path: str, new_name: str, author_name: str, author_email: str) -> None:
+        try:
+            self._tree.move_folder(path, author_name, author_email, label="vista", new_name=new_name)
+        except FolderTreeError as e:
+            raise VistaSaveError(str(e))
+
+    def move_folder(self, path: str, dest_parent_path: str, author_name: str, author_email: str) -> None:
+        """Moves the folder at `path` to be a child of `dest_parent_path`,
+        keeping its own name. Used for drag-and-drop between folders."""
+        try:
+            self._tree.move_folder(path, author_name, author_email, label="vista", new_parent_path=dest_parent_path)
+        except FolderTreeError as e:
+            raise VistaSaveError(str(e))
+
+    def delete_folder(self, path: str, author_name: str, author_email: str) -> List[str]:
+        try:
+            return self._tree.delete_folder(path, author_name, author_email, label="vista")
+        except FolderTreeError as e:
             raise VistaSaveError(str(e))

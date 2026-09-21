@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from config.logging import get_logger
+from routes.errors import storage_unavailable
 from services import storage_service
 from services.storage_service import StorageError
 
@@ -12,17 +13,12 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/player", tags=["player"])
 
 
-def _storage_unavailable(e: Exception) -> HTTPException:
-    logger.error(f"Object storage error: {e}")
-    return HTTPException(status_code=502, detail="Could not reach object storage")
-
-
 @router.get("/albums")
 async def get_albums():
     try:
         return {"albums": storage_service.list_albums()}
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
 
 
 @router.post("/albums")
@@ -32,7 +28,7 @@ async def create_album(data: Dict[str, str]):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
@@ -43,7 +39,7 @@ async def delete_album(album: str):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
@@ -54,7 +50,7 @@ async def rename_album(album: str, data: Dict[str, str]):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
@@ -65,7 +61,7 @@ async def get_tracks(album: str):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
 
 
 @router.post("/albums/{album}/tracks")
@@ -75,7 +71,18 @@ async def upload_track(album: str, file: UploadFile = File(...)):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
+    return result
+
+
+@router.post("/tracks/move")
+async def move_track(data: Dict[str, str]):
+    try:
+        result = storage_service.move_track(data.get("key", ""), data.get("album", ""))
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise storage_unavailable(logger, e)
     return result
 
 
@@ -86,7 +93,7 @@ async def delete_track(key: str):
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
-        raise _storage_unavailable(e)
+        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 

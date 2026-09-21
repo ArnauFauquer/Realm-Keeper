@@ -39,8 +39,24 @@ export function useAssetLibrary() {
     return result
   }
 
+  // Uploads sequentially (rather than Promise.all) so a slow/failing upload
+  // doesn't race the others for the same folder's cache entry.
+  const uploadAssets = async (path, files) => {
+    const results = []
+    for (const file of files) {
+      results.push(await libraryApi.uploadLibraryAsset(path, file))
+    }
+    await fetchPath(path, true)
+    return results
+  }
+
   const removeAsset = async (path, key) => {
     await libraryApi.deleteLibraryAsset(key)
+    await fetchPath(path, true)
+  }
+
+  const moveAsset = async (path, key, destFolderPath) => {
+    await libraryApi.moveLibraryAsset(key, destFolderPath)
     await fetchPath(path, true)
   }
 
@@ -55,9 +71,14 @@ export function useAssetLibrary() {
     await fetchPath(path, true)
   }
 
+  const moveFolder = async (path, folderPath, destParentPath) => {
+    await libraryApi.moveLibraryFolder(folderPath, destParentPath)
+    await fetchPath(path, true)
+  }
+
   return {
     folders, assets, loading, error,
-    fetchPath, uploadAsset, removeAsset,
-    createFolder, removeFolder
+    fetchPath, uploadAsset, uploadAssets, removeAsset, moveAsset,
+    createFolder, removeFolder, moveFolder
   }
 }
