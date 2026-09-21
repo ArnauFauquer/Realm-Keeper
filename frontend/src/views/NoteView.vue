@@ -392,10 +392,20 @@ export default {
         links.forEach(link => {
           const linkId = link.getAttribute('data-note-link')
           if (!linkId) return
-          
+
           link.addEventListener('mouseenter', () => {
             this.onLinkMouseEnter(linkId)
           }, { once: false })
+
+          // Plain <a> from v-html isn't a <router-link>, so a click would
+          // otherwise trigger a full page navigation (reloading the app and
+          // killing audio playback). Route it through Vue Router instead,
+          // unless the user wants the browser's own handling (new tab, etc).
+          link.addEventListener('click', (e) => {
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+            e.preventDefault()
+            this.$router.push(`/note/${linkId}`)
+          })
         })
 
         if (this.user) {
