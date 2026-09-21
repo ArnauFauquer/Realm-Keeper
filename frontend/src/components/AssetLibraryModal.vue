@@ -9,12 +9,12 @@
       </div>
 
       <div class="breadcrumb">
-        <button class="breadcrumb-item" :class="{ current: currentFolderId === null }" @click="goToBreadcrumb(null)">
+        <button class="breadcrumb-item" :class="{ current: currentPath === '' }" @click="goToBreadcrumb('')">
           <span class="mdi mdi-home-outline"></span> Library
         </button>
-        <template v-for="crumb in breadcrumb" :key="crumb.id">
+        <template v-for="crumb in breadcrumb" :key="crumb.path">
           <span class="breadcrumb-sep mdi mdi-chevron-right"></span>
-          <button class="breadcrumb-item" :class="{ current: crumb.id === currentFolderId }" @click="goToBreadcrumb(crumb.id)">
+          <button class="breadcrumb-item" :class="{ current: crumb.path === currentPath }" @click="goToBreadcrumb(crumb.path)">
             {{ crumb.name }}
           </button>
         </template>
@@ -53,8 +53,8 @@
             </label>
 
             <div
-              v-for="folder in visibleFolders"
-              :key="folder.id"
+              v-for="folder in folders"
+              :key="folder"
               class="library-tile folder-tile"
               @click="enterFolder(folder)"
             >
@@ -62,22 +62,21 @@
                 <span class="mdi mdi-trash-can-outline"></span>
               </button>
               <span class="mdi mdi-folder library-tile-thumb folder-icon"></span>
-              <span class="library-tile-name">{{ folder.name }}</span>
+              <span class="library-tile-name">{{ folder }}</span>
             </div>
 
-            <div v-for="item in visibleAssets" :key="item.id" class="library-tile" @click="pick(item)">
+            <div v-for="item in assets" :key="item.key" class="library-tile" @click="pick(item)">
               <button class="library-tile-delete" title="Remove from library" @click.stop="remove(item)">
                 <span class="mdi mdi-trash-can-outline"></span>
               </button>
               <div class="library-tile-thumb">
-                <img v-if="item.image_url" :src="resolveUrl(item.image_url)" :alt="item.name" />
-                <span v-else class="mdi mdi-image-off-outline"></span>
+                <img :src="resolveUrl(assetUrl(item))" :alt="item.name" />
               </div>
               <span class="library-tile-name">{{ item.name }}</span>
             </div>
           </div>
 
-          <div v-if="!visibleFolders.length && !visibleAssets.length" class="empty-state">
+          <div v-if="!folders.length && !assets.length" class="empty-state">
             <span class="mdi mdi-folder-open-outline"></span>
             <p>Nothing here yet. Upload an asset or create an album.</p>
           </div>
@@ -99,48 +98,39 @@ const props = defineProps({
 const emit = defineEmits(['close', 'select'])
 
 const {
-  assets, folders, loading, error,
-  fetchLibrary, fetchFolders,
-  createLibraryAsset, removeLibraryAsset,
-  createLibraryFolder, removeLibraryFolder
+  folders, assets, loading, error,
+  fetchPath, uploadAsset, removeAsset,
+  createFolder, removeFolder
 } = useAssetLibrary()
 
 const uploading = ref(false)
-const currentFolderId = ref(null)
+const currentPath = ref('')
 const creatingFolder = ref(false)
 const newFolderName = ref('')
 const newFolderInputRef = ref(null)
 
 watch(() => props.isOpen, (open) => {
   if (open) {
-    currentFolderId.value = null
+    currentPath.value = ''
     creatingFolder.value = false
-    fetchLibrary()
-    fetchFolders()
+    fetchPath('')
   }
 })
 
-const folderMap = computed(() => new Map(folders.value.map(f => [f.id, f])))
-
 const breadcrumb = computed(() => {
+  const segments = currentPath.value.split('/').filter(Boolean)
   const trail = []
-  let id = currentFolderId.value
-  while (id) {
-    const folder = folderMap.value.get(id)
-    if (!folder) break
-    trail.unshift(folder)
-    id = folder.parent_id
+  let acc = ''
+  for (const name of segments) {
+    acc = acc ? `${acc}/${name}` : name
+    trail.push({ name, path: acc })
   }
   return trail
 })
 
-const visibleFolders = computed(() =>
-  folders.value.filter(f => (f.parent_id ?? null) === currentFolderId.value)
-)
-
-const visibleAssets = computed(() =>
-  assets.value.filter(a => (a.folder_id ?? null) === currentFolderId.value)
-)
+function assetUrl(item) {
+  return `/api/asset-library/assets/${item.key}`
+}
 
 function resolveUrl(url) {
   if (!url) return url
@@ -152,17 +142,19 @@ function close() {
 }
 
 function pick(item) {
-  emit('select', item)
+  emit('select', { name: item.name.replace(/\.[^.]+$/, ''), image_url: assetUrl(item) })
 }
 
 function enterFolder(folder) {
-  currentFolderId.value = folder.id
+  currentPath.value = currentPath.value ? `${currentPath.value}/${folder}` : folder
   creatingFolder.value = false
+  fetchPath(currentPath.value)
 }
 
-function goToBreadcrumb(folderId) {
-  currentFolderId.value = folderId
+function goToBreadcrumb(path) {
+  currentPath.value = path
   creatingFolder.value = false
+  fetchPath(path)
 }
 
 function startNewFolder() {
@@ -176,16 +168,17 @@ async function submitNewFolder() {
   if (!name) { creatingFolder.value = false; return }
   creatingFolder.value = false
   try {
-    await createLibraryFolder(name, currentFolderId.value)
+    await createFolder(currentPath.value, name)
   } catch (err) {
     console.error('Failed to create album:', err)
   }
 }
 
 async function removeFolderItem(folder) {
-  if (!window.confirm(`Delete album "${folder.name}" and everything inside it?`)) return
+  if (!window.confirm(`Delete album "${folder}" and everything inside it?`)) return
+  const folderPath = currentPath.value ? `${currentPath.value}/${folder}` : folder
   try {
-    await removeLibraryFolder(folder.id)
+    await removeFolder(currentPath.value, folderPath)
   } catch (err) {
     console.error('Failed to delete album:', err)
   }
@@ -197,9 +190,8 @@ async function onFileSelected(evt) {
   if (!file) return
   uploading.value = true
   try {
-    const name = file.name.replace(/\.[^.]+$/, '')
-    const item = await createLibraryAsset(name, file, currentFolderId.value)
-    emit('select', item)
+    const result = await uploadAsset(currentPath.value, file)
+    emit('select', { name: file.name.replace(/\.[^.]+$/, ''), image_url: result.image_url })
   } catch (err) {
     console.error('Failed to upload to asset library:', err)
   } finally {
@@ -209,7 +201,7 @@ async function onFileSelected(evt) {
 
 async function remove(item) {
   try {
-    await removeLibraryAsset(item.id)
+    await removeAsset(currentPath.value, item.key)
   } catch (err) {
     console.error('Failed to remove library asset:', err)
   }

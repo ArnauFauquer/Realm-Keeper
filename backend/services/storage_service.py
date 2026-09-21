@@ -19,6 +19,9 @@ ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
 # refuse to collide with them.
 RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library"}
 
+ASSET_LIBRARY_PREFIX = "asset-library/"
+_UNIQUE_PREFIX_RE = re.compile(r"^[0-9a-f]{8}-")
+
 
 class StorageError(Exception):
     pass
@@ -52,6 +55,13 @@ def _split_key(key: str) -> tuple[str, str]:
     if len(parts) != 2:
         raise StorageError(f"Invalid track key: {key!r}")
     return _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
+
+
+def _sanitize_path(path: str) -> str:
+    """Validate a (possibly multi-level) folder path: every segment must be
+    a safe path component. Returns "" for the root."""
+    segments = [s for s in (path or "").split("/") if s]
+    return "/".join(_sanitize_segment(s) for s in segments)
 
 
 def _validate_key(key: str) -> None:
@@ -234,16 +244,92 @@ def upload_vista_background(vista_id: str, filename: str, file_obj: BinaryIO, co
     return _upload_image(f"vistas/{vista_id}/background/{_unique_filename(filename)}", filename, file_obj, content_type)
 
 
-def upload_library_asset_image(item_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    item_id = _sanitize_segment(item_id)
-    filename = _sanitize_segment(filename)
-    return _upload_image(f"asset-library/{item_id}/{_unique_filename(filename)}", filename, file_obj, content_type)
-
-
-def delete_library_asset(item_id: str) -> None:
-    item_id = _sanitize_segment(item_id)
+def list_asset_library(path: str = "") -> dict:
+    """Immediate subfolders and files directly under `path` (not recursive) —
+    folders are plain S3 prefixes, nested arbitrarily deep, same idea as
+    list_albums()/list_tracks() but with a variable number of levels."""
+    path = _sanitize_path(path)
+    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/" if path else ASSET_LIBRARY_PREFIX
     client = _client()
-    prefix = f"asset-library/{item_id}/"
+    folders = []
+    assets = []
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix, Delimiter="/"):
+        for cp in page.get("CommonPrefixes", []):
+            name = cp["Prefix"][len(prefix):].rstrip("/")
+            if name:
+                folders.append(name)
+        for obj in page.get("Contents", []):
+            filename = obj["Key"][len(prefix):]
+            if not filename or filename == ".keep":
+                continue
+            assets.append({
+                "key": obj["Key"],
+                # Strip the anti-cache-collision prefix _unique_filename() adds
+                # on upload so the library shows the file's original name.
+                "name": _UNIQUE_PREFIX_RE.sub("", filename, count=1),
+                "size": obj["Size"],
+                "last_modified": obj["LastModified"].isoformat(),
+            })
+    folders.sort(key=str.lower)
+    assets.sort(key=lambda a: a["name"].lower())
+    return {"folders": folders, "assets": assets}
+
+
+def create_asset_folder(path: str) -> None:
+    path = _sanitize_path(path)
+    if not path:
+        raise StorageError("Folder path is required")
+    client = _client()
+    client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{ASSET_LIBRARY_PREFIX}{path}/.keep", Body=b"")
+
+
+def rename_asset_folder(path: str, new_name: str) -> None:
+    """Renames the leaf segment of `path`, keeping it under the same parent —
+    e.g. rename_asset_folder("monsters/goblins", "orcs") -> "monsters/orcs"."""
+    path = _sanitize_path(path)
+    new_name = _sanitize_segment(new_name)
+    if not path:
+        raise StorageError("Folder path is required")
+
+    parent, _, _leaf = path.rpartition("/")
+    new_path = f"{parent}/{new_name}" if parent else new_name
+    if path == new_path:
+        return
+
+    client = _client()
+    old_prefix = f"{ASSET_LIBRARY_PREFIX}{path}/"
+    new_prefix = f"{ASSET_LIBRARY_PREFIX}{new_path}/"
+
+    if list(client.list_objects_v2(Bucket=settings.S3_BUCKET_NAME, Prefix=new_prefix, MaxKeys=1).get("Contents", [])):
+        raise StorageError(f"A folder already exists at '{new_path}'")
+
+    keys = []
+    paginator = client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=old_prefix):
+        keys.extend(obj["Key"] for obj in page.get("Contents", []))
+    if not keys:
+        raise StorageError(f"Folder not found: {path}")
+
+    for key in keys:
+        client.copy_object(
+            Bucket=settings.S3_BUCKET_NAME,
+            CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": key},
+            Key=new_prefix + key[len(old_prefix):],
+        )
+    for i in range(0, len(keys), 1000):
+        batch = keys[i:i + 1000]
+        if batch:
+            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
+
+
+def delete_asset_folder(path: str) -> None:
+    """Deletes a folder and everything nested inside it (cascading, like rm -rf)."""
+    path = _sanitize_path(path)
+    if not path:
+        raise StorageError("Folder path is required")
+    client = _client()
+    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/"
     paginator = client.get_paginator("list_objects_v2")
     keys = []
     for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
@@ -252,6 +338,21 @@ def delete_library_asset(item_id: str) -> None:
         batch = keys[i:i + 1000]
         if batch:
             client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
+
+
+def upload_library_asset(path: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
+    path = _sanitize_path(path)
+    filename = _sanitize_segment(filename)
+    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/" if path else ASSET_LIBRARY_PREFIX
+    return _upload_image(f"{prefix}{_unique_filename(filename)}", filename, file_obj, content_type)
+
+
+def delete_library_asset(key: str) -> None:
+    _validate_key(key)
+    if not key.startswith(ASSET_LIBRARY_PREFIX):
+        raise StorageError(f"Invalid asset key: {key!r}")
+    client = _client()
+    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
 
 
 def delete_vista_assets(vista_id: str) -> None:

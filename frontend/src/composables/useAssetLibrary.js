@@ -1,24 +1,31 @@
 import { ref } from 'vue'
 import * as libraryApi from '@/api/assetLibrary'
 
-// Module-level (singleton): every open VistaCanvas shares one fetch of the
-// library instead of each re-fetching it, and a new asset uploaded from one
-// scene shows up immediately when picking in another.
-const assets = ref([])
-const folders = ref([])
-const loading = ref(false)
-const error = ref(null)
-let assetsFetched = false
-let foldersFetched = false
+// Module-level (singleton): every open VistaCanvas shares one cache per
+// folder path instead of each re-fetching it, and a new asset uploaded from
+// one scene shows up immediately when picking in another.
+const cache = new Map()
 
 export function useAssetLibrary() {
-  const fetchLibrary = async (force = false) => {
-    if (assetsFetched && !force) return
+  const folders = ref([])
+  const assets = ref([])
+  const loading = ref(false)
+  const error = ref(null)
+
+  const fetchPath = async (path = '', force = false) => {
+    if (!force && cache.has(path)) {
+      const cached = cache.get(path)
+      folders.value = cached.folders
+      assets.value = cached.assets
+      return
+    }
     loading.value = true
     error.value = null
     try {
-      assets.value = await libraryApi.fetchLibraryAssets()
-      assetsFetched = true
+      const data = await libraryApi.fetchLibraryContents(path)
+      folders.value = data.folders
+      assets.value = data.assets
+      cache.set(path, data)
     } catch (err) {
       error.value = err.response?.data?.detail || err.message
     } finally {
@@ -26,45 +33,31 @@ export function useAssetLibrary() {
     }
   }
 
-  const fetchFolders = async (force = false) => {
-    if (foldersFetched && !force) return
-    try {
-      folders.value = await libraryApi.fetchLibraryFolders()
-      foldersFetched = true
-    } catch (err) {
-      error.value = err.response?.data?.detail || err.message
-    }
+  const uploadAsset = async (path, file) => {
+    const result = await libraryApi.uploadLibraryAsset(path, file)
+    await fetchPath(path, true)
+    return result
   }
 
-  const createLibraryAsset = async (name, file, folderId = null) => {
-    const item = await libraryApi.createLibraryAsset(name, folderId)
-    const updated = await libraryApi.uploadLibraryAssetImage(item.id, file)
-    assets.value.push(updated)
-    return updated
+  const removeAsset = async (path, key) => {
+    await libraryApi.deleteLibraryAsset(key)
+    await fetchPath(path, true)
   }
 
-  const removeLibraryAsset = async (itemId) => {
-    await libraryApi.deleteLibraryAsset(itemId)
-    assets.value = assets.value.filter(a => a.id !== itemId)
+  const createFolder = async (path, name) => {
+    const newPath = path ? `${path}/${name}` : name
+    await libraryApi.createLibraryFolder(newPath)
+    await fetchPath(path, true)
   }
 
-  const createLibraryFolder = async (name, parentId = null) => {
-    const folder = await libraryApi.createLibraryFolder(name, parentId)
-    folders.value.push(folder)
-    return folder
-  }
-
-  const removeLibraryFolder = async (folderId) => {
-    await libraryApi.deleteLibraryFolder(folderId)
-    // Cascades server-side (nested folders + their assets); simplest to
-    // just re-fetch both lists rather than recompute what else vanished.
-    await Promise.all([fetchFolders(true), fetchLibrary(true)])
+  const removeFolder = async (path, folderPath) => {
+    await libraryApi.deleteLibraryFolder(folderPath)
+    await fetchPath(path, true)
   }
 
   return {
-    assets, folders, loading, error,
-    fetchLibrary, fetchFolders,
-    createLibraryAsset, removeLibraryAsset,
-    createLibraryFolder, removeLibraryFolder
+    folders, assets, loading, error,
+    fetchPath, uploadAsset, removeAsset,
+    createFolder, removeFolder
   }
 }
