@@ -22,6 +22,7 @@
         <div class="app-title">
           <span class="mdi mdi-orbit"></span>
           <span class="title-text">RealmKeeper</span>
+          <span class="app-version" title="App version">{{ appVersion }}</span>
         </div>
 
         <div v-if="user && !user.local" class="user-chip">
@@ -196,6 +197,7 @@ import PlayerModal from './PlayerModal.vue'
 import ChartsModal from './ChartsModal.vue'
 import VistasModal from './VistasModal.vue'
 import AssetLibraryModal from './AssetLibraryModal.vue'
+import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
@@ -410,6 +412,15 @@ onBeforeUnmount(() => {
   font-weight: 600;
   color: var(--text-primary);
   margin-bottom: 1rem;
+}
+
+.app-version {
+  align-self: flex-end;
+  margin-bottom: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  opacity: 0.7;
 }
 
 .app-title .mdi {
