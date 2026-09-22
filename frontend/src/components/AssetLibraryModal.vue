@@ -20,7 +20,7 @@
           :folders="folders"
           :items="assets"
           :item-key="(item) => item.key"
-          :item-copy-text="(item) => `![${item.name}](${resolveUrl(assetUrl(item))})`"
+          :item-copy-text="(item) => `![${item.name}](${absoluteUrl(assetUrl(item))})`"
           :current-path="currentPath"
           :loading="loading"
           :error="error"
@@ -60,7 +60,7 @@
 
 <script setup>
 import { ref, watch } from 'vue'
-import { resolveUrl } from '@/utils/resolveUrl'
+import { resolveUrl, absoluteUrl } from '@/utils/resolveUrl'
 import { useAuth } from '@/composables/useAuth'
 import { useAssetLibrary } from '@/composables/useAssetLibrary'
 import { post } from '@/api/http'
