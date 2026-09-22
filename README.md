@@ -154,9 +154,14 @@ cd frontend && npx vitest
 
 `.argocd/` holds Kubernetes manifests (deployments, services, PDBs, Traefik
 ingress, a vault PVC and a Ceph object bucket claim) meant to be synced by
-Argo CD. The GitHub Actions workflow bumps `VERSION`, builds both images,
-pushes them to `ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}` and
-updates the image tags in the manifests.
+Argo CD.
+
+Releases are managed by
+[release-please](https://github.com/googleapis/release-please): on every
+push to `main` it keeps a release PR open that bumps `VERSION`, the image
+tags in `.argocd/` and `CHANGELOG.md`, based on the Conventional Commits
+merged since the last release. Merging that PR tags `vX.Y.Z` and builds both
+images to `ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}`.
 
 The backend runs as a single replica: the vault lives on a `ReadWriteOnce`
 volume and Git writes are serialized in-process.

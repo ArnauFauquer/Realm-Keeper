@@ -97,10 +97,12 @@ chore: bump dependencies
 ```
 
 Use `feat`, `fix`, `refactor`, `docs`, `test` or `chore`, and describe the
-change from the user's point of view where possible.
+change from the user's point of view where possible. The prefix matters:
+releases and the changelog are generated from it.
 
-Don't edit `VERSION` or the image tags in `.argocd/` — CI bumps them on every
-merge to `main`.
+Don't edit `VERSION`, `CHANGELOG.md` or the image tags in `.argocd/` —
+[release-please](https://github.com/googleapis/release-please) updates them
+in its release PR.
 
 ## Pull requests
 
