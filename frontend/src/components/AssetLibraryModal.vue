@@ -20,7 +20,7 @@
           :folders="folders"
           :items="assets"
           :item-key="(item) => item.key"
-          :item-copy-text="(item) => `![${item.name}](${absoluteUrl(assetUrl(item))})`"
+          :item-copy-text="(item) => `![${item.name}](${copyAssetUrl(item)})`"
           :current-path="currentPath"
           :loading="loading"
           :error="error"
@@ -101,6 +101,16 @@ watch(() => props.isOpen, (open) => {
 
 function assetUrl(item) {
   return `/api/asset-library/assets/${item.key}`
+}
+
+// CommonMark link/image destinations can't contain a literal, unescaped
+// space (e.g. a "Tierras Del Este" folder) — markdown-it then refuses to
+// parse it as an image and renders the raw "![...](...)" text instead. The
+// <img :src> binding doesn't need this (browsers encode it implicitly), but
+// the copy button hands out literal text that has to already be valid.
+function copyAssetUrl(item) {
+  const encodedKey = item.key.split('/').map(encodeURIComponent).join('/')
+  return absoluteUrl(`/api/asset-library/assets/${encodedKey}`)
 }
 
 function folderPath(folder) {
