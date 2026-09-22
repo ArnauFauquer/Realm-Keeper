@@ -2,12 +2,10 @@
   <div class="chart-canvas" :class="{ editable }">
     <div v-if="!chart.image_url" class="empty-map">
       <span class="mdi mdi-image-plus"></span>
-      <p v-if="editable">Upload a background image to start charting.</p>
-      <p v-else>This chart has no map image yet.</p>
-      <label v-if="editable" class="upload-btn">
-        <span class="mdi mdi-upload"></span> Upload map image
-        <input type="file" accept="image/*" hidden @change="onMapImageSelected" />
-      </label>
+      <p>This chart has no map image yet.</p>
+      <button v-if="editable" class="upload-btn" @click="openLibraryForMap">
+        <span class="mdi mdi-folder-multiple-image"></span> Choose map image
+      </button>
     </div>
 
     <div v-else class="canvas-viewport" ref="viewportRef">
@@ -198,10 +196,9 @@
         <button class="tool-btn" :class="{ active: mode === 'annotation' }" title="Add annotation" @click="setMode('annotation')">
           <span class="mdi mdi-note-plus-outline"></span>
         </button>
-        <label class="tool-btn" title="Replace map image">
+        <button class="tool-btn" title="Replace map image" @click="openLibraryForMap">
           <span class="mdi mdi-image-edit-outline"></span>
-          <input type="file" accept="image/*" hidden @change="onMapImageSelected" />
-        </label>
+        </button>
       </div>
 
       <div v-if="editable && mode === 'path' && drawingPoints.length" class="path-hint">
@@ -273,10 +270,9 @@
           <span class="mdi mdi-map-marker"></span>
         </div>
 
-        <label class="upload-btn small">
-          <span class="mdi mdi-upload"></span> {{ selectedPin.icon_url ? 'Replace icon' : 'Upload icon' }}
-          <input type="file" accept="image/*" hidden @change="(e) => onPinIconSelected(e, selectedPin.id)" />
-        </label>
+        <button class="upload-btn small" @click="openLibraryForPinIcon(selectedPin)">
+          <span class="mdi mdi-folder-multiple-image"></span> {{ selectedPin.icon_url ? 'Change icon' : 'Choose icon' }}
+        </button>
       </div>
 
       <div v-if="editable && selectedPath" class="selection-panel">
@@ -308,6 +304,13 @@
         </div>
       </div>
     </div>
+
+    <AssetLibraryModal
+      :is-open="libraryModalOpen"
+      picker-mode
+      @close="libraryModalOpen = false"
+      @select="onLibrarySelect"
+    />
   </div>
 </template>
 
@@ -315,6 +318,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
 import { resolveUrl } from '@/utils/resolveUrl'
+import AssetLibraryModal from './AssetLibraryModal.vue'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -364,7 +368,11 @@ function setPinScale(pin, scale) {
   emitChange()
 }
 
-const emit = defineEmits(['change', 'upload-map-image', 'upload-pin-icon', 'open-note'])
+const emit = defineEmits(['change', 'set-map-image', 'open-note'])
+
+const libraryModalOpen = ref(false)
+// Pin whose icon the open library picker will set; null means it picks the map image.
+let libraryTargetPin = null
 
 const svgRef = ref(null)
 const zoomGroupRef = ref(null)
@@ -666,16 +674,25 @@ function setPathDirection(id, direction) {
   if (path) { path.direction = direction; emitChange() }
 }
 
-function onMapImageSelected(evt) {
-  const file = evt.target.files[0]
-  if (file) emit('upload-map-image', file)
-  evt.target.value = ''
+function openLibraryForMap() {
+  libraryTargetPin = null
+  libraryModalOpen.value = true
 }
 
-function onPinIconSelected(evt, pinId) {
-  const file = evt.target.files[0]
-  if (file) emit('upload-pin-icon', { pinId, file })
-  evt.target.value = ''
+function openLibraryForPinIcon(pin) {
+  libraryTargetPin = pin
+  libraryModalOpen.value = true
+}
+
+function onLibrarySelect(item) {
+  libraryModalOpen.value = false
+  if (libraryTargetPin) {
+    libraryTargetPin.icon_url = item.image_url
+    libraryTargetPin = null
+    emitChange()
+  } else {
+    emit('set-map-image', item.image_url)
+  }
 }
 
 </script>

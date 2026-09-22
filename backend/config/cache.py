@@ -60,11 +60,7 @@ class CacheControlMiddleware:
                 # Login state must never be cached (stale /me would show a
                 # logged-out user as logged in, or vice versa).
                 return "no-store, must-revalidate"
-            if (
-                path.startswith("/api/vistas/assets/")
-                or path.startswith("/api/charts/assets/")
-                or path.startswith("/api/asset-library/assets/")
-            ):
+            if path.startswith("/api/asset-library/assets/"):
                 # The binary image itself, keyed by its own filename — safe to
                 # cache hard like /assets/.
                 return "public, max-age=31536000, immutable"

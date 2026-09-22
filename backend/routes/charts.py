@@ -1,18 +1,14 @@
 from typing import List, Optional
 
-from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from config.logging import get_logger
 from config.settings import settings
 from models.chart import Annotation, Chart, ChartPath, Pin
 from routes.auth import require_auth
-from routes.errors import storage_unavailable
-from services import storage_service
+from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from services.chart_service import ChartSaveError, ChartService
-from services.storage_service import StorageError
 
 logger = get_logger(__name__)
 
@@ -37,6 +33,10 @@ class ChartSaveRequest(BaseModel):
     pins: List[Pin] = []
     paths: List[ChartPath] = []
     annotations: List[Annotation] = []
+
+
+class ChartImageRequest(BaseModel):
+    url: str
 
 
 class FolderCreateRequest(BaseModel):
@@ -88,26 +88,6 @@ async def create_chart(
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@router.get("/assets/{key:path}")
-async def get_chart_asset(key: str):
-    try:
-        obj = storage_service.get_object_stream(key)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError):
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    def iterfile():
-        for chunk in obj["Body"].iter_chunks(chunk_size=64 * 1024):
-            yield chunk
-
-    return StreamingResponse(
-        iterfile(),
-        media_type=obj.get("ContentType", "application/octet-stream"),
-        headers={"Content-Length": str(obj["ContentLength"])},
-    )
-
-
 # ── folders ────────────────────────────────────────────────────────────
 # Declared ahead of the "/{chart_id}" routes below — those use a `:path`
 # converter and would otherwise swallow "/folders/..." as a chart id.
@@ -156,7 +136,7 @@ async def delete_folder(
     service: ChartService = Depends(get_chart_service),
 ):
     try:
-        doomed_ids = service.delete_folder(
+        service.delete_folder(
             path, author_name=user.get("name") or user["email"], author_email=user["email"],
         )
     except ValueError as e:
@@ -164,12 +144,6 @@ async def delete_folder(
     except ChartSaveError as e:
         logger.error(f"Failed to delete chart folder {path}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
-
-    for chart_id in doomed_ids:
-        try:
-            storage_service.delete_chart_assets(chart_id)
-        except (ClientError, BotoCoreError) as e:
-            logger.error(f"Failed to delete assets for chart {chart_id}: {e}")
 
     return {"status": "success"}
 
@@ -247,6 +221,8 @@ async def save_chart(
     user: dict = Depends(require_auth),
     service: ChartService = Depends(get_chart_service),
 ):
+    if any(pin.icon_url and not pin.icon_url.startswith(ASSET_LIBRARY_URL_PREFIX) for pin in body.pins):
+        raise HTTPException(status_code=400, detail="Pin icons must be assets from the asset library")
     try:
         return service.save_chart(
             chart_id, body.name, body.description, body.pins, body.paths, body.annotations,
@@ -273,32 +249,21 @@ async def delete_chart(
         logger.error(f"Failed to delete chart {chart_id}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
-    try:
-        storage_service.delete_chart_assets(chart_id)
-    except (ClientError, BotoCoreError) as e:
-        logger.error(f"Failed to delete assets for chart {chart_id}: {e}")
-
     return {"status": "success"}
 
 
 @router.post("/{chart_id:path}/image", response_model=Chart)
-async def upload_chart_image(
+async def set_chart_image(
     chart_id: str,
-    file: UploadFile = File(...),
+    body: ChartImageRequest,
     user: dict = Depends(require_auth),
     service: ChartService = Depends(get_chart_service),
 ):
-    try:
-        result = storage_service.upload_chart_image(chart_id, file.filename, file.file, file.content_type)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-
-    image_url = f"/api/charts/assets/{result['key']}"
+    if not body.url.startswith(ASSET_LIBRARY_URL_PREFIX):
+        raise HTTPException(status_code=400, detail="Map image must be an asset from the asset library")
     try:
         return service.set_image_url(
-            chart_id, image_url,
+            chart_id, body.url,
             author_name=user.get("name") or user["email"], author_email=user["email"],
         )
     except ValueError as e:
@@ -306,20 +271,3 @@ async def upload_chart_image(
     except ChartSaveError as e:
         logger.error(f"Failed to save image for chart {chart_id}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
-
-
-@router.post("/{chart_id:path}/pins/{pin_id}/icon")
-async def upload_pin_icon(
-    chart_id: str,
-    pin_id: str,
-    file: UploadFile = File(...),
-    user: dict = Depends(require_auth),
-):
-    try:
-        result = storage_service.upload_pin_icon(chart_id, pin_id, file.filename, file.file, file.content_type)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-
-    return {"icon_url": f"/api/charts/assets/{result['key']}"}

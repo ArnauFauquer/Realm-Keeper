@@ -1,5 +1,6 @@
-"""S3-compatible object storage client (Ceph Rook RGW) for the audio player,
-chart map/pin images, vista backgrounds, and the reusable asset library."""
+"""S3-compatible object storage client (Ceph Rook RGW) for the audio player
+and the reusable asset library (which also holds chart maps/pin icons and
+vista backgrounds)."""
 import re
 import uuid
 from typing import BinaryIO, Optional
@@ -227,39 +228,6 @@ def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Opt
     return {"key": key, "name": filename}
 
 
-def upload_chart_image(chart_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    chart_id = _sanitize_path(chart_id)
-    filename = _sanitize_segment(filename)
-    return _upload_image(f"charts/{chart_id}/map/{_unique_filename(filename)}", filename, file_obj, content_type)
-
-
-def upload_pin_icon(chart_id: str, pin_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    chart_id = _sanitize_path(chart_id)
-    pin_id = _sanitize_segment(pin_id)
-    filename = _sanitize_segment(filename)
-    return _upload_image(f"charts/{chart_id}/pins/{pin_id}/{_unique_filename(filename)}", filename, file_obj, content_type)
-
-
-def delete_chart_assets(chart_id: str) -> None:
-    chart_id = _sanitize_path(chart_id)
-    client = _client()
-    prefix = f"charts/{chart_id}/"
-    paginator = client.get_paginator("list_objects_v2")
-    keys = []
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
-
-
-def upload_vista_background(vista_id: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    vista_id = _sanitize_path(vista_id)
-    filename = _sanitize_segment(filename)
-    return _upload_image(f"vistas/{vista_id}/background/{_unique_filename(filename)}", filename, file_obj, content_type)
-
-
 def list_asset_library(path: str = "") -> dict:
     """Immediate subfolders and files directly under `path` (not recursive) —
     folders are plain S3 prefixes, nested arbitrarily deep, same idea as
@@ -463,20 +431,6 @@ def rename_library_asset(key: str, new_name: str) -> dict:
     new_key = f"{folder}/{_unique_filename(new_name)}"
     _move_object(key, new_key)
     return {"key": new_key, "name": new_name}
-
-
-def delete_vista_assets(vista_id: str) -> None:
-    vista_id = _sanitize_path(vista_id)
-    client = _client()
-    prefix = f"vistas/{vista_id}/"
-    paginator = client.get_paginator("list_objects_v2")
-    keys = []
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
 
 
 def get_object_stream(key: str, range_header: Optional[str] = None) -> dict:

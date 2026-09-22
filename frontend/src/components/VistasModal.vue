@@ -81,7 +81,7 @@
               :vista="activeVista"
               :editable="!!user"
               @change="onCanvasChange"
-              @upload-background="onUploadBackground"
+              @set-background="onSetBackground"
             />
           </template>
         </div>
@@ -282,13 +282,13 @@ function onCanvasChange() {
   hasUnsavedChanges.value = true
 }
 
-async function onUploadBackground(file) {
+async function onSetBackground(url) {
   if (!activeVista.value) return
   try {
-    const updated = await vistasApi.uploadVistaBackground(activeVista.value.id, file)
+    const updated = await vistasApi.setVistaBackground(activeVista.value.id, url)
     activeVista.value.background_url = updated.background_url
   } catch (err) {
-    console.error('Failed to upload background:', err)
+    console.error('Failed to set background:', err)
   }
 }
 
