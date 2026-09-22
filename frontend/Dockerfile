@@ -3,6 +3,8 @@ FROM node:20-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
+ARG VITE_APP_VERSION
+ENV VITE_APP_VERSION=$VITE_APP_VERSION
 COPY package*.json ./
 # npm ci demands the lockfile's optionalDependencies entries (e.g. esbuild's
 # per-platform binaries) match byte-for-byte what the installing npm would

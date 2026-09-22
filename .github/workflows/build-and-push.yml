@@ -115,6 +115,8 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: ./frontend
+          build-args: |
+            VITE_APP_VERSION=${{ needs.release-please.outputs.tag_name }}
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
