@@ -40,7 +40,6 @@ export default defineConfig({
     // works in dev without needing SameSite=None/HTTPS gymnastics.
     proxy: {
       '/api': { target: process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:8000', changeOrigin: true },
-      '/vault-assets': { target: process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:8000', changeOrigin: true },
       '/ws': { target: process.env.VITE_BACKEND_PROXY_TARGET || 'http://localhost:8000', ws: true, changeOrigin: true }
     }
   }

@@ -21,13 +21,6 @@ spec:
                 name: realm-keeper-backend
                 port:
                   number: 8000
-          - path: /vault-assets
-            pathType: Prefix
-            backend:
-              service:
-                name: realm-keeper-backend
-                port:
-                  number: 8000
           - path: /ws
             pathType: Prefix
             backend:

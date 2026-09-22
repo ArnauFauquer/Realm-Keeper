@@ -52,9 +52,9 @@ services:
     build:
       context: ./frontend
       args:
-        # Empty on purpose: nginx.conf proxies /api, /vault-assets and /ws to
-        # the backend container, so they appear same-origin to the browser
-        # (required for the login cookie — see nginx.conf).
+        # Empty on purpose: nginx.conf proxies /api and /ws to the backend
+        # container, so they appear same-origin to the browser (required
+        # for the login cookie — see nginx.conf).
         - VITE_API_URL=${VITE_API_URL:-}
     container_name: realm-keeper-frontend
     restart: unless-stopped

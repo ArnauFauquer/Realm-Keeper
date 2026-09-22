@@ -271,7 +271,6 @@ export default {
         return `<h${level} id="${id}">${content}</h${level}>`
       })
 
-      html = html.replace(/src="\/(assets|vault-assets)\//g, `src="${apiUrl}/vault-assets/`)
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })

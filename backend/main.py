@@ -2,9 +2,8 @@ import asyncio
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from starlette.middleware.sessions import SessionMiddleware
 from routes.auth import require_auth
 from routes.auth import router as auth_router
@@ -141,31 +140,6 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.SESSION_COOKIE_SECURE,
 )
-
-assets_path = settings.VAULT_PATH / '_assets'
-
-@app.get("/vault-assets/{filename:path}")
-async def get_asset(filename: str):
-    file_path = (assets_path / filename).resolve()
-    assets_resolved = assets_path.resolve()
-    
-    try:
-        file_path.relative_to(assets_resolved)
-    except ValueError:
-        return Response(status_code=403, content="Access denied: invalid path")
-        
-    if not file_path.exists() or not file_path.is_file():
-        return Response(status_code=404, content="File not found")
-        
-    primary_origin = cors_origins[0] if cors_origins else "*"
-    return FileResponse(
-        file_path,
-        headers={
-            "Access-Control-Allow-Origin": primary_origin,
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, Authorization",
-        }
-    )
 
 app.include_router(auth_router)
 app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route

@@ -9,7 +9,6 @@ class MarkdownParser:
     def __init__(self, vault_path: Path = None):
         self.md = markdown.Markdown(extensions=['extra', 'codehilite', 'tables'])
         self.wikilink_pattern = re.compile(r'\[\[([^\]|]+)(\|([^\]]+))?\]\]')
-        self.image_wikilink_pattern = re.compile(r'!\[\[([^\]]+)\]\]')
         self.tag_pattern = re.compile(r'#([\w\-\/]+)')
         self.vault_path = vault_path
         self._note_index = None
@@ -67,7 +66,6 @@ class MarkdownParser:
         content = post.content
         tags = self._extract_tags(content, fm)
         wikilinks = self._extract_wikilinks(content)
-        content = self._convert_image_wikilinks(content)
         content = self._convert_wikilinks(content)
         
         return fm, content, tags, wikilinks
@@ -112,13 +110,3 @@ class MarkdownParser:
             return f'[{display_text}](/note/{encoded_path})'
             
         return self.wikilink_pattern.sub(replace_wikilink, content)
-        
-    def _convert_image_wikilinks(self, content: str) -> str:
-        from urllib.parse import quote
-        
-        def replace_image(match):
-            image_name = match.group(1)
-            encoded_name = quote(image_name, safe='')
-            return f'![{image_name}](/vault-assets/{encoded_name})'
-            
-        return self.image_wikilink_pattern.sub(replace_image, content)
