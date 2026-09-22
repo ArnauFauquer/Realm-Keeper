@@ -82,8 +82,7 @@
               :editable="!!user"
               :notes="notes"
               @change="onCanvasChange"
-              @upload-map-image="onUploadMapImage"
-              @upload-pin-icon="onUploadPinIcon"
+              @set-map-image="onSetMapImage"
               @open-note="onOpenNote"
             />
           </template>
@@ -291,27 +290,13 @@ function onCanvasChange() {
   hasUnsavedChanges.value = true
 }
 
-async function onUploadMapImage(file) {
+async function onSetMapImage(url) {
   if (!activeChart.value) return
   try {
-    const updated = await chartsApi.uploadChartImage(activeChart.value.id, file)
+    const updated = await chartsApi.setChartImage(activeChart.value.id, url)
     activeChart.value.image_url = updated.image_url
   } catch (err) {
-    console.error('Failed to upload map image:', err)
-  }
-}
-
-async function onUploadPinIcon({ pinId, file }) {
-  if (!activeChart.value) return
-  try {
-    const result = await chartsApi.uploadPinIcon(activeChart.value.id, pinId, file)
-    const pin = activeChart.value.pins.find(p => p.id === pinId)
-    if (pin) {
-      pin.icon_url = result.icon_url
-      hasUnsavedChanges.value = true
-    }
-  } catch (err) {
-    console.error('Failed to upload pin icon:', err)
+    console.error('Failed to set map image:', err)
   }
 }
 

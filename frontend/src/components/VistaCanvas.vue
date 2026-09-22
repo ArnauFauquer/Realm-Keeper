@@ -2,12 +2,10 @@
   <div class="vista-canvas" :class="{ editable }">
     <div v-if="!vista.background_url" class="empty-stage">
       <span class="mdi mdi-image-plus"></span>
-      <p v-if="editable">Upload a background image to start this vista.</p>
-      <p v-else>This vista has no background yet.</p>
-      <label v-if="editable" class="upload-btn">
-        <span class="mdi mdi-upload"></span> Upload background
-        <input type="file" accept="image/*" hidden @change="onBackgroundSelected" />
-      </label>
+      <p>This vista has no background yet.</p>
+      <button v-if="editable" class="upload-btn" @click="openLibraryForBackground">
+        <span class="mdi mdi-folder-multiple-image"></span> Choose background
+      </button>
     </div>
 
     <div
@@ -106,10 +104,9 @@
         <button class="tool-btn" :class="{ active: mode === 'asset' }" title="Place asset" @click="openLibraryForNewAsset">
           <span class="mdi mdi-account-plus-outline"></span>
         </button>
-        <label class="tool-btn" title="Replace background">
+        <button class="tool-btn" title="Replace background" @click="openLibraryForBackground">
           <span class="mdi mdi-image-edit-outline"></span>
-          <input type="file" accept="image/*" hidden @change="onBackgroundSelected" />
-        </label>
+        </button>
       </div>
 
       <div v-if="editable && mode === 'asset' && pendingLibraryItem" class="asset-hint">
@@ -189,11 +186,12 @@ const props = defineProps({
   editable: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['change', 'upload-background'])
+const emit = defineEmits(['change', 'set-background'])
 
 const libraryModalOpen = ref(false)
 const pendingLibraryItem = ref(null)
 let libraryTargetAsset = null
+let libraryForBackground = false
 
 // A distant asset never shrinks below this fraction of its base size — keeps
 // far-away characters visible instead of vanishing to a single pixel.
@@ -392,17 +390,28 @@ function setMode(m) {
 
 function openLibraryForNewAsset() {
   libraryTargetAsset = null
+  libraryForBackground = false
   libraryModalOpen.value = true
 }
 
 function openLibraryForAsset(asset) {
   libraryTargetAsset = asset
+  libraryForBackground = false
+  libraryModalOpen.value = true
+}
+
+function openLibraryForBackground() {
+  libraryTargetAsset = null
+  libraryForBackground = true
   libraryModalOpen.value = true
 }
 
 function onLibrarySelect(item) {
   libraryModalOpen.value = false
-  if (libraryTargetAsset) {
+  if (libraryForBackground) {
+    libraryForBackground = false
+    emit('set-background', item.image_url)
+  } else if (libraryTargetAsset) {
     libraryTargetAsset.image_url = item.image_url
     if (!libraryTargetAsset.name) libraryTargetAsset.name = item.name
     libraryTargetAsset = null
@@ -575,11 +584,6 @@ function resetAsset(asset) {
   emitChange()
 }
 
-function onBackgroundSelected(evt) {
-  const file = evt.target.files[0]
-  if (file) emit('upload-background', file)
-  evt.target.value = ''
-}
 
 </script>
 

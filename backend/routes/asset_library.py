@@ -13,6 +13,8 @@ logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/asset-library", tags=["asset-library"])
 
+ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
+
 
 class FolderCreateRequest(BaseModel):
     path: str
@@ -99,7 +101,7 @@ async def move_asset(body: AssetMoveRequest, user: dict = Depends(require_auth))
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
         raise storage_unavailable(logger, e)
-    return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
+    return {**result, "image_url": f"{ASSET_LIBRARY_URL_PREFIX}{result['key']}"}
 
 
 @router.post("/assets/rename")
@@ -110,7 +112,7 @@ async def rename_asset(body: AssetRenameRequest, user: dict = Depends(require_au
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
         raise storage_unavailable(logger, e)
-    return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
+    return {**result, "image_url": f"{ASSET_LIBRARY_URL_PREFIX}{result['key']}"}
 
 
 @router.post("/assets")
@@ -121,7 +123,7 @@ async def upload_asset(path: str = Form(""), file: UploadFile = File(...), user:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
         raise storage_unavailable(logger, e)
-    return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
+    return {**result, "image_url": f"{ASSET_LIBRARY_URL_PREFIX}{result['key']}"}
 
 
 @router.get("/assets/{key:path}")

@@ -37,12 +37,8 @@ export async function deleteVista(vistaId) {
   await client.delete(`${base}/${encodePath(vistaId)}`)
 }
 
-export async function uploadVistaBackground(vistaId, file, onProgress) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await client.post(`${base}/${encodePath(vistaId)}/background`, formData, {
-    onUploadProgress: onProgress ? (e) => onProgress(e.total ? e.loaded / e.total : 0) : undefined
-  })
+export async function setVistaBackground(vistaId, url) {
+  const res = await client.post(`${base}/${encodePath(vistaId)}/background`, { url })
   return res.data
 }
 

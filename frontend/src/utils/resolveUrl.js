@@ -1,7 +1,7 @@
 import { apiUrl } from '@/config/env'
 
-// Backend-relative asset URLs (vista backgrounds, chart images, library
-// assets, ...) come back as paths like "/api/vistas/assets/...". Absolute
+// Backend-relative asset URLs (vista backgrounds, chart images, pin icons —
+// all asset library entries) come back as paths like "/api/asset-library/assets/...". Absolute
 // URLs (e.g. an external image) are left untouched.
 export function resolveUrl(url) {
   if (!url) return url

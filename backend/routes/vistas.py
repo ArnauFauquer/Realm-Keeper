@@ -1,18 +1,14 @@
 from typing import List, Optional
 
-from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from config.logging import get_logger
 from config.settings import settings
 from models.vista import VanishingPoint, Vista, VistaAsset
 from routes.auth import require_auth
-from routes.errors import storage_unavailable
-from services import storage_service
+from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from services.vista_service import VistaSaveError, VistaService
-from services.storage_service import StorageError
 
 logger = get_logger(__name__)
 
@@ -37,6 +33,10 @@ class VistaSaveRequest(BaseModel):
     vanishing_point: VanishingPoint = VanishingPoint()
     background_offset_y: float = 50.0
     assets: List[VistaAsset] = []
+
+
+class BackgroundRequest(BaseModel):
+    url: str
 
 
 class FolderCreateRequest(BaseModel):
@@ -88,26 +88,6 @@ async def create_vista(
         raise HTTPException(status_code=502, detail=str(e))
 
 
-@router.get("/assets/{key:path}")
-async def get_vista_asset(key: str):
-    try:
-        obj = storage_service.get_object_stream(key)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError):
-        raise HTTPException(status_code=404, detail="Asset not found")
-
-    def iterfile():
-        for chunk in obj["Body"].iter_chunks(chunk_size=64 * 1024):
-            yield chunk
-
-    return StreamingResponse(
-        iterfile(),
-        media_type=obj.get("ContentType", "application/octet-stream"),
-        headers={"Content-Length": str(obj["ContentLength"])},
-    )
-
-
 # ── folders ────────────────────────────────────────────────────────────
 # Declared ahead of the "/{vista_id}" routes below — those use a `:path`
 # converter and would otherwise swallow "/folders/..." as a vista id.
@@ -156,7 +136,7 @@ async def delete_folder(
     service: VistaService = Depends(get_vista_service),
 ):
     try:
-        doomed_ids = service.delete_folder(
+        service.delete_folder(
             path, author_name=user.get("name") or user["email"], author_email=user["email"],
         )
     except ValueError as e:
@@ -164,12 +144,6 @@ async def delete_folder(
     except VistaSaveError as e:
         logger.error(f"Failed to delete vista folder {path}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
-
-    for vista_id in doomed_ids:
-        try:
-            storage_service.delete_vista_assets(vista_id)
-        except (ClientError, BotoCoreError) as e:
-            logger.error(f"Failed to delete assets for vista {vista_id}: {e}")
 
     return {"status": "success"}
 
@@ -273,32 +247,21 @@ async def delete_vista(
         logger.error(f"Failed to delete vista {vista_id}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
 
-    try:
-        storage_service.delete_vista_assets(vista_id)
-    except (ClientError, BotoCoreError) as e:
-        logger.error(f"Failed to delete assets for vista {vista_id}: {e}")
-
     return {"status": "success"}
 
 
 @router.post("/{vista_id:path}/background", response_model=Vista)
-async def upload_vista_background(
+async def set_vista_background(
     vista_id: str,
-    file: UploadFile = File(...),
+    body: BackgroundRequest,
     user: dict = Depends(require_auth),
     service: VistaService = Depends(get_vista_service),
 ):
-    try:
-        result = storage_service.upload_vista_background(vista_id, file.filename, file.file, file.content_type)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-
-    background_url = f"/api/vistas/assets/{result['key']}"
+    if not body.url.startswith(ASSET_LIBRARY_URL_PREFIX):
+        raise HTTPException(status_code=400, detail="Background must be an asset from the asset library")
     try:
         return service.set_background_url(
-            vista_id, background_url,
+            vista_id, body.url,
             author_name=user.get("name") or user["email"], author_email=user["email"],
         )
     except ValueError as e:

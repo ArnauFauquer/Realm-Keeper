@@ -37,23 +37,8 @@ export async function deleteChart(chartId) {
   await client.delete(`${base}/${encodePath(chartId)}`)
 }
 
-export async function uploadChartImage(chartId, file, onProgress) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await client.post(`${base}/${encodePath(chartId)}/image`, formData, {
-    onUploadProgress: onProgress ? (e) => onProgress(e.total ? e.loaded / e.total : 0) : undefined
-  })
-  return res.data
-}
-
-export async function uploadPinIcon(chartId, pinId, file, onProgress) {
-  const formData = new FormData()
-  formData.append('file', file)
-  const res = await client.post(
-    `${base}/${encodePath(chartId)}/pins/${encodeURIComponent(pinId)}/icon`,
-    formData,
-    { onUploadProgress: onProgress ? (e) => onProgress(e.total ? e.loaded / e.total : 0) : undefined }
-  )
+export async function setChartImage(chartId, url) {
+  const res = await client.post(`${base}/${encodePath(chartId)}/image`, { url })
   return res.data
 }
 
