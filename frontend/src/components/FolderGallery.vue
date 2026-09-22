@@ -139,15 +139,16 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { useDragMove } from '@/composables/useDragMove'
+import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 
 const props = defineProps({
   folders: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
   itemKey: { type: Function, required: true },
   // When set, an item card also gets a copy button that copies this
-  // function's return value to the clipboard (e.g. a markdown image tag).
-  // Omitted entirely for item types with no sensible "paste into a note"
-  // representation, such as charts and vistas.
+  // function's return value to the clipboard (e.g. a markdown image tag, or
+  // a `chart:<id>` embed reference). Omitted for item types with no
+  // sensible "paste into a note" representation.
   itemCopyText: { type: Function, default: null },
   currentPath: { type: String, default: '' },
   loading: { type: Boolean, default: false },
@@ -175,8 +176,7 @@ const renamingFolder = ref(null)
 const renameValue = ref('')
 const renamingItem = ref(null)
 const itemRenameValue = ref('')
-const copiedItem = ref(null)
-let copiedItemTimeout = null
+const { copiedKey: copiedItem, copy } = useCopyToClipboard()
 
 watch(() => props.currentPath, () => { creatingFolder.value = false; renamingFolder.value = null; renamingItem.value = null })
 
@@ -249,20 +249,8 @@ function submitItemRename(item) {
   emit('rename-item', item, newName)
 }
 
-async function copyItem(item) {
-  const text = props.itemCopyText?.(item)
-  if (!text) return
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    return
-  }
-  const key = props.itemKey(item)
-  copiedItem.value = key
-  clearTimeout(copiedItemTimeout)
-  copiedItemTimeout = setTimeout(() => {
-    if (copiedItem.value === key) copiedItem.value = null
-  }, 1500)
+function copyItem(item) {
+  copy(props.itemCopyText?.(item), props.itemKey(item))
 }
 </script>
 

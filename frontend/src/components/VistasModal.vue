@@ -11,6 +11,7 @@
         :saving="saving"
         :can-send-to-screen="!!activeVista?.background_url"
         :sending-to-screen="sendingToScreen"
+        :copy-text="activeVista && docRefMarkdown('vista', activeVista.id)"
         @back="backToGallery"
         @save="saveNow"
         @send-to-screen="sendToScreen"
@@ -24,6 +25,7 @@
             :folders="folders"
             :items="vistas"
             :item-key="(v) => v.id"
+            :item-copy-text="(v) => docRefMarkdown('vista', v.id)"
             :current-path="currentPath"
             :loading="loading"
             :error="error"
@@ -100,9 +102,10 @@ import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { docRefMarkdown } from '@/utils/inlineRefs'
 import * as vistasApi from '@/api/vistas'
 
-const { isOpen, close } = useVistasModal()
+const { isOpen, targetId, close } = useVistasModal()
 const { user } = useAuth()
 const {
   folders, vistas, loading, error,
@@ -123,7 +126,11 @@ const hasUnsavedChanges = ref(false)
 const saving = ref(false)
 
 watch(isOpen, (open) => {
-  if (open && view.value === 'gallery') {
+  if (open && targetId.value) {
+    // Opened from a vista embedded in a note: skip the gallery.
+    openVista(targetId.value)
+    targetId.value = null
+  } else if (open && view.value === 'gallery') {
     currentPath.value = ''
     fetchTree('')
   }

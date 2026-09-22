@@ -19,6 +19,15 @@
         <span>{{ saving ? 'Saving...' : (hasUnsavedChanges ? 'Save' : 'Saved') }}</span>
       </button>
       <button
+        v-if="view === 'editor' && canEdit && copyText"
+        class="header-btn"
+        title="Copy reference to paste into a note"
+        @click="copy(copyText)"
+      >
+        <span class="mdi" :class="copiedKey ? 'mdi-check' : 'mdi-content-copy'"></span>
+        <span>{{ copiedKey ? 'Copied!' : 'Copy' }}</span>
+      </button>
+      <button
         v-if="view === 'editor' && canEdit"
         class="header-btn"
         :disabled="!canSendToScreen || sendingToScreen"
@@ -36,6 +45,10 @@
 </template>
 
 <script setup>
+import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
+
+const { copiedKey, copy } = useCopyToClipboard()
+
 defineProps({
   view: { type: String, required: true },
   icon: { type: String, required: true },
@@ -46,7 +59,10 @@ defineProps({
   hasUnsavedChanges: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },
   canSendToScreen: { type: Boolean, default: false },
-  sendingToScreen: { type: Boolean, default: false }
+  sendingToScreen: { type: Boolean, default: false },
+  // Text the editor view's Copy button puts on the clipboard (e.g. a
+  // `chart:<id>` embed reference); no button when omitted.
+  copyText: { type: String, default: null }
 })
 
 defineEmits(['back', 'save', 'send-to-screen', 'close'])

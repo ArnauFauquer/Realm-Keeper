@@ -11,6 +11,7 @@
         :saving="saving"
         :can-send-to-screen="!!activeChart?.image_url"
         :sending-to-screen="sendingToScreen"
+        :copy-text="activeChart && docRefMarkdown('chart', activeChart.id)"
         @back="backToGallery"
         @save="saveNow"
         @send-to-screen="sendToScreen"
@@ -24,6 +25,7 @@
             :folders="folders"
             :items="charts"
             :item-key="(c) => c.id"
+            :item-copy-text="(c) => docRefMarkdown('chart', c.id)"
             :current-path="currentPath"
             :loading="loading"
             :error="error"
@@ -104,6 +106,7 @@ import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { docRefMarkdown } from '@/utils/inlineRefs'
 import * as chartsApi from '@/api/charts'
 
 defineProps({
@@ -111,7 +114,7 @@ defineProps({
 })
 
 const router = useRouter()
-const { isOpen, close } = useChartsModal()
+const { isOpen, targetId, close } = useChartsModal()
 const { user } = useAuth()
 const {
   folders, charts, loading, error,
@@ -132,7 +135,11 @@ const hasUnsavedChanges = ref(false)
 const saving = ref(false)
 
 watch(isOpen, (open) => {
-  if (open && view.value === 'gallery') {
+  if (open && targetId.value) {
+    // Opened from a chart embedded in a note: skip the gallery.
+    openChart(targetId.value)
+    targetId.value = null
+  } else if (open && view.value === 'gallery') {
     currentPath.value = ''
     fetchTree('')
   }

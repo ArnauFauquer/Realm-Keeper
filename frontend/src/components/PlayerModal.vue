@@ -204,6 +204,7 @@
 import { nextTick, ref, watch } from 'vue'
 import { usePlayer } from '@/composables/usePlayer'
 import { useDragMove } from '@/composables/useDragMove'
+import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true }
@@ -240,8 +241,7 @@ const albumListRef = ref(null)
 const renamingTrack = ref(null)
 const trackRenameValue = ref('')
 const trackListRef = ref(null)
-const copiedTrack = ref(null)
-let copiedTrackTimeout = null
+const { copiedKey: copiedTrack, copy } = useCopyToClipboard()
 
 let albumsLoaded = false
 watch(() => props.isOpen, (open) => {
@@ -307,17 +307,8 @@ async function submitRenameAlbum(oldName) {
   }
 }
 
-async function copyTrackKey(track) {
-  try {
-    await navigator.clipboard.writeText(track.key)
-  } catch {
-    return
-  }
-  copiedTrack.value = track.key
-  clearTimeout(copiedTrackTimeout)
-  copiedTrackTimeout = setTimeout(() => {
-    if (copiedTrack.value === track.key) copiedTrack.value = null
-  }, 1500)
+function copyTrackKey(track) {
+  copy(track.key)
 }
 
 async function deleteTrack(track) {

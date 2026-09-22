@@ -35,6 +35,7 @@ Write your note in Markdown..."
         ></textarea>
         <article
           v-else
+          ref="previewContent"
           class="markdown-content editor-preview"
           v-html="draftPreviewHtml"
         ></article>
@@ -114,12 +115,13 @@ import { getCached, post, put, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { renderCallouts } from '@/utils/callouts'
-import { parseDiceFormula } from '@/utils/diceNotation'
+import { h, render } from 'vue'
+import { parseInlineRef, renderInlineRef } from '@/utils/inlineRefs'
 import { useDiceRoller } from '@/composables/useDiceRoller'
-import { parseSongKey } from '@/utils/audioLink'
 import { usePlayer } from '@/composables/usePlayer'
 import { useAuth } from '@/composables/useAuth'
 import RightSidebar from '@/components/RightSidebar.vue'
+import DocumentEmbed from '@/components/DocumentEmbed.vue'
 
 mermaid.initialize({
   startOnLoad: false,
@@ -191,20 +193,8 @@ export default {
       return self.renderToken(tokens, idx, options)
     }
     md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
-      const token = tokens[idx]
-      const formula = token.content.trim()
-      if (parseDiceFormula(formula)) {
-        const escaped = md.utils.escapeHtml(formula)
-        return `<code class="dice-roll" data-dice-formula="${escaped}" role="button" tabindex="0" title="Roll ${escaped}">` +
-          `<span class="mdi mdi-dice-multiple"></span>${escaped}</code>`
-      }
-      const song = parseSongKey(formula)
-      if (song) {
-        const escapedKey = md.utils.escapeHtml(song.key)
-        const escapedName = md.utils.escapeHtml(song.filename)
-        return `<code class="song-link" data-song-key="${escapedKey}" role="button" tabindex="0" title="Play ${escapedKey}">` +
-          `<span class="mdi mdi-play-circle-outline"></span>${escapedName}</code>`
-      }
+      const ref = parseInlineRef(tokens[idx].content)
+      if (ref) return renderInlineRef(ref, md.utils.escapeHtml)
       return defaultCodeInline(tokens, idx, options, env, self)
     }
 
@@ -217,6 +207,8 @@ export default {
       prefetchCache: new Set(),
       prefetchTimeout: null,
       containerFolders: {},
+      // Elements that currently host a mounted DocumentEmbed (chart/vista).
+      mountedEmbeds: [],
       isEditing: false,
       isCreating: false,
       editorTab: 'write',
@@ -407,6 +399,8 @@ export default {
           })
         })
 
+        this.mountDocEmbeds(content)
+
         if (this.user) {
           this.setupImageScreenButtons()
           this.setupDiceRolls()
@@ -414,18 +408,18 @@ export default {
         }
       })
     },
-    setupDiceRolls() {
+    // Makes every not-yet-wired element carrying `attr` behave like a
+    // button (click / Enter / Space), calling handler(el, attrValue).
+    wireInlineActions(attr, handler) {
       const content = this.$refs.markdownContent
       if (!content) return
 
-      const { roll } = useDiceRoller()
-      const rollEls = content.querySelectorAll('[data-dice-formula]:not([data-dice-wired])')
-      rollEls.forEach(el => {
-        el.setAttribute('data-dice-wired', '1')
-        const formula = el.getAttribute('data-dice-formula')
+      content.querySelectorAll(`[${attr}]:not([data-inline-wired])`).forEach(el => {
+        el.setAttribute('data-inline-wired', '1')
+        const value = el.getAttribute(attr)
         const trigger = (e) => {
           e.preventDefault()
-          roll(formula)
+          handler(el, value)
         }
         el.addEventListener('click', trigger)
         el.addEventListener('keydown', (e) => {
@@ -433,34 +427,56 @@ export default {
         })
       })
     },
+    setupDiceRolls() {
+      const { roll } = useDiceRoller()
+      this.wireInlineActions('data-dice-formula', (el, formula) => roll(formula))
+    },
     setupSongLinks() {
-      const content = this.$refs.markdownContent
-      if (!content) return
-
       const { playByKey } = usePlayer()
-      const songEls = content.querySelectorAll('[data-song-key]:not([data-song-wired])')
-      songEls.forEach(el => {
-        el.setAttribute('data-song-wired', '1')
-        const key = el.getAttribute('data-song-key')
-        const trigger = async (e) => {
-          e.preventDefault()
-          if (el.classList.contains('loading')) return
-          el.classList.add('loading')
-          try {
-            await playByKey(key)
-          } catch (err) {
-            console.error('Failed to play track:', err)
-            el.classList.add('song-link-error')
-            setTimeout(() => el.classList.remove('song-link-error'), 2000)
-          } finally {
-            el.classList.remove('loading')
-          }
+      this.wireInlineActions('data-song-key', async (el, key) => {
+        if (el.classList.contains('loading')) return
+        el.classList.add('loading')
+        try {
+          await playByKey(key)
+        } catch (err) {
+          console.error('Failed to play track:', err)
+          el.classList.add('song-link-error')
+          setTimeout(() => el.classList.remove('song-link-error'), 2000)
+        } finally {
+          el.classList.remove('loading')
         }
-        el.addEventListener('click', trigger)
-        el.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') trigger(e)
-        })
       })
+    },
+    // Chart/vista placeholders from the inline-code rule get a real
+    // DocumentEmbed rendered into them. v-html knows nothing about those
+    // component trees, so hosts whose DOM a later render replaced are
+    // unmounted here (and every remaining one in beforeUnmount).
+    mountDocEmbeds(root) {
+      this.mountedEmbeds = this.mountedEmbeds.filter(el => {
+        if (el.isConnected) return true
+        render(null, el)
+        return false
+      })
+
+      if (!root) return
+
+      root.querySelectorAll('[data-doc-embed]:not([data-embed-mounted])').forEach(el => {
+        el.setAttribute('data-embed-mounted', '1')
+        const vnode = h(DocumentEmbed, {
+          type: el.getAttribute('data-doc-embed'),
+          id: el.getAttribute('data-doc-id'),
+          canInteract: !!this.user
+        })
+        // Share the app's router/plugins with this detached render tree.
+        vnode.appContext = this.$.appContext
+        el.textContent = ''
+        render(vnode, el)
+        this.mountedEmbeds.push(el)
+      })
+    },
+    unmountDocEmbeds() {
+      this.mountedEmbeds.forEach(el => render(null, el))
+      this.mountedEmbeds = []
     },
     renderMermaidDiagrams() {
       this.$nextTick(() => {
@@ -494,6 +510,8 @@ export default {
 
       const images = content.querySelectorAll('img:not([data-screen-wrapped])')
       images.forEach(img => {
+        // Chart/vista embeds have their own screen button for the whole scene.
+        if (img.closest('.doc-embed')) return
         img.setAttribute('data-screen-wrapped', '1')
 
         // Wrap in a relative container
@@ -541,6 +559,14 @@ export default {
     this.loadContainerFolders()
   },
   watch: {
+    // The editor preview is its own v-html, re-rendered on every keystroke
+    // or tab switch; keep its chart/vista embeds mounted too.
+    draftPreviewHtml() {
+      this.$nextTick(() => this.mountDocEmbeds(this.$refs.previewContent))
+    },
+    editorTab() {
+      this.$nextTick(() => this.mountDocEmbeds(this.$refs.previewContent))
+    },
     notePath: {
       immediate: true,
       handler() {
@@ -549,6 +575,7 @@ export default {
     }
   },
   beforeUnmount() {
+    this.unmountDocEmbeds()
     if (this.prefetchTimeout) {
       clearTimeout(this.prefetchTimeout)
     }
@@ -954,6 +981,19 @@ export default {
   transform: translateY(-1px);
 }
 
+.markdown-content :deep(.doc-embed) {
+  display: block;
+}
+
+.markdown-content :deep(.doc-embed-placeholder) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 0.85em;
+}
+
 .markdown-content :deep(code.song-link) {
   display: inline-flex;
   align-items: center;
@@ -1024,7 +1064,8 @@ export default {
   margin-bottom: 0.5rem;
 }
 
-.markdown-content :deep(img) {
+/* Embedded charts/vistas style their own images (pin icons, vista assets). */
+.markdown-content :deep(img:not(.document-embed img)) {
   max-width: 100%;
   height: auto;
   border-radius: 8px;
