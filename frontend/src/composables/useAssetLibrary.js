@@ -71,6 +71,11 @@ export function useAssetLibrary() {
     await fetchPath(path, true)
   }
 
+  const renameFolder = async (path, folderPath, name) => {
+    await libraryApi.renameLibraryFolder(folderPath, name)
+    await fetchPath(path, true)
+  }
+
   const moveFolder = async (path, folderPath, destParentPath) => {
     await libraryApi.moveLibraryFolder(folderPath, destParentPath)
     await fetchPath(path, true)
@@ -79,6 +84,6 @@ export function useAssetLibrary() {
   return {
     folders, assets, loading, error,
     fetchPath, uploadAsset, uploadAssets, removeAsset, moveAsset,
-    createFolder, removeFolder, moveFolder
+    createFolder, removeFolder, renameFolder, moveFolder
   }
 }

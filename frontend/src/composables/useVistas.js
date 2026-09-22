@@ -41,6 +41,11 @@ export function useVistas() {
     await fetchTree(path)
   }
 
+  const renameFolder = async (path, folderPath, name) => {
+    await vistasApi.renameVistaFolder(folderPath, name)
+    await fetchTree(path)
+  }
+
   const moveFolder = async (path, folderPath, destParentPath) => {
     await vistasApi.moveVistaFolder(folderPath, destParentPath)
     await fetchTree(path)
@@ -54,6 +59,6 @@ export function useVistas() {
   return {
     folders, vistas, loading, error,
     fetchTree, createVista, removeVista, moveVista,
-    createFolder, removeFolder, moveFolder
+    createFolder, removeFolder, renameFolder, moveFolder
   }
 }

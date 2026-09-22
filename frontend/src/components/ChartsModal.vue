@@ -39,6 +39,7 @@
             @delete-folder="onDeleteFolder"
             @delete-item="onDeleteChart"
             @create-folder="onCreateFolder"
+            @rename-folder="onRenameFolder"
             @move="onMove"
           >
             <template #actions>
@@ -114,7 +115,7 @@ const { user } = useAuth()
 const {
   folders, charts, loading, error,
   fetchTree, createChart, removeChart, moveChart,
-  createFolder, removeFolder, moveFolder
+  createFolder, removeFolder, renameFolder, moveFolder
 } = useCharts()
 
 const view = ref('gallery')
@@ -206,6 +207,14 @@ function goToPath(path) {
 async function onCreateFolder(name) {
   try {
     await createFolder(currentPath.value, name)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onRenameFolder(folder, name) {
+  try {
+    await renameFolder(currentPath.value, folderPath(folder), name)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }

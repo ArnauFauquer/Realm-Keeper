@@ -39,6 +39,7 @@
             @delete-folder="onDeleteFolder"
             @delete-item="onDeleteVista"
             @create-folder="onCreateFolder"
+            @rename-folder="onRenameFolder"
             @move="onMove"
           >
             <template #actions>
@@ -105,7 +106,7 @@ const { user } = useAuth()
 const {
   folders, vistas, loading, error,
   fetchTree, createVista, removeVista, moveVista,
-  createFolder, removeFolder, moveFolder
+  createFolder, removeFolder, renameFolder, moveFolder
 } = useVistas()
 
 const view = ref('gallery')
@@ -197,6 +198,14 @@ function goToPath(path) {
 async function onCreateFolder(name) {
   try {
     await createFolder(currentPath.value, name)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onRenameFolder(folder, name) {
+  try {
+    await renameFolder(currentPath.value, folderPath(folder), name)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }

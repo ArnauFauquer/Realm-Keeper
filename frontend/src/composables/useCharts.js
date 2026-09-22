@@ -41,6 +41,11 @@ export function useCharts() {
     await fetchTree(path)
   }
 
+  const renameFolder = async (path, folderPath, name) => {
+    await chartsApi.renameChartFolder(folderPath, name)
+    await fetchTree(path)
+  }
+
   const moveFolder = async (path, folderPath, destParentPath) => {
     await chartsApi.moveChartFolder(folderPath, destParentPath)
     await fetchTree(path)
@@ -54,6 +59,6 @@ export function useCharts() {
   return {
     folders, charts, loading, error,
     fetchTree, createChart, removeChart, moveChart,
-    createFolder, removeFolder, moveFolder
+    createFolder, removeFolder, renameFolder, moveFolder
   }
 }

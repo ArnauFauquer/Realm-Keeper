@@ -1,5 +1,5 @@
 <template>
-  <div class="folder-gallery">
+  <div class="folder-gallery" ref="galleryRef">
     <div class="breadcrumb">
       <button
         class="breadcrumb-item"
@@ -57,22 +57,36 @@
         :key="folder"
         class="gallery-card folder-card"
         :class="{ 'drag-over': dragOverTarget === folderPath(folder) }"
-        :draggable="canEdit"
-        @click="$emit('enter-folder', folder)"
+        :draggable="canEdit && renamingFolder !== folder"
+        @click="renamingFolder !== folder && $emit('enter-folder', folder)"
         @dragstart="startDrag({ type: 'folder', name: folder })"
         @dragend="endDrag"
         @dragover.prevent="dragOver(folderPath(folder))"
         @dragleave="dragLeave(folderPath(folder))"
         @drop.prevent="onDrop(folderPath(folder))"
       >
-        <button v-if="canEdit" class="gallery-card-delete" title="Delete folder" @click.stop="$emit('delete-folder', folder)">
-          <span class="mdi mdi-trash-can-outline"></span>
-        </button>
+        <div v-if="canEdit" class="gallery-card-actions">
+          <button class="gallery-card-tool" title="Rename folder" @click.stop="startRename(folder)">
+            <span class="mdi mdi-pencil-outline"></span>
+          </button>
+          <button class="gallery-card-tool danger" title="Delete folder" @click.stop="$emit('delete-folder', folder)">
+            <span class="mdi mdi-trash-can-outline"></span>
+          </button>
+        </div>
         <div class="gallery-card-thumb">
           <span class="mdi mdi-folder folder-icon"></span>
         </div>
         <div class="gallery-card-info">
-          <span class="gallery-card-name">{{ folder }}</span>
+          <input
+            v-if="renamingFolder === folder"
+            v-model="renameValue"
+            class="gallery-rename-input"
+            @click.stop
+            @keyup.enter="submitRename(folder)"
+            @keyup.esc="renamingFolder = null"
+            @blur="submitRename(folder)"
+          />
+          <span v-else class="gallery-card-name">{{ folder }}</span>
         </div>
       </div>
 
@@ -119,15 +133,21 @@ const props = defineProps({
   emptyText: { type: String, default: 'Nothing here yet.' }
 })
 
-const emit = defineEmits(['navigate', 'enter-folder', 'open-item', 'delete-folder', 'delete-item', 'create-folder', 'move'])
+const emit = defineEmits([
+  'navigate', 'enter-folder', 'open-item', 'delete-folder', 'delete-item',
+  'create-folder', 'rename-folder', 'move'
+])
 
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
 
+const galleryRef = ref(null)
 const creatingFolder = ref(false)
 const newFolderName = ref('')
 const newFolderInputRef = ref(null)
+const renamingFolder = ref(null)
+const renameValue = ref('')
 
-watch(() => props.currentPath, () => { creatingFolder.value = false })
+watch(() => props.currentPath, () => { creatingFolder.value = false; renamingFolder.value = null })
 
 const breadcrumb = computed(() => {
   const segments = props.currentPath.split('/').filter(Boolean)
@@ -161,6 +181,23 @@ function submitNewFolder() {
   emit('create-folder', name)
 }
 
+function startRename(folder) {
+  renamingFolder.value = folder
+  renameValue.value = folder
+  nextTick(() => {
+    const el = galleryRef.value?.querySelector('.gallery-rename-input')
+    el?.focus()
+    el?.select()
+  })
+}
+
+function submitRename(folder) {
+  if (renamingFolder.value !== folder) return
+  const newName = renameValue.value.trim()
+  renamingFolder.value = null
+  if (!newName || newName === folder) return
+  emit('rename-folder', folder, newName)
+}
 </script>
 
 <style scoped>
@@ -356,6 +393,60 @@ function submitNewFolder() {
 .gallery-card-delete:hover {
   background: rgba(248, 113, 113, 0.2);
   color: var(--status-error, #f87171);
+}
+
+.gallery-card-actions {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+  opacity: 0;
+  transition: all 0.15s ease;
+  z-index: 2;
+}
+
+.gallery-card:hover .gallery-card-actions {
+  opacity: 1;
+}
+
+.gallery-card-tool {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(12, 13, 29, 0.85);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.gallery-card-tool:hover {
+  background: var(--interactive-secondary);
+  color: var(--text-primary);
+}
+
+.gallery-card-tool.danger:hover {
+  background: rgba(248, 113, 113, 0.2);
+  color: var(--status-error, #f87171);
+}
+
+.gallery-rename-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(26, 27, 58, 0.6);
+  border: 1px solid var(--interactive-primary);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.gallery-rename-input:focus {
+  outline: none;
 }
 
 .gallery-card-thumb {

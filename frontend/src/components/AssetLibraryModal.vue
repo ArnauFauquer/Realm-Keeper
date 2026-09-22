@@ -33,6 +33,7 @@
           @delete-folder="removeFolderItem"
           @delete-item="remove"
           @create-folder="onCreateFolder"
+          @rename-folder="onRenameFolder"
           @move="onMove"
         >
           <template #actions>
@@ -78,7 +79,7 @@ const { user } = useAuth()
 const {
   folders, assets, loading, error,
   fetchPath, uploadAsset, uploadAssets, removeAsset, moveAsset,
-  createFolder, removeFolder, moveFolder
+  createFolder, removeFolder, renameFolder, moveFolder
 } = useAssetLibrary()
 
 const uploading = ref(false)
@@ -165,6 +166,14 @@ async function onCreateFolder(name) {
     await createFolder(currentPath.value, name)
   } catch (err) {
     console.error('Failed to create album:', err)
+  }
+}
+
+async function onRenameFolder(folder, name) {
+  try {
+    await renameFolder(currentPath.value, folderPath(folder), name)
+  } catch (err) {
+    console.error('Failed to rename album:', err)
   }
 }
 
