@@ -4,20 +4,7 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - '*.md'
-      - 'kubernetes/**'
   workflow_dispatch:
-    inputs:
-      version_bump:
-        description: 'Version bump type'
-        required: true
-        default: 'patch'
-        type: choice
-        options:
-          - patch
-          - minor
-          - major
 
 env:
   REGISTRY: ghcr.io
@@ -25,79 +12,31 @@ env:
   IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
 
 jobs:
-  version-bump:
+  # Keeps a release PR open that bumps VERSION, the image tags in .argocd/
+  # and CHANGELOG.md from the Conventional Commits merged since the last
+  # release. Merging that PR creates the vX.Y.Z tag and GitHub release, and
+  # only then are the images built. Nothing is pushed to main outside a PR,
+  # so the Main ruleset can require pull requests with no bypass actors.
+  # To force a version, add a "Release-As: X.Y.Z" footer to a commit.
+  release-please:
     runs-on: ubuntu-24.04
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     permissions:
       contents: write
+      pull-requests: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v5
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure Git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Bump version
-        id: bump
-        run: |
-          # Read current version
-          CURRENT_VERSION=$(cat VERSION | tr -d '\n\r ')
-          echo "Current version: $CURRENT_VERSION"
-          
-          # Parse version components
-          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
-          
-          # Determine bump type
-          BUMP_TYPE="${{ github.event.inputs.version_bump }}"
-          if [ -z "$BUMP_TYPE" ]; then
-            BUMP_TYPE="patch"
-          fi
-          
-          # Bump version based on type
-          case $BUMP_TYPE in
-            major)
-              MAJOR=$((MAJOR + 1))
-              MINOR=0
-              PATCH=0
-              ;;
-            minor)
-              MINOR=$((MINOR + 1))
-              PATCH=0
-              ;;
-            patch)
-              PATCH=$((PATCH + 1))
-              ;;
-          esac
-          
-          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-          echo "New version: $NEW_VERSION"
-          
-          # Write new version
-          echo "$NEW_VERSION" > VERSION
-          
-          # Update ArgoCD deployments
-          sed -i "s|image: ghcr.io/arnaufauquer/realm-keeper/backend:.*|image: ghcr.io/arnaufauquer/realm-keeper/backend:$NEW_VERSION|g" .argocd/backend-deployment.yaml
-          sed -i "s|image: ghcr.io/arnaufauquer/realm-keeper/frontend:.*|image: ghcr.io/arnaufauquer/realm-keeper/frontend:$NEW_VERSION|g" .argocd/frontend-deployment.yaml
-          
-          # Commit and push
-          git add VERSION .argocd/backend-deployment.yaml .argocd/frontend-deployment.yaml
-          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
-          git push
-          
-          # Create and push tag
-          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
-          git push origin "v$NEW_VERSION"
-          
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
 
   build-backend:
-    needs: version-bump
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -106,7 +45,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: v${{ needs.version-bump.outputs.new_version }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -124,8 +63,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}
           tags: |
-            type=semver,pattern={{version}},value=v${{ needs.version-bump.outputs.new_version }}
-            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.version-bump.outputs.new_version }}
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Backend image
@@ -140,7 +79,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   build-frontend:
-    needs: version-bump
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -149,7 +89,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
-          ref: v${{ needs.version-bump.outputs.new_version }}
+          ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -167,8 +107,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}
           tags: |
-            type=semver,pattern={{version}},value=v${{ needs.version-bump.outputs.new_version }}
-            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.version-bump.outputs.new_version }}
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.tag_name }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.tag_name }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Build and push Frontend image
