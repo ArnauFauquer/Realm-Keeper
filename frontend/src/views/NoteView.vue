@@ -1064,20 +1064,28 @@ export default {
   margin-bottom: 0.5rem;
 }
 
-/* Embedded charts/vistas style their own images (pin icons, vista assets). */
+/* Embedded charts/vistas style their own images (pin icons, vista assets).
+   max-height keeps a tall 9:16 portrait from towering over a 16:9 one at
+   the same column width — both cap out around the same on-screen size. */
 .markdown-content :deep(img:not(.document-embed img)) {
   max-width: 100%;
+  max-height: 60vh;
   height: auto;
   border-radius: 8px;
   margin: 0;
   display: block;
 }
 
-/* Screen button wrapper */
+/* Screen button wrapper. width: fit-content (not the full column) so a
+   capped, narrower portrait image centers instead of sitting flush left,
+   and so the send-to-screen button below stays anchored to the image
+   itself rather than floating over empty space beside it. */
 .markdown-content :deep(.img-screen-wrapper) {
   display: block;
   position: relative;
-  margin: 1.5rem 0;
+  width: fit-content;
+  max-width: 100%;
+  margin: 1.5rem auto;
   line-height: 0;
   border-radius: 8px;
   overflow: visible;
