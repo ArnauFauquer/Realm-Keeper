@@ -40,6 +40,7 @@
             @delete-item="onDeleteChart"
             @create-folder="onCreateFolder"
             @rename-folder="onRenameFolder"
+            @rename-item="onRenameChart"
             @move="onMove"
           >
             <template #actions>
@@ -114,7 +115,7 @@ const { isOpen, close } = useChartsModal()
 const { user } = useAuth()
 const {
   folders, charts, loading, error,
-  fetchTree, createChart, removeChart, moveChart,
+  fetchTree, createChart, removeChart, moveChart, renameChart,
   createFolder, removeFolder, renameFolder, moveFolder
 } = useCharts()
 
@@ -189,6 +190,14 @@ async function onDeleteChart(chart) {
   if (!window.confirm(`Delete chart "${chart.name}"? This cannot be undone.`)) return
   try {
     await removeChart(currentPath.value, chart.id)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onRenameChart(chart, name) {
+  try {
+    await renameChart(currentPath.value, chart.id, name)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }

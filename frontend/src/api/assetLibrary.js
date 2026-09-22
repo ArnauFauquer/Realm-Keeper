@@ -30,6 +30,11 @@ export async function moveLibraryAsset(key, folderPath) {
   return res.data
 }
 
+export async function renameLibraryAsset(key, name) {
+  const res = await client.post(`${base}/assets/rename`, { key, name })
+  return res.data
+}
+
 export async function uploadLibraryAsset(path, file, onProgress) {
   const formData = new FormData()
   formData.append('path', path)

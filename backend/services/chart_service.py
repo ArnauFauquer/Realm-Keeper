@@ -112,6 +112,14 @@ class ChartService:
         self._write(existing, author_name, author_email, verb="Update image for")
         return existing
 
+    def rename_chart(self, chart_id: str, name: str, author_name: str, author_email: str) -> Chart:
+        existing = self._read(chart_id)
+        if existing is None:
+            raise ValueError(f"Chart not found: {chart_id}")
+        existing.name = name
+        self._write(existing, author_name, author_email, verb="Rename")
+        return existing
+
     def _write(self, chart: Chart, author_name: str, author_email: str, verb: str) -> None:
         chart.updated_at = datetime.now(timezone.utc).isoformat()
         try:

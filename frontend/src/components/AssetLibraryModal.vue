@@ -20,6 +20,7 @@
           :folders="folders"
           :items="assets"
           :item-key="(item) => item.key"
+          :item-copy-text="(item) => `![${item.name}](${resolveUrl(assetUrl(item))})`"
           :current-path="currentPath"
           :loading="loading"
           :error="error"
@@ -34,6 +35,7 @@
           @delete-item="remove"
           @create-folder="onCreateFolder"
           @rename-folder="onRenameFolder"
+          @rename-item="onRenameAsset"
           @move="onMove"
         >
           <template #actions>
@@ -78,7 +80,7 @@ const emit = defineEmits(['close', 'select'])
 const { user } = useAuth()
 const {
   folders, assets, loading, error,
-  fetchPath, uploadAsset, uploadAssets, removeAsset, moveAsset,
+  fetchPath, uploadAsset, uploadAssets, removeAsset, moveAsset, renameAsset,
   createFolder, removeFolder, renameFolder, moveFolder
 } = useAssetLibrary()
 
@@ -210,6 +212,14 @@ async function remove(item) {
     await removeAsset(currentPath.value, item.key)
   } catch (err) {
     console.error('Failed to remove library asset:', err)
+  }
+}
+
+async function onRenameAsset(item, name) {
+  try {
+    await renameAsset(currentPath.value, item.key, name)
+  } catch (err) {
+    console.error('Failed to rename library asset:', err)
   }
 }
 </script>

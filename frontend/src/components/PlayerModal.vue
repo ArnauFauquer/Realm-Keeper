@@ -99,22 +99,47 @@
 
             <div v-if="loadingTracks" class="hint-state">Loading tracks…</div>
             <div v-else-if="error" class="hint-state error">{{ error }}</div>
-            <ul v-else class="track-items">
+            <ul v-else ref="trackListRef" class="track-items">
               <li
                 v-for="(track, idx) in tracks"
                 :key="track.key"
                 class="track-item"
                 :class="{ active: idx === currentTrackIndex }"
                 draggable="true"
-                @dblclick="playTrackAt(idx)"
+                @dblclick="renamingTrack !== track.key && playTrackAt(idx)"
                 @dragstart="startDrag(track)"
                 @dragend="endDrag"
               >
                 <button class="track-play-btn" @click="playTrackAt(idx)">
                   <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
                 </button>
-                <span class="track-name">{{ track.name }}</span>
+                <input
+                  v-if="renamingTrack === track.key"
+                  v-model="trackRenameValue"
+                  class="track-rename-input"
+                  @click.stop
+                  @keyup.enter="submitRenameTrack(track)"
+                  @keyup.esc="renamingTrack = null"
+                  @blur="submitRenameTrack(track)"
+                />
+                <span v-else class="track-name">{{ track.name }}</span>
                 <span class="track-size">{{ formatSize(track.size) }}</span>
+                <button
+                  v-if="renamingTrack !== track.key"
+                  class="icon-btn"
+                  :title="copiedTrack === track.key ? 'Copied!' : 'Copy track reference'"
+                  @click="copyTrackKey(track)"
+                >
+                  <span class="mdi" :class="copiedTrack === track.key ? 'mdi-check' : 'mdi-content-copy'"></span>
+                </button>
+                <button
+                  v-if="renamingTrack !== track.key"
+                  class="icon-btn"
+                  title="Rename track"
+                  @click="startRenameTrack(track)"
+                >
+                  <span class="mdi mdi-pencil-outline"></span>
+                </button>
                 <button class="icon-btn danger" title="Delete track" @click="deleteTrack(track)">
                   <span class="mdi mdi-trash-can-outline"></span>
                 </button>
@@ -191,7 +216,7 @@ const {
   progress, duration, volume,
   loadAlbums, selectAlbum, playTrackAt, togglePlay, playNext, playPrev,
   toggleShuffle, toggleRepeat, seek, setVolume,
-  createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack, moveTrack
+  createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack, moveTrack, renameTrack
 } = usePlayer()
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
 
@@ -212,6 +237,11 @@ const uploading = ref([])
 const renamingAlbum = ref(null)
 const renameValue = ref('')
 const albumListRef = ref(null)
+const renamingTrack = ref(null)
+const trackRenameValue = ref('')
+const trackListRef = ref(null)
+const copiedTrack = ref(null)
+let copiedTrackTimeout = null
 
 let albumsLoaded = false
 watch(() => props.isOpen, (open) => {
@@ -277,11 +307,46 @@ async function submitRenameAlbum(oldName) {
   }
 }
 
+async function copyTrackKey(track) {
+  try {
+    await navigator.clipboard.writeText(track.key)
+  } catch {
+    return
+  }
+  copiedTrack.value = track.key
+  clearTimeout(copiedTrackTimeout)
+  copiedTrackTimeout = setTimeout(() => {
+    if (copiedTrack.value === track.key) copiedTrack.value = null
+  }, 1500)
+}
+
 async function deleteTrack(track) {
   try {
     await removeTrack(track)
   } catch (e) {
     error.value = e.response?.data?.detail || 'Could not delete the track.'
+  }
+}
+
+function startRenameTrack(track) {
+  renamingTrack.value = track.key
+  trackRenameValue.value = track.name
+  nextTick(() => {
+    const el = trackListRef.value?.querySelector('.track-rename-input')
+    el?.focus()
+    el?.select()
+  })
+}
+
+async function submitRenameTrack(track) {
+  if (renamingTrack.value !== track.key) return
+  const newName = trackRenameValue.value.trim()
+  renamingTrack.value = null
+  if (!newName || newName === track.name) return
+  try {
+    await renameTrack(track, newName)
+  } catch (e) {
+    error.value = e.response?.data?.detail || 'Could not rename the track.'
   }
 }
 
@@ -661,6 +726,21 @@ function formatTime(seconds) {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.875rem;
+}
+
+.track-rename-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(26, 27, 58, 0.6);
+  border: 1px solid var(--interactive-primary);
+  border-radius: 6px;
+  padding: 0.2rem 0.4rem;
+  color: var(--text-primary);
+  font-size: 0.875rem;
+}
+
+.track-rename-input:focus {
+  outline: none;
 }
 
 .track-size {

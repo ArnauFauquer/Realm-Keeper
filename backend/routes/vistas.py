@@ -57,6 +57,11 @@ class VistaMoveRequest(BaseModel):
     folder_path: str = ""
 
 
+class VistaRenameRequest(BaseModel):
+    vista_id: str
+    name: str
+
+
 @router.get("")
 async def list_vistas(path: str = "", service: VistaService = Depends(get_vista_service)):
     try:
@@ -205,6 +210,24 @@ async def move_vista(
         logger.error(f"Failed to move vista {body.vista_id}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
     return {"status": "success", "id": new_id}
+
+
+@router.post("/rename")
+async def rename_vista(
+    body: VistaRenameRequest,
+    user: dict = Depends(require_auth),
+    service: VistaService = Depends(get_vista_service),
+):
+    try:
+        return service.rename_vista(
+            body.vista_id, body.name,
+            author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except VistaSaveError as e:
+        logger.error(f"Failed to rename vista {body.vista_id}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ── vistas (by id) ────────────────────────────────────────────────────

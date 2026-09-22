@@ -32,6 +32,11 @@ class AssetMoveRequest(BaseModel):
     folder_path: str = ""
 
 
+class AssetRenameRequest(BaseModel):
+    key: str
+    name: str
+
+
 @router.get("")
 async def list_library(path: str = ""):
     try:
@@ -90,6 +95,17 @@ async def move_folder(body: FolderMoveRequest, user: dict = Depends(require_auth
 async def move_asset(body: AssetMoveRequest, user: dict = Depends(require_auth)):
     try:
         result = storage_service.move_library_asset(body.key, body.folder_path)
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise storage_unavailable(logger, e)
+    return {**result, "image_url": f"/api/asset-library/assets/{result['key']}"}
+
+
+@router.post("/assets/rename")
+async def rename_asset(body: AssetRenameRequest, user: dict = Depends(require_auth)):
+    try:
+        result = storage_service.rename_library_asset(body.key, body.name)
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:

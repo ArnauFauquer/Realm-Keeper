@@ -56,9 +56,14 @@ export function useVistas() {
     await fetchTree(path)
   }
 
+  const renameVista = async (path, vistaId, name) => {
+    await vistasApi.renameVista(vistaId, name)
+    await fetchTree(path)
+  }
+
   return {
     folders, vistas, loading, error,
-    fetchTree, createVista, removeVista, moveVista,
+    fetchTree, createVista, removeVista, moveVista, renameVista,
     createFolder, removeFolder, renameFolder, moveFolder
   }
 }

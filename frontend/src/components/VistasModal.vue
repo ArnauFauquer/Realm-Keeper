@@ -40,6 +40,7 @@
             @delete-item="onDeleteVista"
             @create-folder="onCreateFolder"
             @rename-folder="onRenameFolder"
+            @rename-item="onRenameVista"
             @move="onMove"
           >
             <template #actions>
@@ -105,7 +106,7 @@ const { isOpen, close } = useVistasModal()
 const { user } = useAuth()
 const {
   folders, vistas, loading, error,
-  fetchTree, createVista, removeVista, moveVista,
+  fetchTree, createVista, removeVista, moveVista, renameVista,
   createFolder, removeFolder, renameFolder, moveFolder
 } = useVistas()
 
@@ -180,6 +181,14 @@ async function onDeleteVista(vista) {
   if (!window.confirm(`Delete vista "${vista.name}"? This cannot be undone.`)) return
   try {
     await removeVista(currentPath.value, vista.id)
+  } catch (err) {
+    error.value = err.response?.data?.detail || err.message
+  }
+}
+
+async function onRenameVista(vista, name) {
+  try {
+    await renameVista(currentPath.value, vista.id, name)
   } catch (err) {
     error.value = err.response?.data?.detail || err.message
   }

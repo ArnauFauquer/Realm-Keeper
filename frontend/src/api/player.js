@@ -49,6 +49,11 @@ export async function moveTrack(key, album) {
   return res.data
 }
 
+export async function renameTrack(key, name) {
+  const res = await client.post(`${base}/tracks/rename`, { key, name })
+  return res.data
+}
+
 export function streamUrl(key) {
   return `${base}/stream/${encodeKey(key)}`
 }

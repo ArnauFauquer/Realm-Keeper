@@ -86,6 +86,17 @@ async def move_track(data: Dict[str, str]):
     return result
 
 
+@router.post("/tracks/rename")
+async def rename_track(data: Dict[str, str]):
+    try:
+        result = storage_service.rename_track(data.get("key", ""), data.get("name", ""))
+    except StorageError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except (ClientError, BotoCoreError) as e:
+        raise storage_unavailable(logger, e)
+    return result
+
+
 @router.delete("/tracks/{key:path}")
 async def delete_track(key: str):
     try:

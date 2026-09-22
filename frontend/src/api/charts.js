@@ -77,3 +77,8 @@ export async function moveChart(chartId, folderPath) {
   const res = await client.post(`${base}/move`, { chart_id: chartId, folder_path: folderPath })
   return res.data
 }
+
+export async function renameChart(chartId, name) {
+  const res = await client.post(`${base}/rename`, { chart_id: chartId, name })
+  return res.data
+}

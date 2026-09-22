@@ -8,6 +8,7 @@ import {
   uploadTrack as apiUploadTrack,
   deleteTrack as apiDeleteTrack,
   moveTrack as apiMoveTrack,
+  renameTrack as apiRenameTrack,
   streamUrl
 } from '@/api/player'
 
@@ -229,6 +230,13 @@ async function moveTrack(track, destAlbum) {
   await selectAlbum(currentAlbum.value)
 }
 
+async function renameTrack(track, newName) {
+  const wasCurrent = currentTrack.value?.key === track.key
+  await apiRenameTrack(track.key, newName)
+  if (wasCurrent) resetPlayback()
+  await selectAlbum(currentAlbum.value)
+}
+
 export function usePlayer() {
   return {
     albums, currentAlbum, tracks, currentTrack, currentTrackIndex,
@@ -236,6 +244,6 @@ export function usePlayer() {
     progress, duration, volume,
     loadAlbums, selectAlbum, playTrackAt, playByKey, togglePlay, playNext, playPrev,
     toggleShuffle, toggleRepeat, seek, setVolume,
-    createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack, moveTrack
+    createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack, moveTrack, renameTrack
   }
 }

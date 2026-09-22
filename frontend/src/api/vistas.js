@@ -66,3 +66,8 @@ export async function moveVista(vistaId, folderPath) {
   const res = await client.post(`${base}/move`, { vista_id: vistaId, folder_path: folderPath })
   return res.data
 }
+
+export async function renameVista(vistaId, name) {
+  const res = await client.post(`${base}/rename`, { vista_id: vistaId, name })
+  return res.data
+}

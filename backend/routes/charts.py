@@ -57,6 +57,11 @@ class ChartMoveRequest(BaseModel):
     folder_path: str = ""
 
 
+class ChartRenameRequest(BaseModel):
+    chart_id: str
+    name: str
+
+
 @router.get("")
 async def list_charts(path: str = "", service: ChartService = Depends(get_chart_service)):
     try:
@@ -205,6 +210,24 @@ async def move_chart(
         logger.error(f"Failed to move chart {body.chart_id}: {e}")
         raise HTTPException(status_code=502, detail=str(e))
     return {"status": "success", "id": new_id}
+
+
+@router.post("/rename")
+async def rename_chart(
+    body: ChartRenameRequest,
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
+    try:
+        return service.rename_chart(
+            body.chart_id, body.name,
+            author_name=user.get("name") or user["email"], author_email=user["email"],
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ChartSaveError as e:
+        logger.error(f"Failed to rename chart {body.chart_id}: {e}")
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ── charts (by id) ───────────────────────────────────────────────────────

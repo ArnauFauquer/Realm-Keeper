@@ -94,19 +94,41 @@
         v-for="item in items"
         :key="itemKey(item)"
         class="gallery-card"
-        :draggable="canEdit"
-        @click="$emit('open-item', item)"
+        :draggable="canEdit && renamingItem !== itemKey(item)"
+        @click="renamingItem !== itemKey(item) && $emit('open-item', item)"
         @dragstart="startDrag({ type: 'item', item })"
         @dragend="endDrag"
       >
-        <button v-if="canEdit" class="gallery-card-delete" title="Delete" @click.stop="$emit('delete-item', item)">
-          <span class="mdi mdi-trash-can-outline"></span>
-        </button>
+        <div v-if="canEdit" class="gallery-card-actions">
+          <button
+            v-if="itemCopyText"
+            class="gallery-card-tool"
+            :title="copiedItem === itemKey(item) ? 'Copied!' : 'Copy'"
+            @click.stop="copyItem(item)"
+          >
+            <span class="mdi" :class="copiedItem === itemKey(item) ? 'mdi-check' : 'mdi-content-copy'"></span>
+          </button>
+          <button class="gallery-card-tool" title="Rename" @click.stop="startItemRename(item)">
+            <span class="mdi mdi-pencil-outline"></span>
+          </button>
+          <button class="gallery-card-tool danger" title="Delete" @click.stop="$emit('delete-item', item)">
+            <span class="mdi mdi-trash-can-outline"></span>
+          </button>
+        </div>
         <div class="gallery-card-thumb">
           <slot name="thumb" :item="item" />
         </div>
         <div class="gallery-card-info">
-          <span class="gallery-card-name">{{ item.name }}</span>
+          <input
+            v-if="renamingItem === itemKey(item)"
+            v-model="itemRenameValue"
+            class="gallery-rename-input"
+            @click.stop
+            @keyup.enter="submitItemRename(item)"
+            @keyup.esc="renamingItem = null"
+            @blur="submitItemRename(item)"
+          />
+          <span v-else class="gallery-card-name">{{ item.name }}</span>
           <span v-if="item.description" class="gallery-card-desc">{{ item.description }}</span>
         </div>
       </div>
@@ -122,6 +144,11 @@ const props = defineProps({
   folders: { type: Array, default: () => [] },
   items: { type: Array, default: () => [] },
   itemKey: { type: Function, required: true },
+  // When set, an item card also gets a copy button that copies this
+  // function's return value to the clipboard (e.g. a markdown image tag).
+  // Omitted entirely for item types with no sensible "paste into a note"
+  // representation, such as charts and vistas.
+  itemCopyText: { type: Function, default: null },
   currentPath: { type: String, default: '' },
   loading: { type: Boolean, default: false },
   error: { type: String, default: null },
@@ -135,7 +162,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'navigate', 'enter-folder', 'open-item', 'delete-folder', 'delete-item',
-  'create-folder', 'rename-folder', 'move'
+  'create-folder', 'rename-folder', 'rename-item', 'move'
 ])
 
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
@@ -146,8 +173,12 @@ const newFolderName = ref('')
 const newFolderInputRef = ref(null)
 const renamingFolder = ref(null)
 const renameValue = ref('')
+const renamingItem = ref(null)
+const itemRenameValue = ref('')
+const copiedItem = ref(null)
+let copiedItemTimeout = null
 
-watch(() => props.currentPath, () => { creatingFolder.value = false; renamingFolder.value = null })
+watch(() => props.currentPath, () => { creatingFolder.value = false; renamingFolder.value = null; renamingItem.value = null })
 
 const breadcrumb = computed(() => {
   const segments = props.currentPath.split('/').filter(Boolean)
@@ -197,6 +228,41 @@ function submitRename(folder) {
   renamingFolder.value = null
   if (!newName || newName === folder) return
   emit('rename-folder', folder, newName)
+}
+
+function startItemRename(item) {
+  renamingItem.value = props.itemKey(item)
+  itemRenameValue.value = item.name
+  nextTick(() => {
+    const el = galleryRef.value?.querySelector('.gallery-rename-input')
+    el?.focus()
+    el?.select()
+  })
+}
+
+function submitItemRename(item) {
+  const key = props.itemKey(item)
+  if (renamingItem.value !== key) return
+  const newName = itemRenameValue.value.trim()
+  renamingItem.value = null
+  if (!newName || newName === item.name) return
+  emit('rename-item', item, newName)
+}
+
+async function copyItem(item) {
+  const text = props.itemCopyText?.(item)
+  if (!text) return
+  try {
+    await navigator.clipboard.writeText(text)
+  } catch {
+    return
+  }
+  const key = props.itemKey(item)
+  copiedItem.value = key
+  clearTimeout(copiedItemTimeout)
+  copiedItemTimeout = setTimeout(() => {
+    if (copiedItem.value === key) copiedItem.value = null
+  }, 1500)
 }
 </script>
 
@@ -365,34 +431,6 @@ function submitRename(folder) {
 .gallery-card.drag-over {
   border-color: var(--interactive-primary);
   background: var(--interactive-secondary);
-}
-
-.gallery-card-delete {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: rgba(12, 13, 29, 0.85);
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  opacity: 0;
-  transition: all 0.15s ease;
-  z-index: 2;
-}
-
-.gallery-card:hover .gallery-card-delete {
-  opacity: 1;
-}
-
-.gallery-card-delete:hover {
-  background: rgba(248, 113, 113, 0.2);
-  color: var(--status-error, #f87171);
 }
 
 .gallery-card-actions {

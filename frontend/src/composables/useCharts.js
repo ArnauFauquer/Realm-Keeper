@@ -56,9 +56,14 @@ export function useCharts() {
     await fetchTree(path)
   }
 
+  const renameChart = async (path, chartId, name) => {
+    await chartsApi.renameChart(chartId, name)
+    await fetchTree(path)
+  }
+
   return {
     folders, charts, loading, error,
-    fetchTree, createChart, removeChart, moveChart,
+    fetchTree, createChart, removeChart, moveChart, renameChart,
     createFolder, removeFolder, renameFolder, moveFolder
   }
 }

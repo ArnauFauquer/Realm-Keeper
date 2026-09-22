@@ -112,6 +112,14 @@ class VistaService:
         self._write(existing, author_name, author_email, verb="Update background for")
         return existing
 
+    def rename_vista(self, vista_id: str, name: str, author_name: str, author_email: str) -> Vista:
+        existing = self._read(vista_id)
+        if existing is None:
+            raise ValueError(f"Vista not found: {vista_id}")
+        existing.name = name
+        self._write(existing, author_name, author_email, verb="Rename")
+        return existing
+
     def _write(self, vista: Vista, author_name: str, author_email: str, verb: str) -> None:
         vista.updated_at = datetime.now(timezone.utc).isoformat()
         try:

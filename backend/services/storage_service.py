@@ -188,6 +188,22 @@ def delete_track(key: str) -> None:
     client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
 
 
+def rename_track(key: str, new_name: str) -> dict:
+    """Renames a single track's filename, keeping it in the same album. S3
+    has no rename, so this copies to a new key then deletes the original
+    (via _move_object) — the same technique move_track uses to change an
+    object's folder instead of its filename."""
+    album, _filename = _split_key(key)
+    new_name = _sanitize_segment(new_name)
+    ext = new_name[new_name.rfind("."):].lower() if "." in new_name else ""
+    if ext not in ALLOWED_AUDIO_EXTENSIONS:
+        raise StorageError(f"Unsupported audio file type: {ext or new_name}")
+
+    new_key = f"{album}/{new_name}"
+    _move_object(key, new_key)
+    return {"key": new_key, "name": new_name}
+
+
 def _unique_filename(filename: str) -> str:
     """Prefixes a short random id onto the filename so replacing an image
     with a new upload of the same name never reuses the old S3 key. Reusing
@@ -428,6 +444,25 @@ def delete_library_asset(key: str) -> None:
         raise StorageError(f"Invalid asset key: {key!r}")
     client = _client()
     client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+
+
+def rename_library_asset(key: str, new_name: str) -> dict:
+    """Renames a single asset's display filename, keeping it in the same
+    folder. S3 has no rename, so this copies to a new key then deletes the
+    original (via _move_object). The new key still gets a fresh
+    _unique_filename() prefix, for the same cache-busting reason uploads do."""
+    _validate_key(key)
+    if not key.startswith(ASSET_LIBRARY_PREFIX):
+        raise StorageError(f"Invalid asset key: {key!r}")
+    new_name = _sanitize_segment(new_name)
+    ext = new_name[new_name.rfind("."):].lower() if "." in new_name else ""
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise StorageError(f"Unsupported image file type: {ext or new_name}")
+
+    folder = key.rsplit("/", 1)[0]
+    new_key = f"{folder}/{_unique_filename(new_name)}"
+    _move_object(key, new_key)
+    return {"key": new_key, "name": new_name}
 
 
 def delete_vista_assets(vista_id: str) -> None:
