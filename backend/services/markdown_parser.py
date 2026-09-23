@@ -12,7 +12,26 @@ class MarkdownParser:
         self.tag_pattern = re.compile(r'#([\w\-\/]+)')
         self.vault_path = vault_path
         self._note_index = None
-    
+        # Resolved ids of notes hidden by the ignore tag, kept up to date by
+        # MarkdownService.get_all_notes(). Wikilinks to them render as plain
+        # text and are left out of `links`, so a public note never reveals
+        # where a hidden one lives.
+        self.hidden_ids = set()
+
+    def iter_note_files(self):
+        """Every .md file in the vault, skipping dot-dirs (.git, .obsidian)
+        and anything that resolves outside the vault — a symlink committed
+        to the repo could otherwise point the listing at arbitrary files on
+        the server."""
+        vault_resolved = self.vault_path.resolve()
+        for md_file in self.vault_path.rglob('*.md'):
+            relative = md_file.relative_to(self.vault_path)
+            if any(part.startswith('.') for part in relative.parts):
+                continue
+            if not md_file.resolve().is_relative_to(vault_resolved):
+                continue
+            yield md_file
+
     def _build_note_index(self):
         """
         Builds an in-memory index mapping note bases and logical paths to their exact
@@ -25,10 +44,7 @@ class MarkdownParser:
         self._note_index = {}
         self._note_index_lower = {}
         
-        for md_file in self.vault_path.rglob('*.md'):
-            if any(part.startswith('.') for part in md_file.parts):
-                continue
-                
+        for md_file in self.iter_note_files():
             filename = md_file.stem
             relative_path = md_file.relative_to(self.vault_path).with_suffix('')
             resolved_path = str(relative_path).replace('\\', '/')
@@ -96,7 +112,8 @@ class MarkdownParser:
         for match in matches:
             link_text = match[0]
             resolved_path = self._resolve_wikilink(link_text)
-            resolved_links.append(resolved_path)
+            if resolved_path not in self.hidden_ids:
+                resolved_links.append(resolved_path)
         return resolved_links
         
     def _convert_wikilinks(self, content: str) -> str:
@@ -106,6 +123,8 @@ class MarkdownParser:
             link = match.group(1)
             display_text = match.group(3) if match.group(3) else link
             resolved_link = self._resolve_wikilink(link)
+            if resolved_link in self.hidden_ids:
+                return display_text
             encoded_path = '/'.join(quote(segment, safe='') for segment in resolved_link.split('/'))
             return f'[{display_text}](/note/{encoded_path})'
             

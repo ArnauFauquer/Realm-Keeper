@@ -6,13 +6,14 @@ ENV VITE_API_URL=$VITE_API_URL
 ARG VITE_APP_VERSION
 ENV VITE_APP_VERSION=$VITE_APP_VERSION
 COPY package*.json ./
-# npm ci demands the lockfile's optionalDependencies entries (e.g. esbuild's
-# per-platform binaries) match byte-for-byte what the installing npm would
-# write itself, which breaks across npm major versions — contributors on a
-# newer local npm than node:20-alpine's bundled 10.x hit this constantly.
-# npm install resolves from package.json instead of demanding that exact
-# match, so it isn't affected.
-RUN npm install
+# npm ci installs exactly what package-lock.json pins (and fails if it's out
+# of sync with package.json), so the image ships the audited dependency tree
+# rather than whatever npm install resolves on the day. It does demand that
+# the lockfile's optionalDependencies entries (e.g. esbuild's per-platform
+# binaries) match what the installing npm would write, which breaks across
+# npm major versions — node:20-alpine bundles npm 10.x, so pin the npm the
+# lockfile is generated with. Bump this together with the lockfile.
+RUN npm install -g npm@11.11.0 && npm ci
 COPY . .
 RUN npm run build
 

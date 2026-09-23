@@ -32,6 +32,32 @@ spec:
           securityContext:
             runAsNonRoot: true
             runAsUser: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          # Sized from the running pod's cgroup counters (no metrics-server in
+          # the cluster): memory.peak 20Mi over its first ~10h, CPU ~0.06m on
+          # average, never throttled. It only serves the static bundle —
+          # uploads go straight to the backend via the ingress — so a 3x
+          # memory margin is plenty; the CPU limit caps a runaway worker.
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 64Mi
+          # nginx-unprivileged writes its pid and temp files to /tmp, and the
+          # entrypoint renders nginx.conf.template into /etc/nginx/conf.d at
+          # startup — both need to stay writable with a read-only root.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
           ports:
             - containerPort: 8080
               name: http
@@ -55,6 +81,11 @@ spec:
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:

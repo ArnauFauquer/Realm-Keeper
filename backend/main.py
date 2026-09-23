@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from routes.auth import require_auth
 from routes.auth import router as auth_router
-from routes.notes import router as notes_router
+from routes.notes import md_service_instance, router as notes_router
 from routes.screen import router as screen_router
 from routes.player import router as player_router
 from routes.charts import router as charts_router
@@ -36,7 +36,7 @@ def sync_vault() -> None:
     vault_path = settings.VAULT_PATH
 
     # Mark the vault as a safe directory to avoid "dubious ownership" errors
-    # (container runs as UID 1000 but the PVC mount may be owned by root).
+    # (container runs as UID 1000 but the vault mount may be owned by root).
     subprocess.run(
         ["git", "config", "--global", "--add", "safe.directory", str(vault_path)],
         capture_output=True, text=True
@@ -75,7 +75,7 @@ def sync_vault() -> None:
 
             if result.returncode == 0:
                 logger.info("Clone successful, moving contents into vault...")
-                # Cannot rmtree the PVC mount point itself — clear contents then move in.
+                # Cannot rmtree the vault mount point itself — clear contents then move in.
                 for item in vault_path.iterdir():
                     if item.is_dir():
                         shutil.rmtree(item)
@@ -105,11 +105,21 @@ async def _periodic_sync():
         await asyncio.sleep(interval)
         logger.info("Running periodic vault sync...")
         await asyncio.to_thread(sync_vault)
+        # A pull can add, change or newly hide (ignore-tag) notes: drop the
+        # parsed-note caches so none of that waits out their 5-minute TTL.
+        md_service_instance.invalidate_cache()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     sync_vault()
+    # In k8s the vault is an emptyDir, so a failed first clone would leave the
+    # pod serving (and turning ready with) an empty vault. Crash instead, so
+    # the kubelet retries and a rolling update never replaces a working pod.
+    # A failed pull over an existing clone stays non-fatal: that vault still
+    # has content, just possibly stale.
+    if settings.REPO_URL and not (settings.VAULT_PATH / ".git").exists():
+        raise RuntimeError("Vault clone failed; refusing to start with an empty vault.")
     task = asyncio.create_task(_periodic_sync())
     yield
     task.cancel()
@@ -151,11 +161,11 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route
-app.include_router(screen_router)  # viewing the screen stays public; posting to it is gated per-route
+app.include_router(screen_router)  # the socket needs login or a paired screen; posting to it needs login
 app.include_router(player_router, dependencies=[Depends(require_auth)])
-app.include_router(charts_router)  # reading charts stays public; writes are gated per-route
-app.include_router(vistas_router)  # reading vistas stays public; writes are gated per-route
-app.include_router(asset_library_router)  # reading the library stays public; writes are gated per-route
+app.include_router(charts_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
+app.include_router(vistas_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
+app.include_router(asset_library_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
 
 @app.get("/")
 async def root():

@@ -1,5 +1,5 @@
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -49,7 +49,7 @@ class AssetRenameRequest(BaseModel):
 
 
 @router.get("")
-async def list_library(path: str = ""):
+async def list_library(path: str = "", user: dict = Depends(require_auth)):
     try:
         return storage_service.list_asset_library(path)
     except StorageError as e:
@@ -136,7 +136,11 @@ async def upload_asset(path: str = Form(""), file: UploadFile = File(...), user:
 
 
 @router.get("/assets/{key:path}")
-async def get_library_asset_file(key: str):
+async def get_library_asset_file(key: str, request: Request):
+    # Login, or a paired screen while this image is part of what's on screen.
+    # Imported here: screen_access imports this module's URL prefix.
+    from routes.screen_access import require_viewer
+    require_viewer(request, asset_key=key)
     try:
         obj = storage_service.get_library_asset_stream(key)
     except StorageError as e:

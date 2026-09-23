@@ -1,6 +1,9 @@
 <template>
   <span class="document-embed" :class="{ interactive: canInteract }">
-    <span v-if="loading" class="embed-state">
+    <span v-if="locked" class="embed-state">
+      <span class="mdi mdi-lock-outline"></span> Sign in to view this {{ type }}
+    </span>
+    <span v-else-if="loading" class="embed-state">
       <span class="mdi mdi-loading mdi-spin"></span> Loading {{ type }}…
     </span>
     <span v-else-if="error" class="embed-state error">
@@ -52,8 +55,9 @@ import { useVistasModal } from '@/composables/useVistasModal'
 const props = defineProps({
   type: { type: String, required: true }, // 'chart' | 'vista'
   id: { type: String, required: true },
-  // Screen button + click-to-open, only for signed-in users (same gate as
-  // the note's dice/song/image-screen wiring).
+  // Signed in: charts and vistas are behind login (notes aren't), so without
+  // it this shows a placeholder instead of fetching. Also gates the screen
+  // button + click-to-open (same as the note's dice/song/image-screen wiring).
   canInteract: { type: Boolean, default: false }
 })
 
@@ -85,6 +89,7 @@ const doc = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const sent = ref(false)
+const locked = ref(false)
 const imageRatio = ref(null)
 let sentTimeout = null
 
@@ -93,13 +98,20 @@ const canvasProps = computed(() => config.value.canvasProps(doc.value))
 const aspectRatio = computed(() => config.value.aspectRatio || imageRatio.value || '16 / 9')
 
 async function load() {
-  loading.value = true
+  doc.value = null
   error.value = null
+  locked.value = !props.canInteract
+  if (locked.value) {
+    loading.value = false
+    return
+  }
+  loading.value = true
   try {
     doc.value = await config.value.fetch(props.id)
     loadImageRatio()
   } catch (err) {
-    error.value = err.response?.status === 404 ? 'not found' : (err.response?.data?.detail || err.message)
+    if (err.response?.status === 401) locked.value = true
+    else error.value = err.response?.status === 404 ? 'not found' : (err.response?.data?.detail || err.message)
   } finally {
     loading.value = false
   }
@@ -116,7 +128,7 @@ function loadImageRatio() {
   img.src = resolveUrl(url)
 }
 
-watch(() => [props.type, props.id], load, { immediate: true })
+watch(() => [props.type, props.id, props.canInteract], load, { immediate: true })
 
 function openInModal() {
   if (!props.canInteract) return

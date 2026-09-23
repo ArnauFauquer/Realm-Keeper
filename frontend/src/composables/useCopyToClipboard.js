@@ -8,18 +8,22 @@ export function useCopyToClipboard(resetMs = 1500) {
   const copiedKey = ref(null)
   let timeout = null
 
+  // Resolves to whether the copy worked: the Clipboard API is missing on
+  // plain-HTTP origins (e.g. the app opened via a LAN IP) and can refuse
+  // once the click's user activation has lapsed.
   async function copy(text, key = text) {
-    if (!text) return
+    if (!text) return false
     try {
       await navigator.clipboard.writeText(text)
     } catch {
-      return
+      return false
     }
     copiedKey.value = key
     clearTimeout(timeout)
     timeout = setTimeout(() => {
       if (copiedKey.value === key) copiedKey.value = null
     }, resetMs)
+    return true
   }
 
   onBeforeUnmount(() => clearTimeout(timeout))

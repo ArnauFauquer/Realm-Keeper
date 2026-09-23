@@ -25,6 +25,24 @@ function login() {
 async function logout() {
   await apiLogout()
   user.value = null
+  await clearCachedApiResponses()
+}
+
+// The service worker keeps API responses around for offline use (see
+// public/sw.js). Drop them on logout so nothing fetched while logged in can
+// be served back to whoever uses this browser next.
+async function clearCachedApiResponses() {
+  if (typeof caches === 'undefined') return
+  try {
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name)
+      for (const request of await cache.keys()) {
+        if (new URL(request.url).pathname.startsWith('/api/')) await cache.delete(request)
+      }
+    }
+  } catch (e) {
+    // Cache Storage can be unavailable (private windows, blocked storage).
+  }
 }
 
 export function useAuth() {

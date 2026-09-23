@@ -12,16 +12,16 @@ spec:
   selector:
     matchLabels:
       app: realm-keeper-backend
-  # Single replica + a ReadWriteOnce PVC (vault-data, RBD-backed) means a
-  # rolling update can never actually overlap: the new pod can't attach the
-  # volume while the old one still holds it, so it deadlocks in
-  # ContainerCreating (Multi-Attach error) until the old pod is force-killed.
-  # Recreate sidesteps this entirely — old pod goes down, volume frees,
-  # new pod starts — at the cost of a short gap (a few seconds) per deploy,
-  # which doesn't matter here since there's no HA benefit from 1 replica
-  # anyway, and vault-data is fully reproducible (re-cloned from REPO_URL).
+  # The vault is a per-pod emptyDir clone of REPO_URL (every write is
+  # committed and pushed right away, so the git remote is the source of
+  # truth), which leaves nothing for two pods to fight over: the new pod
+  # clones and turns ready before the old one is stopped. While both run,
+  # concurrent pushes are reconciled by commit_and_push's pull --rebase retry.
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   template:
     metadata:
       labels:
@@ -42,6 +42,28 @@ spec:
             runAsNonRoot: true
             runAsUser: 1000
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          # Sized from the running pod's cgroup counters (no metrics-server in
+          # the cluster): memory.peak 97Mi over its first ~10h, including the
+          # startup vault clone; CPU averaged ~1m (33.5s of CPU in 10.4h),
+          # never throttled. The memory limit leaves room for one S3 upload on
+          # top of that peak — boto3's upload_fileobj buffers up to 10
+          # concurrent 8MB parts (~80Mi) — with ~2x headroom. The CPU limit
+          # is one core: the app is a single Python process, so the GIL keeps
+          # its own work there anyway; the limit only caps git subprocesses.
+          # Re-check memory.peak / cpu.stat nr_throttled after changes that
+          # add load.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 384Mi
           ports:
             - containerPort: 8000
               name: http
@@ -106,12 +128,32 @@ spec:
                   key: AWS_SECRET_ACCESS_KEY
           volumeMounts:
             - name: vault-data
-              mountPath: /vault 
+              mountPath: /vault
+            # Everything else the app writes, with the root filesystem
+            # read-only: the vault clone staging dir and spooled uploads
+            # (/tmp), LOG_DIR (/app/logs) and git's --global safe.directory
+            # entry (~/.gitconfig).
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /app/logs
+            - name: home
+              mountPath: /home/appuser
+          # Uvicorn only starts answering once the startup vault clone is done
+          # (see main.py lifespan), which sync_vault allows up to 300s. This
+          # gives it 320s before the kubelet gives up, and keeps the liveness
+          # probe from killing a pod that's still cloning.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 64
+            timeoutSeconds: 3
           livenessProbe:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
@@ -119,14 +161,18 @@ spec:
             httpGet:
               path: /health
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 3
       volumes:
         - name: vault-data
-          persistentVolumeClaim:
-            claimName: realm-keeper-vault
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
