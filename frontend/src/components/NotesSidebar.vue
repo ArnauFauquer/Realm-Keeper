@@ -28,6 +28,13 @@
         <div v-if="user && !user.local" class="user-chip">
           <div class="user-avatar">{{ userInitial }}</div>
           <span class="user-email" :title="user.email">{{ user.email }}</span>
+          <button
+            class="logout-btn screen-link-btn"
+            :title="copiedKey === 'screen-link' ? 'Screen link copied' : 'Copy screen link (open it on the TV / projector)'"
+            @click="copyScreenLink"
+          >
+            <span class="mdi" :class="copiedKey === 'screen-link' ? 'mdi-check' : 'mdi-monitor-share'"></span>
+          </button>
           <button class="logout-btn" title="Sign out" @click="logout">
             <span class="mdi mdi-logout-variant"></span>
           </button>
@@ -43,18 +50,21 @@
           <span class="mdi mdi-magnify"></span>
           <span>Search Notes</span>
         </button>
-        <button class="action-btn" @click="openCharts">
-          <span class="mdi mdi-map-marker-radius"></span>
-          <span>Charts</span>
-        </button>
-        <button class="action-btn" @click="openVistas">
-          <span class="mdi mdi-image-frame"></span>
-          <span>Vistas</span>
-        </button>
-        <button class="action-btn" @click="openAssetLibrary">
-          <span class="mdi mdi-folder-multiple-image"></span>
-          <span>Assets</span>
-        </button>
+        <!-- Charts, vistas and the asset library are behind login, like the player. -->
+        <template v-if="user">
+          <button class="action-btn" @click="openCharts">
+            <span class="mdi mdi-map-marker-radius"></span>
+            <span>Charts</span>
+          </button>
+          <button class="action-btn" @click="openVistas">
+            <span class="mdi mdi-image-frame"></span>
+            <span>Vistas</span>
+          </button>
+          <button class="action-btn" @click="openAssetLibrary">
+            <span class="mdi mdi-folder-multiple-image"></span>
+            <span>Assets</span>
+          </button>
+        </template>
       </div>
 
       <div v-if="loading && notes.length === 0" class="loading-state">
@@ -205,9 +215,27 @@ import { useChartsModal } from '@/composables/useChartsModal'
 import { useVistasModal } from '@/composables/useVistasModal'
 import { useAssetLibraryModal } from '@/composables/useAssetLibraryModal'
 import { usePlayer } from '@/composables/usePlayer'
+import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
+import { createScreenLink } from '@/api/screen'
 
 const router = useRouter()
 const { user, login, logout } = useAuth()
+const { copiedKey, copy } = useCopyToClipboard()
+
+// Screens (TV, projector, OBS) don't sign in: they're paired by opening this
+// link once, and then only ever receive what's sent to the screen.
+async function copyScreenLink() {
+  let link
+  try {
+    link = await createScreenLink()
+  } catch (err) {
+    console.error('Failed to create screen link:', err)
+    return
+  }
+  // No clipboard (plain-HTTP LAN, or Safari after the awaited request):
+  // hand the link over for a manual copy rather than silently doing nothing.
+  if (!(await copy(link, 'screen-link'))) window.prompt('Screen link — copy it and open it on the screen device:', link)
+}
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const { open: openCharts } = useChartsModal()
 const { open: openVistas } = useVistasModal()
@@ -487,6 +515,11 @@ onBeforeUnmount(() => {
 .logout-btn:hover {
   background: rgba(248, 113, 113, 0.12);
   color: var(--status-error, #f87171);
+}
+
+.screen-link-btn:hover {
+  background: rgba(167, 139, 250, 0.12);
+  color: var(--interactive-primary);
 }
 
 .logout-btn .mdi {

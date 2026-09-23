@@ -1,5 +1,5 @@
 from authlib.integrations.starlette_client import OAuth
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from config.logging import get_logger
@@ -32,10 +32,19 @@ def get_session_user(request: Request) -> dict | None:
     return verify_session_token(token)
 
 
-async def require_auth(request: Request) -> dict:
+LOCAL_USER = {"email": "local@realm-keeper", "name": "Local User", "local": True}
+
+
+def current_user(request: Request) -> dict | None:
+    """The signed-in user, or None — for routes that also let a paired screen
+    in (see routes/screen_access.py) and so can't just depend on require_auth."""
     if not settings.ENABLE_AUTH:
-        return {"email": "local@realm-keeper", "name": "Local User", "local": True}
-    user = get_session_user(request)
+        return LOCAL_USER
+    return get_session_user(request)
+
+
+async def require_auth(request: Request) -> dict:
+    user = current_user(request)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
@@ -59,6 +68,12 @@ async def callback(request: Request):
     email = userinfo.get("email", "")
     name = userinfo.get("name", "")
 
+    # An unverified address is just a claim — never match it against the
+    # allowlist.
+    if userinfo.get("email_verified") is not True:
+        logger.warning(f"Rejected login attempt for {email!r} (email not verified)")
+        return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
+
     if not is_email_allowed(email):
         logger.warning(f"Rejected login attempt for {email!r} (not on allowlist)")
         return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
@@ -77,17 +92,16 @@ async def callback(request: Request):
 
 
 @router.get("/me")
-async def me(request: Request):
-    if not settings.ENABLE_AUTH:
-        return {"email": "local@realm-keeper", "name": "Local User", "local": True}
-    user = get_session_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+async def me(user: dict = Depends(require_auth)):
     return user
 
 
 @router.post("/logout")
 async def logout():
-    response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    # Asset images are cached privately for a year (config/cache.py); drop
+    # them so this browser can't keep showing them once signed out.
+    response = Response(status_code=204, headers={"Clear-Site-Data": '"cache"'})
+    response.delete_cookie(
+        SESSION_COOKIE_NAME, httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite="lax",
+    )
     return response

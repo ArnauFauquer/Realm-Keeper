@@ -1,4 +1,5 @@
 import os
+import re
 import threading
 from pathlib import Path
 from typing import List, Optional, Dict
@@ -40,7 +41,9 @@ class MarkdownService:
             raise ValueError("Note path cannot be empty")
 
         for segment in normalized.split('/'):
-            if segment in ('', '.', '..') or '\\' in segment or '\x00' in segment:
+            # Dot-prefixed covers ".", ".." and hidden dirs such as .git,
+            # which get_all_notes() never lists either.
+            if not segment or segment.startswith('.') or '\\' in segment or '\x00' in segment:
                 raise ValueError(f"Invalid note path segment: {segment!r}")
 
         full_path = (self.vault_path / f"{normalized}.md").resolve()
@@ -51,6 +54,23 @@ class MarkdownService:
             raise ValueError("Access denied: path must be within vault")
 
         return full_path
+
+    def is_hidden(self, tags: List[str]) -> bool:
+        """Notes carrying the ignore tag are hidden from the app entirely —
+        not only from listings, but from direct reads by id too. That makes
+        this an access check, so it errs towards hiding: case-insensitive
+        (Obsidian treats #Draft and #draft as one tag), nested tags count
+        (#draft/wip), and a frontmatter string like `tags: "draft, npc"`
+        is split rather than taken as a single tag."""
+        if not self.ignore_tag:
+            return False
+        ignore = self.ignore_tag.strip().lstrip('#').lower()
+        for tag in tags:
+            for part in re.split(r'[,\s]+', str(tag)):
+                part = part.strip().lstrip('#').lower()
+                if part == ignore or part.startswith(f"{ignore}/"):
+                    return True
+        return False
 
     def get_raw_content(self, note_id: str) -> Optional[str]:
         """Returns the note's file content verbatim (frontmatter and
@@ -93,19 +113,18 @@ class MarkdownService:
                     return self._all_notes_cache
                 
         notes = []
+        hidden_ids = set()
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
-        
-        for md_file in self.vault_path.rglob('*.md'):
-            if any(part.startswith('.') for part in md_file.parts):
-                continue
-            
+
+        for md_file in self.parser.iter_note_files():
             relative_path = md_file.relative_to(self.vault_path)
             note_id = str(relative_path.with_suffix('')).replace('\\', '/')
-            
+
             try:
                 fm, _, note_tags, wikilinks = self.parser.parse_file(md_file)
-                
-                if self.ignore_tag and self.ignore_tag in note_tags:
+
+                if self.is_hidden(note_tags):
+                    hidden_ids.add(note_id)
                     continue
                 
                 # Search filter
@@ -131,8 +150,16 @@ class MarkdownService:
                 logger.error(f"Error processing {md_file}: {e}")
                 continue
         
+        # Every file was scanned (filters apply after the hidden check), so this
+        # is the complete hidden set: strip links that would reveal where a
+        # hidden note lives, and let the parser do the same for rendered
+        # wikilinks in get_note().
+        self.parser.hidden_ids = hidden_ids
+        for note in notes:
+            note.links = [link for link in note.links if link not in hidden_ids]
+
         sorted_notes = sorted(notes, key=lambda x: x.path)
-        
+
         if not search and not tags:
             self._all_notes_cache = sorted_notes
             self._all_notes_cached_at = datetime.now()
@@ -143,7 +170,11 @@ class MarkdownService:
         return datetime.now() - cached_at < self._cache_ttl
     
     def get_note(self, note_id: str) -> Optional[Note]:
-        note_id = note_id.replace('/', os.sep)
+        try:
+            self._resolve_note_path(note_id)
+        except ValueError:
+            return None
+        note_id = note_id.strip('/').replace('/', os.sep)
         
         if note_id in self._cache:
             note, cached_at = self._cache[note_id]
@@ -153,13 +184,18 @@ class MarkdownService:
                 del self._cache[note_id]
         
         note_path = self.vault_path / f"{note_id}.md"
-        
+
         if not note_path.exists():
             return None
-        
+
         try:
+            # Refreshes the hidden set (cached like the listing) before this
+            # note's wikilinks are resolved against it.
+            self.get_all_notes()
             fm, content, tags, notelinks = self.parser.parse_file(note_path)
-            
+            if self.is_hidden(tags):
+                return None
+
             title = fm.get('title', note_path.stem)
             
             note = Note(

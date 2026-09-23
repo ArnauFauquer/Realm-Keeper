@@ -45,7 +45,12 @@ class Settings:
         if e.strip()
     ]
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
-    SESSION_COOKIE_SECURE: bool = os.getenv("SESSION_COOKIE_SECURE", "false").lower() == "true"
+    # Defaults to on whenever the app is served over HTTPS, so forgetting to
+    # set it in a TLS deployment can't leave the session cookie sendable over
+    # plain HTTP. Set it explicitly to override either way.
+    SESSION_COOKIE_SECURE: bool = os.getenv(
+        "SESSION_COOKIE_SECURE", str(FRONTEND_URL.lower().startswith("https://"))
+    ).lower() == "true"
 
     def __init__(self):
         self._validate_paths()

@@ -17,8 +17,16 @@
 
     <!-- Media area -->
     <div v-else class="screen-media-area">
+      <!-- 0. Not paired: the socket (and everything it would show) needs a
+           screen link or a signed-in user. -->
+      <div v-if="!displayUrl && notPaired" class="screen-loading screen-unpaired">
+        <span class="mdi mdi-monitor-lock"></span>
+        <p>{{ pairError || 'This screen isn’t paired yet.' }}</p>
+        <small>Copy the screen link in Realm Keeper (sidebar → monitor icon) and open it on this device.</small>
+      </div>
+
       <!-- 1. Waiting for first media -->
-      <div v-if="!displayUrl && !error" class="screen-loading">
+      <div v-else-if="!displayUrl && !error" class="screen-loading">
         <div class="loading-spinner"></div>
         <p>Waiting for media…</p>
       </div>
@@ -89,6 +97,7 @@ import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
 import { fetchChart } from '@/api/charts'
 import { fetchVista } from '@/api/vistas'
+import { pairScreen } from '@/api/screen'
 
 export default {
   name: 'ScreenView',
@@ -109,6 +118,9 @@ export default {
       diceWorld: null,
       activeChart: null,
       activeVista: null,
+      notPaired: false,
+      reconnectTimer: null,
+      pairError: '',
     }
   },
   computed: {
@@ -180,10 +192,36 @@ export default {
         this.showTitle = false
       }, 5000)
     },
-    connectWebSocket() {
-      if (this.ws) {
-        this.ws.close()
+    // Opened from a screen link (/screen#key=...): pair this device, then drop
+    // the key from the address bar (the pairing cookie is what's used from
+    // here on). Returns whether a key was there to pair with.
+    async pairFromHash() {
+      const key = new URLSearchParams(window.location.hash.slice(1)).get('key')
+      if (!key) return false
+      this.pairError = ''
+      try {
+        await pairScreen(key)
+      } catch (e) {
+        this.pairError = 'This screen link is invalid or has expired.'
       }
+      window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search)
+      return true
+    },
+    async onHashChange() {
+      // Reconnect so the socket carries the new pairing cookie.
+      if (await this.pairFromHash()) this.connectWebSocket()
+    },
+    // Detach before closing: onclose schedules a reconnect, which must not
+    // fire for a socket this view is replacing or leaving behind.
+    closeWebSocket() {
+      clearTimeout(this.reconnectTimer)
+      if (!this.ws) return
+      this.ws.onclose = null
+      this.ws.close()
+      this.ws = null
+    },
+    connectWebSocket() {
+      this.closeWebSocket()
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
       
@@ -250,11 +288,15 @@ export default {
       this.ws.onopen = () => {
         console.log('WebSocket connected successfully')
         this.error = false
+        this.notPaired = false
       }
 
       this.ws.onclose = (event) => {
+        // 1008: neither signed in nor paired. Keep retrying anyway — pairing
+        // (or signing in) in another tab of this browser fixes it.
+        if (event.code === 1008) this.notPaired = true
         console.log(`WebSocket closed (code: ${event.code}). Retrying in 3s...`)
-        setTimeout(() => this.connectWebSocket(), 3000)
+        this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000)
       }
 
       this.ws.onerror = (err) => {
@@ -367,9 +409,14 @@ export default {
       }
     }
   },
-  mounted() {
+  async mounted() {
     this.$refs.root?.focus()
     this.drawStarfield()
+
+    await this.pairFromHash()
+    // A screen link pasted into a tab already on /screen only changes the
+    // #fragment, which doesn't remount this view.
+    window.addEventListener('hashchange', this.onHashChange)
 
     // Check for initial data in query
     const queryUrl = this.$route.query.url
@@ -383,9 +430,8 @@ export default {
     this.connectWebSocket()
   },
   beforeUnmount() {
-    if (this.ws) {
-      this.ws.close()
-    }
+    window.removeEventListener('hashchange', this.onHashChange)
+    this.closeWebSocket()
     clearTimeout(this.titleTimer)
     clearTimeout(this.diceClearTimer)
     this.teardownDiceWorld()
@@ -506,6 +552,15 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.screen-unpaired {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.screen-unpaired .mdi {
+  font-size: 3rem;
 }
 
 .screen-error {

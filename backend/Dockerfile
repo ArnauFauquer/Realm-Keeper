@@ -24,4 +24,7 @@ EXPOSE 8000
 # Without this, request.url_for() in routes/auth.py builds the Google OAuth
 # redirect_uri as http://... instead of https://..., which Google rejects
 # with redirect_uri_mismatch since only the https variant is registered.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--proxy-headers", "--forwarded-allow-ips=*"]
+# --ws-max-size: the only WebSocket (/ws/screen) is server-to-client — screens
+# never send anything — so there's no reason to buffer uvicorn's default
+# 16MB per incoming message from an unauthenticated client.
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info", "--proxy-headers", "--forwarded-allow-ips=*", "--ws-max-size", "1024"]

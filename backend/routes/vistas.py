@@ -1,12 +1,13 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from config.logging import get_logger
 from config.settings import settings
 from models.vista import VanishingPoint, Vista, VistaAsset
 from routes.auth import require_auth
+from routes.screen_access import require_viewer
 from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from services.vista_service import VistaSaveError, VistaService
 
@@ -63,7 +64,11 @@ class VistaRenameRequest(BaseModel):
 
 
 @router.get("")
-async def list_vistas(path: str = "", service: VistaService = Depends(get_vista_service)):
+async def list_vistas(
+    path: str = "",
+    user: dict = Depends(require_auth),
+    service: VistaService = Depends(get_vista_service),
+):
     try:
         return service.list_tree(path)
     except ValueError as e:
@@ -207,7 +212,9 @@ async def rename_vista(
 # ── vistas (by id) ────────────────────────────────────────────────────
 
 @router.get("/{vista_id:path}", response_model=Vista)
-async def get_vista(vista_id: str, service: VistaService = Depends(get_vista_service)):
+async def get_vista(vista_id: str, request: Request, service: VistaService = Depends(get_vista_service)):
+    # Login, or a paired screen while this vista is the one on screen.
+    require_viewer(request, vista_id=vista_id)
     vista = service.get_vista(vista_id)
     if vista is None:
         raise HTTPException(status_code=404, detail=f"Vista not found: {vista_id}")
@@ -221,6 +228,8 @@ async def save_vista(
     user: dict = Depends(require_auth),
     service: VistaService = Depends(get_vista_service),
 ):
+    if any(a.image_url and not a.image_url.startswith(ASSET_LIBRARY_URL_PREFIX) for a in body.assets):
+        raise HTTPException(status_code=400, detail="Vista assets must be images from the asset library")
     try:
         return service.save_vista(
             vista_id, body.name, body.description, body.vanishing_point, body.background_offset_y, body.assets,

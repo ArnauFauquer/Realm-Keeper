@@ -31,8 +31,12 @@ class CacheControlMiddleware:
             if message["type"] == "http.response.start" and cache_control:
                 headers = MutableHeaders(raw=message["headers"])
                 if "cache-control" not in headers:
-                    headers["cache-control"] = cache_control
-                    logger.debug(f"[Cache] {method} {path} → {cache_control}")
+                    # An explicit max-age makes even an error cacheable: a 401
+                    # for an asset (not signed in, or no longer on screen)
+                    # must not stick in the browser for a year.
+                    value = cache_control if message["status"] < 400 else "no-store"
+                    headers["cache-control"] = value
+                    logger.debug(f"[Cache] {method} {path} → {value}")
             await send(message)
 
         await self.app(scope, receive, send_wrapper)
@@ -45,6 +49,10 @@ class CacheControlMiddleware:
         if method == "GET":
             if path.startswith("/assets/"):
                 return "public, max-age=31536000, immutable"
+            if path.startswith("/api/note-raw/"):
+                # Login-only editor source (can include hidden notes): keep it
+                # out of the browser and service-worker caches entirely.
+                return "private, no-store"
             if path.startswith("/api/notes"):
                 return "public, max-age=300"
             if path.startswith("/api/tags"):
@@ -62,8 +70,10 @@ class CacheControlMiddleware:
                 return "no-store, must-revalidate"
             if path.startswith("/api/asset-library/assets/"):
                 # The binary image itself, keyed by its own filename — safe to
-                # cache hard like /assets/.
-                return "public, max-age=31536000, immutable"
+                # cache hard like /assets/, but only in the viewer's own
+                # browser: it's behind login (or a paired screen), so shared
+                # caches must not keep it, and the service worker skips it.
+                return "private, max-age=31536000, immutable"
             if (
                 path.startswith("/api/vistas")
                 or path.startswith("/api/charts")

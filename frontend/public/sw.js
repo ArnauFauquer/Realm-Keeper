@@ -1,4 +1,6 @@
-const CACHE_NAME = 'realm-keeper-v1';
+// Bumped from v1 so activate() drops caches written before API responses
+// were filtered (they may hold private, logged-in-only data).
+const CACHE_NAME = 'realm-keeper-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -6,13 +8,26 @@ const STATIC_ASSETS = [
 ];
 
 // Helper: Check if URL is a static asset (JS, CSS, images)
+// API-served files (asset library images) are excluded: they're behind login,
+// so they go through the API branch and its Cache-Control check instead.
 function isStaticAsset(url) {
+  if (isApiRequest(url)) return false;
   return /\.(js|css|woff2|woff|ttf|eot|svg|png|jpg|jpeg|webp|gif)(\?|$)/i.test(url);
 }
 
 // Helper: Check if URL is an API call
 function isApiRequest(url) {
   return url.includes('/api/');
+}
+
+// Helper: Whether an API response may be kept in Cache Storage. That cache
+// outlives the session (logout doesn't touch it) and is served back whenever
+// the network fails, so anything the backend marks no-store/private — login
+// state, raw notes for the editor, the player — must never land in it.
+function isCacheableApiResponse(response) {
+  if (!response || response.status !== 200) return false;
+  const cacheControl = response.headers.get('Cache-Control') || '';
+  return !/no-store|private/i.test(cacheControl);
 }
 
 // Install event - cache static assets
@@ -96,8 +111,8 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          // Only cache successful responses
-          if (response && response.status === 200) {
+          // Only cache successful, shareable responses
+          if (isCacheableApiResponse(response)) {
             const responseToCache = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
               cache.put(request, responseToCache);

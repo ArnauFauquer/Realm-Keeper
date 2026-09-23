@@ -114,6 +114,7 @@ import mermaid from 'mermaid'
 import { getCached, post, put, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
+import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
 import { renderCallouts } from '@/utils/callouts'
 import { h, render } from 'vue'
 import { parseInlineRef, renderInlineRef } from '@/utils/inlineRefs'
@@ -220,7 +221,7 @@ export default {
   computed: {
     draftPreviewHtml() {
       if (!this.draftContent.trim()) return '<p class="preview-empty">Nothing to preview yet.</p>'
-      return this.md.render(this.draftContent)
+      return sanitizeHtml(this.md.render(this.draftContent))
     },
     breadcrumbs() {
       if (!this.note || !this.note.id || !this.containerFolders) return []
@@ -266,7 +267,8 @@ export default {
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })
-      return html
+      html = sanitizeHtml(html)
+      return this.user ? html : lockAssetImages(html)
     }
   },
   methods: {
@@ -379,10 +381,13 @@ export default {
         const content = this.$refs.markdownContent
         if (!content) return
         
-        const links = content.querySelectorAll('a[data-note-link]')
+        // :not(wired) — this also runs again whenever renderedContent
+        // re-renders (see the watcher), and must not stack listeners.
+        const links = content.querySelectorAll('a[data-note-link]:not([data-link-wired])')
         links.forEach(link => {
           const linkId = link.getAttribute('data-note-link')
           if (!linkId) return
+          link.setAttribute('data-link-wired', '1')
 
           link.addEventListener('mouseenter', () => {
             this.onLinkMouseEnter(linkId)
@@ -559,6 +564,14 @@ export default {
     this.loadContainerFolders()
   },
   watch: {
+    // renderedContent also depends on whether someone is signed in (library
+    // images become placeholders without it), so it re-renders when the
+    // session check resolves or on logout — not only after fetchNote(), which
+    // is where the v-html's links, embeds, buttons and diagrams get wired.
+    renderedContent() {
+      this.setupLinkPrefetch()
+      this.renderMermaidDiagrams()
+    },
     // The editor preview is its own v-html, re-rendered on every keystroke
     // or tab switch; keep its chart/vista embeds mounted too.
     draftPreviewHtml() {
@@ -1133,6 +1146,15 @@ export default {
   border-color: rgba(34, 211, 238, 0.8) !important;
   color: #fff !important;
   box-shadow: 0 0 15px rgba(34, 211, 238, 0.5) !important;
+}
+
+.markdown-content :deep(.locked-asset) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
 }
 
 .markdown-content :deep(pre.mermaid) {

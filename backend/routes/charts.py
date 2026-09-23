@@ -1,12 +1,13 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from config.logging import get_logger
 from config.settings import settings
 from models.chart import Annotation, Chart, ChartPath, Pin
 from routes.auth import require_auth
+from routes.screen_access import require_viewer
 from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from services.chart_service import ChartSaveError, ChartService
 
@@ -63,7 +64,11 @@ class ChartRenameRequest(BaseModel):
 
 
 @router.get("")
-async def list_charts(path: str = "", service: ChartService = Depends(get_chart_service)):
+async def list_charts(
+    path: str = "",
+    user: dict = Depends(require_auth),
+    service: ChartService = Depends(get_chart_service),
+):
     try:
         return service.list_tree(path)
     except ValueError as e:
@@ -207,7 +212,9 @@ async def rename_chart(
 # ── charts (by id) ───────────────────────────────────────────────────────
 
 @router.get("/{chart_id:path}", response_model=Chart)
-async def get_chart(chart_id: str, service: ChartService = Depends(get_chart_service)):
+async def get_chart(chart_id: str, request: Request, service: ChartService = Depends(get_chart_service)):
+    # Login, or a paired screen while this chart is the one on screen.
+    require_viewer(request, chart_id=chart_id)
     chart = service.get_chart(chart_id)
     if chart is None:
         raise HTTPException(status_code=404, detail=f"Chart not found: {chart_id}")
