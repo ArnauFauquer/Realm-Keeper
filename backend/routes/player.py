@@ -5,6 +5,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from config.logging import get_logger
+from routes.asset_library import UPLOADED_FILE_HEADERS
 from routes.errors import storage_unavailable
 from services import storage_service
 from services.storage_service import StorageError
@@ -112,7 +113,7 @@ async def delete_track(key: str):
 async def stream_track(key: str, request: Request):
     range_header = request.headers.get("range")
     try:
-        obj = storage_service.get_object_stream(key, range_header)
+        obj = storage_service.get_track_stream(key, range_header)
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError):
@@ -121,6 +122,7 @@ async def stream_track(key: str, request: Request):
     headers = {
         "Accept-Ranges": "bytes",
         "Content-Length": str(obj["ContentLength"]),
+        **UPLOADED_FILE_HEADERS,
     }
     status_code = 200
     if range_header and "ContentRange" in obj:
@@ -134,6 +136,6 @@ async def stream_track(key: str, request: Request):
     return StreamingResponse(
         iterfile(),
         status_code=status_code,
-        media_type=obj.get("ContentType", "application/octet-stream"),
+        media_type=storage_service.content_type_for(key),
         headers=headers,
     )

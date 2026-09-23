@@ -1,12 +1,24 @@
+import re
 import subprocess
 import threading
 from pathlib import Path
 from typing import List
 
+_URL_CREDENTIALS_RE = re.compile(r"(\w+://)[^/@\s]+@")
+
+
+def redact_credentials(text: str) -> str:
+    """REPO_URL usually embeds an access token (https://TOKEN@github.com/...),
+    and git echoes the remote URL back in its own errors — strip it before
+    that text reaches a log line or an HTTP error response."""
+    return _URL_CREDENTIALS_RE.sub(r"\1***@", text)
+
 
 class GitCommitError(Exception):
     """Raised when committing or pushing a vault change to git fails."""
-    pass
+
+    def __init__(self, message: str):
+        super().__init__(redact_credentials(message))
 
 
 def commit_and_push(

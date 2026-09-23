@@ -15,6 +15,15 @@ router = APIRouter(prefix="/api/asset-library", tags=["asset-library"])
 
 ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
 
+# Sent with every user-uploaded file served from the app's own origin. SVGs
+# can carry <script>, and opened directly (not via <img>) they'd run with the
+# app's origin; the sandboxing CSP neuters that, nosniff stops a browser from
+# second-guessing the extension-derived Content-Type.
+UPLOADED_FILE_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox",
+}
+
 
 class FolderCreateRequest(BaseModel):
     path: str
@@ -129,7 +138,7 @@ async def upload_asset(path: str = Form(""), file: UploadFile = File(...), user:
 @router.get("/assets/{key:path}")
 async def get_library_asset_file(key: str):
     try:
-        obj = storage_service.get_object_stream(key)
+        obj = storage_service.get_library_asset_stream(key)
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError):
@@ -141,8 +150,8 @@ async def get_library_asset_file(key: str):
 
     return StreamingResponse(
         iterfile(),
-        media_type=obj.get("ContentType", "application/octet-stream"),
-        headers={"Content-Length": str(obj["ContentLength"])},
+        media_type=storage_service.content_type_for(key),
+        headers={"Content-Length": str(obj["ContentLength"]), **UPLOADED_FILE_HEADERS},
     )
 
 

@@ -23,14 +23,15 @@ def sanitize_folder_path(path: str) -> str:
     a safe path component. Returns "" for the root."""
     segments = [s for s in (path or "").strip("/").split("/") if s]
     for s in segments:
-        if s in (".", "..") or "\\" in s:
+        # Dot-prefixed covers ".", ".." and hidden names like ".git".
+        if s.startswith(".") or "\\" in s:
             raise ValueError(f"Invalid folder path: {path!r}")
     return "/".join(segments)
 
 
 def sanitize_folder_name(name: str) -> str:
     name = (name or "").strip()
-    if not name or name in (".", "..") or "/" in name or "\\" in name:
+    if not name or name.startswith(".") or "/" in name or "\\" in name:
         raise ValueError(f"Invalid folder name: {name!r}")
     return name
 
@@ -57,7 +58,7 @@ class FolderTree:
 
     def item_dir(self, item_id: str) -> Path:
         normalized = (item_id or "").strip("/")
-        if not normalized or any(c in ("", ".", "..") for c in normalized.split("/")) or "\\" in normalized:
+        if not normalized or any(not c or c.startswith(".") for c in normalized.split("/")) or "\\" in normalized:
             raise ValueError(f"Invalid id: {item_id!r}")
         full_path = (self.root / normalized).resolve()
         try:

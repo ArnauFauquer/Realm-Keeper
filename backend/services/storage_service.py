@@ -12,8 +12,20 @@ from config.settings import settings
 
 _FORBIDDEN_CHARS = {"/", "\\", "\x00"}
 
-ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".ogg", ".oga", ".wav", ".flac", ".m4a", ".opus", ".aac", ".webm"}
-ALLOWED_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".svg"}
+# The Content-Type every object is stored and served with comes from its
+# extension, never from the uploader: a client-supplied "text/html" on a
+# ".png" would otherwise be served back as a page on the app's own origin.
+AUDIO_CONTENT_TYPES = {
+    ".mp3": "audio/mpeg", ".ogg": "audio/ogg", ".oga": "audio/ogg", ".wav": "audio/wav",
+    ".flac": "audio/flac", ".m4a": "audio/mp4", ".opus": "audio/opus", ".aac": "audio/aac",
+    ".webm": "audio/webm",
+}
+IMAGE_CONTENT_TYPES = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp",
+    ".gif": "image/gif", ".svg": "image/svg+xml",
+}
+ALLOWED_AUDIO_EXTENSIONS = set(AUDIO_CONTENT_TYPES)
+ALLOWED_IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPES)
 
 # Top-level prefixes used by other features sharing this bucket — never
 # real albums, so list_albums() must skip them and create/rename must
@@ -51,11 +63,27 @@ def _sanitize_segment(name: str) -> str:
     return name
 
 
+def _extension(filename: str) -> str:
+    return filename[filename.rfind("."):].lower() if "." in filename else ""
+
+
+def content_type_for(key: str) -> str:
+    """The Content-Type to serve an object with, derived from its key's
+    extension (see AUDIO_CONTENT_TYPES) — never the stored metadata, which
+    objects uploaded before this check may have taken from the client."""
+    ext = _extension(key)
+    return AUDIO_CONTENT_TYPES.get(ext) or IMAGE_CONTENT_TYPES.get(ext) or "application/octet-stream"
+
+
 def _split_key(key: str) -> tuple[str, str]:
     parts = key.split("/")
     if len(parts) != 2:
         raise StorageError(f"Invalid track key: {key!r}")
-    return _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
+    album, filename = _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
+    # Track keys must never reach into another feature's prefix (e.g.
+    # "asset-library/<file>" is also two segments deep).
+    _check_not_reserved(album)
+    return album, filename
 
 
 def _sanitize_path(path: str) -> str:
@@ -103,6 +131,7 @@ def create_album(name: str) -> None:
 def rename_album(old_name: str, new_name: str) -> None:
     old_name = _sanitize_segment(old_name)
     new_name = _sanitize_segment(new_name)
+    _check_not_reserved(old_name)
     _check_not_reserved(new_name)
     if old_name == new_name:
         return
@@ -135,6 +164,7 @@ def rename_album(old_name: str, new_name: str) -> None:
 
 def delete_album(name: str) -> None:
     name = _sanitize_segment(name)
+    _check_not_reserved(name)
     client = _client()
     prefix = f"{name}/"
     paginator = client.get_paginator("list_objects_v2")
@@ -149,6 +179,7 @@ def delete_album(name: str) -> None:
 
 def list_tracks(album: str) -> list[dict]:
     album = _sanitize_segment(album)
+    _check_not_reserved(album)
     client = _client()
     prefix = f"{album}/"
     tracks = []
@@ -171,14 +202,15 @@ def list_tracks(album: str) -> list[dict]:
 def upload_track(album: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     album = _sanitize_segment(album)
     filename = _sanitize_segment(filename)
-    ext = filename[filename.rfind("."):].lower() if "." in filename else ""
+    _check_not_reserved(album)
+    ext = _extension(filename)
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
         raise StorageError(f"Unsupported audio file type: {ext or filename}")
     key = f"{album}/{filename}"
     client = _client()
     client.upload_fileobj(
         file_obj, settings.S3_BUCKET_NAME, key,
-        ExtraArgs={"ContentType": content_type or "application/octet-stream"},
+        ExtraArgs={"ContentType": AUDIO_CONTENT_TYPES[ext]},
     )
     return {"key": key, "name": filename}
 
@@ -217,13 +249,13 @@ def _unique_filename(filename: str) -> str:
 
 
 def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    ext = filename[filename.rfind("."):].lower() if "." in filename else ""
+    ext = _extension(filename)
     if ext not in ALLOWED_IMAGE_EXTENSIONS:
         raise StorageError(f"Unsupported image file type: {ext or filename}")
     client = _client()
     client.upload_fileobj(
         file_obj, settings.S3_BUCKET_NAME, key,
-        ExtraArgs={"ContentType": content_type or "application/octet-stream"},
+        ExtraArgs={"ContentType": IMAGE_CONTENT_TYPES[ext]},
     )
     return {"key": key, "name": filename}
 
@@ -433,7 +465,22 @@ def rename_library_asset(key: str, new_name: str) -> dict:
     return {"key": new_key, "name": new_name}
 
 
-def get_object_stream(key: str, range_header: Optional[str] = None) -> dict:
+def get_track_stream(key: str, range_header: Optional[str] = None) -> dict:
+    _split_key(key)
+    return _get_object_stream(key, range_header)
+
+
+def get_library_asset_stream(key: str) -> dict:
+    """Public read of one asset library object. Scoped to that prefix so the
+    unauthenticated endpoint can't be used to read the rest of the bucket
+    (audio tracks, which are behind login)."""
+    _validate_key(key)
+    if not key.startswith(ASSET_LIBRARY_PREFIX):
+        raise StorageError(f"Invalid asset key: {key!r}")
+    return _get_object_stream(key)
+
+
+def _get_object_stream(key: str, range_header: Optional[str] = None) -> dict:
     _validate_key(key)
     client = _client()
     kwargs = {"Bucket": settings.S3_BUCKET_NAME, "Key": key}

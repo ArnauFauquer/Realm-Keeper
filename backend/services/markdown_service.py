@@ -40,7 +40,9 @@ class MarkdownService:
             raise ValueError("Note path cannot be empty")
 
         for segment in normalized.split('/'):
-            if segment in ('', '.', '..') or '\\' in segment or '\x00' in segment:
+            # Dot-prefixed covers ".", ".." and hidden dirs such as .git,
+            # which get_all_notes() never lists either.
+            if not segment or segment.startswith('.') or '\\' in segment or '\x00' in segment:
                 raise ValueError(f"Invalid note path segment: {segment!r}")
 
         full_path = (self.vault_path / f"{normalized}.md").resolve()
@@ -51,6 +53,11 @@ class MarkdownService:
             raise ValueError("Access denied: path must be within vault")
 
         return full_path
+
+    def is_hidden(self, tags: List[str]) -> bool:
+        """Notes carrying the ignore tag are hidden from the app entirely —
+        not only from listings, but from direct reads by id too."""
+        return bool(self.ignore_tag) and self.ignore_tag in tags
 
     def get_raw_content(self, note_id: str) -> Optional[str]:
         """Returns the note's file content verbatim (frontmatter and
@@ -105,7 +112,7 @@ class MarkdownService:
             try:
                 fm, _, note_tags, wikilinks = self.parser.parse_file(md_file)
                 
-                if self.ignore_tag and self.ignore_tag in note_tags:
+                if self.is_hidden(note_tags):
                     continue
                 
                 # Search filter
@@ -143,7 +150,11 @@ class MarkdownService:
         return datetime.now() - cached_at < self._cache_ttl
     
     def get_note(self, note_id: str) -> Optional[Note]:
-        note_id = note_id.replace('/', os.sep)
+        try:
+            self._resolve_note_path(note_id)
+        except ValueError:
+            return None
+        note_id = note_id.strip('/').replace('/', os.sep)
         
         if note_id in self._cache:
             note, cached_at = self._cache[note_id]
@@ -159,7 +170,9 @@ class MarkdownService:
         
         try:
             fm, content, tags, notelinks = self.parser.parse_file(note_path)
-            
+            if self.is_hidden(tags):
+                return None
+
             title = fm.get('title', note_path.stem)
             
             note = Note(

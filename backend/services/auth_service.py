@@ -28,7 +28,9 @@ def verify_session_token(token: str) -> Optional[SessionUser]:
         data = _serializer().loads(token, max_age=SESSION_MAX_AGE)
     except (BadSignature, SignatureExpired):
         return None
-    if not data.get("email"):
+    # Re-checked on every request, not only at login: dropping someone from
+    # ALLOWED_EMAILS must revoke their (up to 30-day) session immediately.
+    if not is_email_allowed(data.get("email", "")):
         return None
     return {"email": data["email"], "name": data.get("name") or data["email"]}
 

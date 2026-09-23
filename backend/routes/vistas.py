@@ -221,6 +221,8 @@ async def save_vista(
     user: dict = Depends(require_auth),
     service: VistaService = Depends(get_vista_service),
 ):
+    if any(a.image_url and not a.image_url.startswith(ASSET_LIBRARY_URL_PREFIX) for a in body.assets):
+        raise HTTPException(status_code=400, detail="Vista assets must be images from the asset library")
     try:
         return service.save_vista(
             vista_id, body.name, body.description, body.vanishing_point, body.background_offset_y, body.assets,

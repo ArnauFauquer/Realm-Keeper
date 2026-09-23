@@ -62,8 +62,14 @@ class NoteSaveRequest(BaseModel):
     content: str
 
 
+# Editor-only: the verbatim file (frontmatter included) is what the edit
+# form loads, and it would otherwise hand out hidden (ignore-tagged) notes.
 @router.get("/note-raw/{note_path:path}")
-async def get_note_raw(note_path: str, service: MarkdownService = Depends(get_markdown_service)):
+async def get_note_raw(
+    note_path: str,
+    user: dict = Depends(require_auth),
+    service: MarkdownService = Depends(get_markdown_service),
+):
     normalized_path = note_path.strip('/')
     try:
         content = service.get_raw_content(normalized_path)
@@ -104,7 +110,8 @@ async def get_all_tags(service: MarkdownService = Depends(get_markdown_service))
     try:
         return service.get_all_tags()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting tags: {str(e)}")
+        logger.error(f"Error getting tags: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/container-folders", response_model=Dict[str, Optional[str]])
 async def get_container_folders(service: MarkdownService = Depends(get_markdown_service)):
@@ -112,7 +119,7 @@ async def get_container_folders(service: MarkdownService = Depends(get_markdown_
         return service.get_container_folders()
     except Exception as e:
         logger.error(f"Error getting container folders: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error getting container folders: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @router.get("/graph/all")
 async def get_graph_data(service: MarkdownService = Depends(get_markdown_service)):
@@ -120,4 +127,4 @@ async def get_graph_data(service: MarkdownService = Depends(get_markdown_service
         return service.get_graph_data()
     except Exception as e:
         logger.error(f"Error generating graph: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error generating graph: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")

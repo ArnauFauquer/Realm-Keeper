@@ -1,4 +1,5 @@
 import asyncio
+import os
 import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,8 @@ from routes.asset_library import router as asset_library_router
 from config.settings import settings
 from config.logging import setup_logging
 from config.cache import CacheControlMiddleware
+from config.csrf import OriginCheckMiddleware
+from services.git_sync_utils import redact_credentials
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
@@ -53,9 +56,9 @@ def sync_vault() -> None:
                 capture_output=True, text=True, timeout=120
             )
             if result.returncode == 0:
-                logger.info(f"Vault sync successful: {result.stdout.strip()}")
+                logger.info(f"Vault sync successful: {redact_credentials(result.stdout.strip())}")
             else:
-                logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
+                logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
         else:
             # /vault may exist but be non-empty (e.g. created by mkdir elsewhere).
             # Clone into a temp sibling dir then replace to avoid the
@@ -64,7 +67,7 @@ def sync_vault() -> None:
             if tmp_path.exists():
                 shutil.rmtree(tmp_path)
 
-            logger.info(f"Cloning vault from {repo_url} into {tmp_path}...")
+            logger.info(f"Cloning vault from {redact_credentials(repo_url)} into {tmp_path}...")
             result = subprocess.run(
                 ["git", "clone", repo_url, str(tmp_path)],
                 capture_output=True, text=True, timeout=300
@@ -83,13 +86,13 @@ def sync_vault() -> None:
                 shutil.rmtree(tmp_path)
                 logger.info("Vault sync successful.")
             else:
-                logger.error(f"Vault sync failed (exit {result.returncode}): {result.stderr.strip()}")
+                logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
                 if tmp_path.exists():
                     shutil.rmtree(tmp_path)
     except subprocess.TimeoutExpired:
         logger.error("Vault sync timed out.")
     except Exception as e:
-        logger.error(f"Vault sync error: {e}", exc_info=True)
+        logger.error(f"Vault sync error: {redact_credentials(str(e))}")
 
 
 async def _periodic_sync():
@@ -116,11 +119,16 @@ async def lifespan(app: FastAPI):
         pass
 
 
+if settings.ENABLE_AUTH and not os.getenv("SESSION_SECRET_KEY"):
+    logger.warning("SESSION_SECRET_KEY is not set: using a random per-process key (sessions reset on restart).")
+
 app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
 
 cors_origins = settings.CORS_ALLOWED_ORIGINS
 
 app.add_middleware(CacheControlMiddleware)
+
+app.add_middleware(OriginCheckMiddleware, allowed_origins=[*cors_origins, settings.FRONTEND_URL])
 
 app.add_middleware(
     CORSMiddleware,

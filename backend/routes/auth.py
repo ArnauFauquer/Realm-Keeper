@@ -59,6 +59,12 @@ async def callback(request: Request):
     email = userinfo.get("email", "")
     name = userinfo.get("name", "")
 
+    # An unverified address is just a claim — never match it against the
+    # allowlist.
+    if userinfo.get("email_verified") is not True:
+        logger.warning(f"Rejected login attempt for {email!r} (email not verified)")
+        return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
+
     if not is_email_allowed(email):
         logger.warning(f"Rejected login attempt for {email!r} (not on allowlist)")
         return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
@@ -89,5 +95,7 @@ async def me(request: Request):
 @router.post("/logout")
 async def logout():
     response = Response(status_code=204)
-    response.delete_cookie(SESSION_COOKIE_NAME)
+    response.delete_cookie(
+        SESSION_COOKIE_NAME, httponly=True, secure=settings.SESSION_COOKIE_SECURE, samesite="lax",
+    )
     return response

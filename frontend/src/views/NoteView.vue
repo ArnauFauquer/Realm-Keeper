@@ -114,6 +114,7 @@ import mermaid from 'mermaid'
 import { getCached, post, put, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
+import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { renderCallouts } from '@/utils/callouts'
 import { h, render } from 'vue'
 import { parseInlineRef, renderInlineRef } from '@/utils/inlineRefs'
@@ -220,7 +221,7 @@ export default {
   computed: {
     draftPreviewHtml() {
       if (!this.draftContent.trim()) return '<p class="preview-empty">Nothing to preview yet.</p>'
-      return this.md.render(this.draftContent)
+      return sanitizeHtml(this.md.render(this.draftContent))
     },
     breadcrumbs() {
       if (!this.note || !this.note.id || !this.containerFolders) return []
@@ -266,7 +267,7 @@ export default {
       html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
         return `<a href="/note/${linkId}" data-note-link="${linkId}"`
       })
-      return html
+      return sanitizeHtml(html)
     }
   },
   methods: {
