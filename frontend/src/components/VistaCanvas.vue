@@ -314,8 +314,12 @@ function loadBackgroundNaturalSize(url) {
 }
 watch(() => props.vista.background_url, loadBackgroundNaturalSize, { immediate: true })
 
+// Quoted: asset library keys keep their original names ("Hijos Del Fango/…"),
+// and an unquoted CSS url() with a space is invalid, dropping the background.
 const backgroundStyle = computed(() => ({
-  backgroundImage: props.vista.background_url ? `url(${resolveUrl(props.vista.background_url)})` : 'none',
+  backgroundImage: props.vista.background_url
+    ? `url("${resolveUrl(props.vista.background_url).replace(/["\\]/g, '\\$&')}")`
+    : 'none',
   backgroundPositionY: `${props.vista.background_offset_y ?? 50}%`
 }))
 
