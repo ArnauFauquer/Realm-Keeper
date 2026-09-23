@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.75](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.74...v0.1.75) (2026-09-23)
+
+
+### Bug Fixes
+
+* quote vista background url so asset keys with spaces render ([#9](https://github.com/ArnauFauquer/Realm-Keeper/issues/9)) ([a974b7f](https://github.com/ArnauFauquer/Realm-Keeper/commit/a974b7f83cff54b206158eb5dcc14da97ade6a70))
+
 ## [0.1.74](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.73...v0.1.74) (2026-09-23)
 
 
