@@ -21,12 +21,11 @@ class VistaAsset(BaseModel):
     # Base width, as a percentage of the canvas width, when standing at the
     # closest possible point (y = 100, the bottom edge of the stage).
     width_pct: float = 20.0
-    # Depth override, in percentage points of stage height, added to y when
-    # deciding draw order (never size, which always follows y). Lets an asset
-    # on a raised surface (balcony, cliff, rooftop), whose foot sits higher on
-    # screen, still be layered in front of assets it's actually nearer than.
-    # Relative to y so moving the asset keeps the same forced depth.
-    depth_offset: float = 0.0
+    # How far the asset is drawn above its ground point (x, y), in percentage
+    # points of stage height. Size and draw order still come from y, so an
+    # asset standing on a balcony, stairs or a cliff keeps its proportions
+    # relative to the others instead of shrinking toward the vanishing point.
+    elevation: float = 0.0
     flip_h: bool = False
     rotation: float = 0.0
     opacity: float = 1.0

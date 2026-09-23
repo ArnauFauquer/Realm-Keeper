@@ -31,7 +31,7 @@
           @pointerdown="startBackgroundPan"
         ></div>
 
-        <!-- Assets, painter's-algorithm ordered by depth (y + any forced depth_offset): farther behind, nearer in front -->
+        <!-- Assets, painter's-algorithm ordered: farther (smaller y) behind, nearer (larger y) in front -->
         <div
           v-for="asset in orderedAssets"
           :key="asset.id"
@@ -82,20 +82,21 @@
           </div>
         </div>
 
-        <!-- Perspective handle: sits beside the selected asset at the depth
-             its draw order is derived from. Dragging it vertically forces that
-             depth (in front of / behind other assets) without moving or
-             resizing the asset itself. -->
+        <!-- Elevation handle: sits beside the selected asset's drawn foot.
+             Dragging it vertically raises/lowers the asset on screen without
+             changing its ground point, so its size and layering stay the
+             same — for assets standing at different heights (balconies,
+             stairs, cliffs) around the same vanishing point. -->
         <template v-if="editable && selectedAsset">
-          <div class="perspective-guide" :style="perspectiveGuideStyle"></div>
+          <div class="elevation-guide" :style="elevationGuideStyle"></div>
           <div
-            class="perspective-handle"
-            :class="{ forced: selectedAsset.depth_offset }"
-            :style="perspectiveHandleStyle"
-            title="Drag vertically to force depth order (double-click to reset)"
-            @pointerdown.stop="startDrag('perspective', selectedAsset.id)"
+            class="elevation-handle"
+            :class="{ raised: selectedAsset.elevation }"
+            :style="elevationHandleStyle"
+            title="Drag vertically to raise/lower without resizing (double-click to reset)"
+            @pointerdown.stop="startDrag('elevation', selectedAsset.id)"
             @click.stop="justDragged = false"
-            @dblclick.stop="resetPerspective(selectedAsset)"
+            @dblclick.stop="resetElevation(selectedAsset)"
             @mousedown.stop.prevent
             @touchstart.stop
           ></div>
@@ -345,47 +346,49 @@ function scaleForY(y) {
   return MIN_SCALE + (1 - MIN_SCALE) * ratio
 }
 
-// The depth an asset is layered at: its foot y, shifted by any forced
-// depth_offset (see the perspective handle). Only affects draw order — size
-// always follows the foot y, so forcing depth never resizes anything.
-function depthY(asset) {
-  return clamp(asset.y + (asset.depth_offset ?? 0), 0, GROUND_Y)
+// Where an asset is actually drawn: its ground point y, lifted by any
+// elevation (see the elevation handle). Size and draw order always come from
+// y, so raising an asset onto a balcony/cliff keeps its proportions relative
+// to the others instead of shrinking it toward the vanishing point.
+function displayY(asset) {
+  return clamp(asset.y - (asset.elevation ?? 0), 0, 100)
 }
 
 function assetStyle(asset) {
   const widthPct = asset.width_pct * scaleForY(asset.y)
   return {
     left: `${asset.x}%`,
-    top: `${asset.y}%`,
+    top: `${displayY(asset)}%`,
     width: `${widthPct}%`,
-    zIndex: 100 + Math.round(depthY(asset) * 10)
+    zIndex: 100 + Math.round(asset.y * 10)
   }
 }
 
-// Gap, in px, between the asset's left edge and the perspective handle —
-// the left side, since the scale handle already sits on the bottom-right.
-const PERSPECTIVE_HANDLE_GAP = 14
+// Gap, in px, between the asset's left edge and the elevation handle — the
+// left side, since the scale handle already sits on the bottom-right.
+const ELEVATION_HANDLE_GAP = 14
 
-function perspectiveHandleX(asset) {
+function elevationHandleX(asset) {
   const halfWidthPct = (asset.width_pct * scaleForY(asset.y)) / 2
-  return `calc(${asset.x - halfWidthPct}% - ${PERSPECTIVE_HANDLE_GAP}px)`
+  return `calc(${asset.x - halfWidthPct}% - ${ELEVATION_HANDLE_GAP}px)`
 }
 
-const perspectiveHandleStyle = computed(() => {
+// The handle rides at the asset's drawn foot, so dragging it moves the asset.
+const elevationHandleStyle = computed(() => {
   const asset = selectedAsset.value
   if (!asset) return {}
-  return { left: perspectiveHandleX(asset), top: `${depthY(asset)}%` }
+  return { left: elevationHandleX(asset), top: `${displayY(asset)}%` }
 })
 
-// Dashed line from the asset's foot to the handle, so a forced depth is
-// visible at a glance (zero height when there's no override).
-const perspectiveGuideStyle = computed(() => {
+// Dashed line from the drawn foot down to the ground point its size comes
+// from, so an elevation is visible at a glance (zero height when there's none).
+const elevationGuideStyle = computed(() => {
   const asset = selectedAsset.value
   if (!asset) return {}
   const a = asset.y
-  const b = depthY(asset)
+  const b = displayY(asset)
   return {
-    left: perspectiveHandleX(asset),
+    left: elevationHandleX(asset),
     top: `${Math.min(a, b)}%`,
     height: `${Math.abs(b - a)}%`
   }
@@ -408,7 +411,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
-const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => depthY(a) - depthY(b)))
+const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => a.y - b.y))
 
 const vanishingPointStyle = computed(() => ({
   left: `${props.vista.vanishing_point?.x ?? 50}%`,
@@ -509,7 +512,7 @@ function onStageClick(evt) {
   const item = pendingLibraryItem.value
   const asset = {
     id: uuid(), name: item.name, image_url: item.image_url, x: pos.x, y: pos.y,
-    width_pct: 20, depth_offset: 0, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
+    width_pct: 20, elevation: 0, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
   }
   props.vista.assets.push(asset)
   pendingLibraryItem.value = null
@@ -641,10 +644,12 @@ function onPointerMove(evt) {
 
   if (dragState.kind === 'asset') {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
-    if (asset) { asset.x = pos.x; asset.y = pos.y }
-  } else if (dragState.kind === 'perspective') {
+    // The cursor tracks the drawn foot, so the ground point follows it at the
+    // same elevation (a raised asset stays raised as it's moved around).
+    if (asset) { asset.x = pos.x; asset.y = clamp(pos.y + (asset.elevation ?? 0), 0, 100) }
+  } else if (dragState.kind === 'elevation') {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
-    if (asset) asset.depth_offset = pos.y - asset.y
+    if (asset) asset.elevation = asset.y - pos.y
   } else if (dragState.kind === 'vanishingPoint') {
     props.vista.vanishing_point.x = pos.x
     props.vista.vanishing_point.y = pos.y
@@ -670,14 +675,14 @@ function toggleFlip(asset) {
   emitChange()
 }
 
-function resetPerspective(asset) {
-  asset.depth_offset = 0
+function resetElevation(asset) {
+  asset.elevation = 0
   emitChange()
 }
 
 function resetAsset(asset) {
   asset.width_pct = 20
-  asset.depth_offset = 0
+  asset.elevation = 0
   asset.flip_h = false
   asset.rotation = 0
   asset.opacity = 1
@@ -733,7 +738,7 @@ function resetAsset(asset) {
   position: absolute;
   overflow: hidden;
   /* Own stacking context: assets get depth-based z-indexes up to ~1100 (and
-     the perspective handle 2000), which would otherwise outrank the toolbar
+     the elevation handle 2000), which would otherwise outrank the toolbar
      and selection panel (600) and swallow clicks meant for them. */
   z-index: 0;
 }
@@ -850,7 +855,7 @@ function resetAsset(asset) {
   cursor: ns-resize;
 }
 
-.perspective-handle {
+.elevation-handle {
   position: absolute;
   width: 16px;
   height: 16px;
@@ -864,11 +869,11 @@ function resetAsset(asset) {
   touch-action: none;
 }
 
-.perspective-handle.forced {
+.elevation-handle.raised {
   background: #fbbf24;
 }
 
-.perspective-guide {
+.elevation-guide {
   position: absolute;
   width: 0;
   border-left: 2px dashed rgba(251, 191, 36, 0.7);
