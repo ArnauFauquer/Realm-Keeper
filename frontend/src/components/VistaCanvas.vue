@@ -31,15 +31,16 @@
           @pointerdown="startBackgroundPan"
         ></div>
 
-        <!-- Assets, painter's-algorithm ordered: farther (smaller y) behind, nearer (larger y) in front -->
+        <!-- Assets, painter's-algorithm ordered by depth (y + any forced depth_offset): farther behind, nearer in front -->
         <div
           v-for="asset in orderedAssets"
           :key="asset.id"
           class="vista-asset"
           :class="{ selected: selectedId === asset.id, 'no-image': !asset.image_url }"
+          :data-asset-id="asset.id"
           :style="assetStyle(asset)"
-          @pointerdown.stop="editable && startDrag('asset', asset.id)"
-          @click.stop="onAssetClick(asset)"
+          @pointerdown.stop="editable && onAssetPointerDown($event, asset)"
+          @click.stop="onAssetClick($event, asset)"
           @mousedown.stop.prevent
           @touchstart.stop
         >
@@ -80,6 +81,25 @@
             </template>
           </div>
         </div>
+
+        <!-- Perspective handle: sits beside the selected asset at the depth
+             its draw order is derived from. Dragging it vertically forces that
+             depth (in front of / behind other assets) without moving or
+             resizing the asset itself. -->
+        <template v-if="editable && selectedAsset">
+          <div class="perspective-guide" :style="perspectiveGuideStyle"></div>
+          <div
+            class="perspective-handle"
+            :class="{ forced: selectedAsset.depth_offset }"
+            :style="perspectiveHandleStyle"
+            title="Drag vertically to force depth order (double-click to reset)"
+            @pointerdown.stop="startDrag('perspective', selectedAsset.id)"
+            @click.stop="justDragged = false"
+            @dblclick.stop="resetPerspective(selectedAsset)"
+            @mousedown.stop.prevent
+            @touchstart.stop
+          ></div>
+        </template>
 
         <!-- Vanishing point marker -->
         <div
@@ -321,15 +341,51 @@ function scaleForY(y) {
   return MIN_SCALE + (1 - MIN_SCALE) * ratio
 }
 
+// The depth an asset is layered at: its foot y, shifted by any forced
+// depth_offset (see the perspective handle). Only affects draw order — size
+// always follows the foot y, so forcing depth never resizes anything.
+function depthY(asset) {
+  return clamp(asset.y + (asset.depth_offset ?? 0), 0, GROUND_Y)
+}
+
 function assetStyle(asset) {
   const widthPct = asset.width_pct * scaleForY(asset.y)
   return {
     left: `${asset.x}%`,
     top: `${asset.y}%`,
     width: `${widthPct}%`,
-    zIndex: 100 + Math.round(asset.y * 10)
+    zIndex: 100 + Math.round(depthY(asset) * 10)
   }
 }
+
+// Gap, in px, between the asset's left edge and the perspective handle —
+// the left side, since the scale handle already sits on the bottom-right.
+const PERSPECTIVE_HANDLE_GAP = 14
+
+function perspectiveHandleX(asset) {
+  const halfWidthPct = (asset.width_pct * scaleForY(asset.y)) / 2
+  return `calc(${asset.x - halfWidthPct}% - ${PERSPECTIVE_HANDLE_GAP}px)`
+}
+
+const perspectiveHandleStyle = computed(() => {
+  const asset = selectedAsset.value
+  if (!asset) return {}
+  return { left: perspectiveHandleX(asset), top: `${depthY(asset)}%` }
+})
+
+// Dashed line from the asset's foot to the handle, so a forced depth is
+// visible at a glance (zero height when there's no override).
+const perspectiveGuideStyle = computed(() => {
+  const asset = selectedAsset.value
+  if (!asset) return {}
+  const a = asset.y
+  const b = depthY(asset)
+  return {
+    left: perspectiveHandleX(asset),
+    top: `${Math.min(a, b)}%`,
+    height: `${Math.abs(b - a)}%`
+  }
+})
 
 function imageStyle(asset) {
   const flip = asset.flip_h ? -1 : 1
@@ -348,7 +404,7 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
-const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => a.y - b.y))
+const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => depthY(a) - depthY(b)))
 
 const vanishingPointStyle = computed(() => ({
   left: `${props.vista.vanishing_point?.x ?? 50}%`,
@@ -449,7 +505,7 @@ function onStageClick(evt) {
   const item = pendingLibraryItem.value
   const asset = {
     id: uuid(), name: item.name, image_url: item.image_url, x: pos.x, y: pos.y,
-    width_pct: 20, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
+    width_pct: 20, depth_offset: 0, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
   }
   props.vista.assets.push(asset)
   pendingLibraryItem.value = null
@@ -458,11 +514,45 @@ function onStageClick(evt) {
   selectedId.value = asset.id
 }
 
-function onAssetClick(asset) {
-  if (justDragged) { justDragged = false; return }
-  if (props.editable) {
-    selectedId.value = asset.id
+// Ids of every asset whose box covers a screen point, topmost first — the
+// same stacking the browser uses to decide which one a click lands on.
+function assetIdsAt(clientX, clientY) {
+  const ids = []
+  for (const el of document.elementsFromPoint(clientX, clientY)) {
+    const id = el.closest('.vista-asset')?.dataset.assetId
+    if (id && !ids.includes(id)) ids.push(id)
   }
+  return ids
+}
+
+// Set on pointerdown when the press lands on the already-selected asset, so
+// the click that follows (if it wasn't a drag) cycles to the next asset
+// behind it instead of reselecting the same one.
+let pressedOnSelected = false
+
+function onAssetPointerDown(evt, asset) {
+  // With a background asset selected, a press where a foreground asset
+  // overlaps it should still grab the selected one, otherwise it could be
+  // selected by cycling but never dragged.
+  const ids = assetIdsAt(evt.clientX, evt.clientY)
+  pressedOnSelected = !!selectedId.value && ids.includes(selectedId.value)
+  startDrag('asset', pressedOnSelected ? selectedId.value : asset.id)
+}
+
+function onAssetClick(evt, asset) {
+  if (justDragged) { justDragged = false; return }
+  if (!props.editable) return
+  if (pressedOnSelected) {
+    // Click again on the selection → step one layer deeper, wrapping back
+    // to the front after the backmost asset under the cursor.
+    const ids = assetIdsAt(evt.clientX, evt.clientY)
+    const idx = ids.indexOf(selectedId.value)
+    if (ids.length > 1 && idx !== -1) {
+      selectedId.value = ids[(idx + 1) % ids.length]
+      return
+    }
+  }
+  selectedId.value = asset.id
 }
 
 function startDrag(kind, id) {
@@ -548,6 +638,9 @@ function onPointerMove(evt) {
   if (dragState.kind === 'asset') {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset) { asset.x = pos.x; asset.y = pos.y }
+  } else if (dragState.kind === 'perspective') {
+    const asset = props.vista.assets.find(a => a.id === dragState.id)
+    if (asset) asset.depth_offset = pos.y - asset.y
   } else if (dragState.kind === 'vanishingPoint') {
     props.vista.vanishing_point.x = pos.x
     props.vista.vanishing_point.y = pos.y
@@ -573,8 +666,14 @@ function toggleFlip(asset) {
   emitChange()
 }
 
+function resetPerspective(asset) {
+  asset.depth_offset = 0
+  emitChange()
+}
+
 function resetAsset(asset) {
   asset.width_pct = 20
+  asset.depth_offset = 0
   asset.flip_h = false
   asset.rotation = 0
   asset.opacity = 1
@@ -629,6 +728,10 @@ function resetAsset(asset) {
 .stage-frame {
   position: absolute;
   overflow: hidden;
+  /* Own stacking context: assets get depth-based z-indexes up to ~1100 (and
+     the perspective handle 2000), which would otherwise outrank the toolbar
+     and selection panel (600) and swallow clicks meant for them. */
+  z-index: 0;
 }
 
 .stage-background {
@@ -741,6 +844,33 @@ function resetAsset(asset) {
   right: 0;
   transform: translate(50%, 50%);
   cursor: ns-resize;
+}
+
+.perspective-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(12, 13, 29, 0.85);
+  border: 2px solid #fbbf24;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  transform: translate(-50%, -50%);
+  cursor: ns-resize;
+  z-index: 2000;
+  touch-action: none;
+}
+
+.perspective-handle.forced {
+  background: #fbbf24;
+}
+
+.perspective-guide {
+  position: absolute;
+  width: 0;
+  border-left: 2px dashed rgba(251, 191, 36, 0.7);
+  transform: translateX(-1px);
+  pointer-events: none;
+  z-index: 1999;
 }
 
 .vanishing-point {
