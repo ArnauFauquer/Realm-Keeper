@@ -28,6 +28,11 @@ const ANGULAR_DAMPING = 0.2
 const REST_LINEAR_SPEED = 0.15
 const REST_ANGULAR_SPEED = 0.35
 const REST_TIME = 0.25
+// A die jittering in place - wedged against another die or a wall - can keep
+// a high instantaneous speed while going nowhere, so a die that stays within
+// these of where its rest window began also counts as at rest.
+const STILL_DISTANCE = 0.03
+const STILL_ANGLE = 0.05
 // Simulated seconds after which dice still moving get heavy damping, so a
 // die spinning on a vertex or rocking on an edge stops instead of stalling
 // the result. The corrective nudge is only a small hop, so it gets less.
@@ -45,9 +50,10 @@ function spawnDie(world, { sides, variant, index, theme }) {
   const shape = convexShapeForGeometry(cacheKey, geometry)
 
   const angle = index * GOLDEN_ANGLE + (Math.random() - 0.5) * 0.6
-  const dist = 0.6 + Math.random() * (world.trayHalfSize * 0.5)
-  const x = Math.cos(angle) * dist
-  const z = Math.sin(angle) * dist
+  // Somewhere in the middle of the tray, following its shape.
+  const dist = 0.16 + Math.random() * 0.5
+  const x = Math.cos(angle) * dist * world.trayHalf.x
+  const z = Math.sin(angle) * dist * world.trayHalf.z
   const y = 4.5 + (index % SPAWN_LAYERS) * 0.6
 
   const body = new CANNON.Body({ mass: 1, position: new CANNON.Vec3(x, y, z), shape })
@@ -109,6 +115,19 @@ function isSlow(body) {
     body.angularVelocity.length() < REST_ANGULAR_SPEED
 }
 
+function hasMoved(body, anchor) {
+  if (body.position.distanceTo(anchor.position) > STILL_DISTANCE) return true
+  const dot = Math.min(1, Math.abs(
+    body.quaternion.x * anchor.quaternion.x + body.quaternion.y * anchor.quaternion.y +
+    body.quaternion.z * anchor.quaternion.z + body.quaternion.w * anchor.quaternion.w
+  ))
+  return 2 * Math.acos(dot) > STILL_ANGLE
+}
+
+function anchorOf(body) {
+  return { position: body.position.clone(), quaternion: body.quaternion.clone() }
+}
+
 /**
  * Resolves once every die has been at rest for REST_TIME (then freezes it,
  * so a die bumped later can't change what was read), checked after each
@@ -122,6 +141,7 @@ function waitForSettle(world, entries, { timeoutMs = 4500, assistAfter = ASSIST_
     // A die that is already asleep (settled in an earlier wait) counts as at
     // rest straight away - it only holds things up if something wakes it.
     const restFor = new Map(entries.map(e => [e.body, e.body.sleepState === CANNON.Body.SLEEPING ? REST_TIME : 0]))
+    const anchors = new Map(entries.map(e => [e.body, anchorOf(e.body)]))
     let elapsed = 0
     let assisted = false
     let settled = false
@@ -143,7 +163,9 @@ function waitForSettle(world, entries, { timeoutMs = 4500, assistAfter = ASSIST_
 
       let allAtRest = true
       restFor.forEach((t, body) => {
-        const atRest = body.sleepState === CANNON.Body.SLEEPING || isSlow(body)
+        const moved = hasMoved(body, anchors.get(body))
+        if (moved) anchors.set(body, anchorOf(body))
+        const atRest = body.sleepState === CANNON.Body.SLEEPING || isSlow(body) || !moved
         const next = atRest ? t + dt : 0
         restFor.set(body, next)
         if (next < REST_TIME) allAtRest = false
