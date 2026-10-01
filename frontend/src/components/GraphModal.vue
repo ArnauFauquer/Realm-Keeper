@@ -1,28 +1,38 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
-    <div class="modal-content graph-modal-content">
-      <div class="modal-header">
-        <h2>Knowledge Graph</h2>
-        <button class="close-btn" @click="closeModal">
+  <div v-if="isOpen" class="rk-scrim" @click.self="closeModal">
+    <div class="rk-dialog graph-modal-content" role="dialog" aria-modal="true" aria-labelledby="graph-modal-title">
+      <div class="rk-dialog__header">
+        <h2 id="graph-modal-title" class="rk-dialog__title"><span class="mdi mdi-graph-outline"></span> Knowledge Graph</h2>
+        <button class="rk-icon-btn" aria-label="Close graph" @click="closeModal">
           <span class="mdi mdi-close"></span>
         </button>
       </div>
-      <div class="modal-body graph-body">
+      <div class="graph-body">
         <div class="graph-view">
-    <div v-if="loading" class="loading">
+    <div v-if="loading" class="graph-state" role="status">
+      <span class="rk-spinner rk-spinner--lg"></span>
       <p>Loading graph...</p>
     </div>
-    
-    <div v-else-if="error" class="error">
-      <p>{{ error }}</p>
+
+    <div v-else-if="error" class="graph-state">
+      <div class="rk-alert" role="alert">
+        <span class="mdi mdi-alert-circle-outline"></span>
+        <span>{{ error }}</span>
+      </div>
     </div>
-    
+
+    <div v-else-if="!nodes.length" class="graph-state rk-empty">
+      <span class="mdi mdi-graph-outline"></span>
+      <p>No notes to map yet.</p>
+      <p class="rk-hint">Create notes and link them with [[wiki links]] to grow the constellation.</p>
+    </div>
+
     <div v-else class="graph-container">
       <canvas ref="starCanvas" class="star-canvas"></canvas>
       <svg ref="svg" class="graph-svg"></svg>
-      
+
       <!-- Mobile toggle button -->
-      <button 
+      <button
         class="graph-info-toggle"
         :class="{ 'is-open': showGraphInfo }"
         @click="showGraphInfo = !showGraphInfo"
@@ -30,16 +40,16 @@
       >
         <span class="mdi mdi-information-outline"></span>
       </button>
-      
+
       <div class="graph-info" :class="{ 'is-open': showGraphInfo }">
         <p>{{ nodes.length }} notes | {{ links.length }} connections</p>
-        <button @click="showTypeStats = !showTypeStats" class="stats-toggle">
-          {{ showTypeStats ? '▼' : '▶' }} Tipos
+        <button @click="showTypeStats = !showTypeStats" class="stats-toggle" :aria-expanded="showTypeStats">
+          <span class="mdi" :class="showTypeStats ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span> Tipos
         </button>
         <div v-if="showTypeStats" class="type-stats">
-          <div 
-            v-for="(count, type) in typeStatistics" 
-            :key="type" 
+          <div
+            v-for="(count, type) in typeStatistics"
+            :key="type"
             class="type-stat-item"
             :class="{ 'is-selected': highlightedType === type }"
             @click="toggleTypeHighlight(type)"
@@ -50,9 +60,9 @@
           </div>
         </div>
       </div>
-      
+
       <!-- Settings toggle button -->
-      <button 
+      <button
         class="graph-settings-toggle"
         :class="{ 'is-open': showForceSettings }"
         @click="showForceSettings = !showForceSettings"
@@ -61,31 +71,31 @@
       >
         <span class="mdi mdi-cog"></span>
       </button>
-      
+
       <div class="graph-settings" :class="{ 'is-open': showForceSettings }">
         <div class="settings-header">
           <h4>Layout Settings</h4>
-          <button class="close-btn" @click="showForceSettings = false">
+          <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Close layout settings" @click="showForceSettings = false">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
-        
+
         <div class="setting-group">
           <div class="setting-label">
-            <label>Link Distance</label>
+            <label for="graph-link-distance">Link Distance</label>
             <span>{{ forceSettings.linkDistance }}</span>
           </div>
-          <input type="range" min="1" max="150" v-model.number="forceSettings.linkDistance" @input="updateForces">
+          <input id="graph-link-distance" type="range" min="1" max="150" v-model.number="forceSettings.linkDistance" @input="updateForces">
         </div>
-        
+
         <div class="setting-group">
           <div class="setting-label">
-            <label>Node Repulsion</label>
+            <label for="graph-charge">Node Repulsion</label>
             <span>{{ Math.abs(forceSettings.chargeStrength) }}</span>
           </div>
-          <input type="range" min="10" max="1000" :value="Math.abs(forceSettings.chargeStrength)" @input="updateChargeStrength($event.target.value)">
+          <input id="graph-charge" type="range" min="10" max="1000" :value="Math.abs(forceSettings.chargeStrength)" @input="updateChargeStrength($event.target.value)">
         </div>
-        
+
 
       </div>
     </div>
@@ -505,71 +515,15 @@ export default {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Shell comes from .rk-scrim / .rk-dialog; only the canvas size lives here. */
+.graph-modal-content {
+  width: min(100%, 1400px);
+  height: 90dvh;
 }
 
-.modal-content.graph-modal-content {
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  width: 95vw;
-  max-width: 1400px;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: var(--text-primary);
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.close-btn .mdi {
-  font-size: 1.5rem;
-}
-
-.modal-body.graph-body {
+.graph-body {
   flex: 1;
-  padding: 0;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -582,19 +536,23 @@ export default {
   background: transparent;
 }
 
-.loading, .error {
+.graph-state {
   flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  gap: var(--space-3);
+  padding: var(--space-6);
   color: var(--text-secondary);
+  font-size: var(--text-sm);
 }
 
-.error {
-  color: var(--status-error);
+.graph-state .rk-alert {
+  max-width: 480px;
 }
 
+/* Deep-space backdrop is part of the constellation art, kept literal. */
 .graph-container {
   flex: 1;
   position: relative;
@@ -622,113 +580,113 @@ export default {
   pointer-events: none;
 }
 
+/* ── Floating panels ───────────────────────────────────────────── */
+.graph-info,
+.graph-settings {
+  background: var(--surface-chrome);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--accent-a30);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
 .graph-info {
   position: absolute;
-  bottom: 1.5rem;
-  left: 1.5rem;
-  background: rgba(12, 13, 29, 0.9);
-  backdrop-filter: blur(12px);
-  padding: 1rem;
-  border-radius: 12px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  box-shadow: 0 4px 16px rgba(75, 0, 130, 0.4);
+  bottom: var(--space-6);
+  left: var(--space-6);
+  z-index: var(--z-raised);
   min-width: 220px;
-  border: 1px solid rgba(138, 92, 245, 0.3);
+  padding: var(--space-4);
 }
 
 .graph-info p {
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 var(--space-3) 0;
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 1rem;
+  font-size: var(--text-md);
 }
 
 .stats-toggle {
-  background: transparent;
-  border: none;
-  padding: 0.5rem;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: var(--interactive-primary);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-1);
   width: 100%;
-  text-align: left;
-  transition: all 0.2s ease;
-  border-radius: 6px;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--accent-hover);
+  font-size: var(--text-sm);
   font-weight: 500;
+  text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 .stats-toggle:hover {
-  background: var(--interactive-secondary);
-  color: var(--interactive-primaryHover);
+  background: var(--hover-tint);
+  color: var(--accent-soft);
+}
+
+.stats-toggle:active {
+  background: var(--accent-a20);
 }
 
 .type-stats {
-  margin-top: 0.75rem;
-  padding-top: 0.75rem;
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
   border-top: 1px solid var(--border-light);
   max-height: 300px;
   overflow-y: auto;
-}
-
-.type-stats::-webkit-scrollbar {
-  width: 6px;
-}
-
-.type-stats::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.type-stats::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: 3px;
 }
 
 .type-stat-item {
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  padding: 0.375rem 0.5rem;
-  font-size: 0.875rem;
-  border-radius: 6px;
-  transition: all 0.15s ease;
-  cursor: pointer;
+  padding: 0.375rem var(--space-2);
   border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
 .type-stat-item:hover {
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
+}
+
+.type-stat-item:active {
+  background: var(--accent-a20);
 }
 
 .type-stat-item.is-selected {
-  background: rgba(138, 92, 245, 0.25);
-  border-color: rgba(138, 92, 245, 0.5);
+  background: var(--accent-a20);
+  border-color: var(--accent-a45);
 }
 
 .type-color {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--border-medium);
   flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-medium);
 }
 
 .type-name {
   flex: 1;
   color: var(--text-primary);
   font-style: italic;
-  font-size: 0.875rem;
 }
 
 .type-count {
-  color: var(--text-secondary);
-  font-weight: 600;
   min-width: 32px;
   text-align: right;
-  font-size: 0.875rem;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .graph-node {
@@ -742,99 +700,77 @@ export default {
   letter-spacing: 0.04em;
 }
 
-/* Mobile toggle button */
+/* ── Mobile info toggle ────────────────────────────────────────── */
 .graph-info-toggle {
   display: none;
   position: fixed;
-  bottom: calc(70px + 1rem + env(safe-area-inset-bottom, 0px));
-  left: 1.5rem;
-  z-index: 101;
+  bottom: calc(var(--mobile-bar-height) + var(--space-4) + env(safe-area-inset-bottom, 0px));
+  left: var(--space-6);
+  z-index: var(--z-sticky);
   width: 56px;
   height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(138, 92, 245, 0.4);
-  transition: all 0.3s ease;
   align-items: center;
   justify-content: center;
+  border: none;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+  box-shadow: var(--shadow-accent);
+  transition: transform var(--duration-base) var(--ease-out), background-color var(--duration-base) var(--ease-out);
 }
 
 .graph-info-toggle .mdi {
   font-size: 1.5rem;
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .graph-info-toggle:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(138, 92, 245, 0.5);
+}
+
+.graph-info-toggle:active {
+  transform: scale(0.95);
 }
 
 .graph-info-toggle.is-open {
-  background: rgba(31, 32, 69, 0.95);
+  background: var(--surface-raised-hover);
 }
 
-/* Mobile responsive styles */
-@media (max-width: 768px) {
-  .graph-info-toggle {
-    display: flex;
-  }
-
-  .graph-info {
-    position: fixed;
-    bottom: calc(70px + 5rem + env(safe-area-inset-bottom, 0px));
-    left: 1.5rem;
-    right: auto;
-    max-width: calc(100vw - 3rem);
-    min-width: 200px;
-    transform: scale(0);
-    transform-origin: bottom left;
-    opacity: 0;
-    pointer-events: none;
-    transition: all 0.3s ease;
-  }
-
-  .graph-info.is-open {
-    transform: scale(1);
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .type-stats {
-    max-height: 200px;
-  }
-}
-
+/* ── Settings ──────────────────────────────────────────────────── */
 .graph-settings-toggle {
   position: absolute;
-  top: 1.5rem;
-  right: 1.5rem;
-  z-index: 101;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: rgba(31, 32, 69, 0.8);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(138, 92, 245, 0.3);
-  cursor: pointer;
+  top: var(--space-6);
+  right: var(--space-6);
+  z-index: var(--z-sticky);
+  width: var(--control-lg);
+  height: var(--control-lg);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--accent-a30);
+  border-radius: var(--radius-full);
+  background: var(--surface-raised-hover);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--shadow-md);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .graph-settings-toggle .mdi {
   font-size: 1.25rem;
   color: var(--text-primary);
-  transition: transform 0.3s ease;
+  transition: transform var(--duration-base) var(--ease-out);
 }
 
 .graph-settings-toggle:hover {
-  background: rgba(45, 47, 95, 0.9);
+  border-color: var(--accent);
   transform: scale(1.05);
-  border-color: rgba(138, 92, 245, 0.6);
+}
+
+.graph-settings-toggle:active {
+  transform: scale(0.95);
 }
 
 .graph-settings-toggle.is-open .mdi {
@@ -843,25 +779,18 @@ export default {
 
 .graph-settings {
   position: absolute;
-  top: 4.5rem;
-  right: 1.5rem;
-  z-index: 100;
-  background: rgba(12, 13, 29, 0.9);
-  backdrop-filter: blur(12px);
-  padding: 1.25rem;
-  border-radius: 12px;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  top: calc(var(--space-6) + var(--control-lg) + var(--space-2));
+  right: var(--space-6);
+  z-index: var(--z-raised);
   min-width: 260px;
-  border: 1px solid rgba(138, 92, 245, 0.3);
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--space-5);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-10px);
-  transition: all 0.3s ease;
+  transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
 }
 
 .graph-settings.is-open {
@@ -874,51 +803,80 @@ export default {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border-medium);
-  padding-bottom: 0.75rem;
 }
 
 .settings-header h4 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: var(--text-md);
   font-weight: 600;
 }
 
 .setting-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .setting-label {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
 .setting-label span {
+  font-family: var(--font-mono);
   font-weight: 600;
-  color: var(--interactive-primaryHover);
+  color: var(--accent-hover);
 }
 
 .setting-group input[type="range"] {
   width: 100%;
-  accent-color: var(--interactive-primary);
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
 @media (max-width: 768px) {
-  .graph-settings-toggle {
-    top: 1rem;
-    right: 1rem;
+  .graph-info-toggle {
+    display: flex;
   }
-  
+
+  .graph-info {
+    position: fixed;
+    bottom: calc(var(--mobile-bar-height) + 5rem + env(safe-area-inset-bottom, 0px));
+    left: var(--space-6);
+    right: auto;
+    max-width: calc(100vw - 3rem);
+    min-width: 200px;
+    transform: scale(0);
+    transform-origin: bottom left;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-base) var(--ease-out), transform var(--duration-base) var(--ease-out);
+  }
+
+  .graph-info.is-open {
+    transform: scale(1);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .type-stats {
+    max-height: 200px;
+  }
+
+  .graph-settings-toggle {
+    top: var(--space-4);
+    right: var(--space-4);
+  }
+
   .graph-settings {
-    top: 4rem;
-    right: 1rem;
+    top: calc(var(--space-4) + var(--control-lg) + var(--space-2));
+    right: var(--space-4);
     max-width: calc(100vw - 2rem);
   }
 }

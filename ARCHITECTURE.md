@@ -13,6 +13,7 @@ Realm Keeper translates Obsidian/Markdown vaults to an interactive web platform.
 ### 2. Frontend (Vue 3 + Vite)
 - **`useNotes.js` Composable**: Fetches, filters, and paginates through parsed vault data. Abstracting logic previously contained in gigantic components.
 - **Node Tree / Graph View**: Renders the relationship mapping between extracted wiki-links and Markdown metadata computed using D3.js.
+- **Design system (`src/styles/`)**: `tokens.css` is the single source of colour, shape, spacing, motion and z-index layers; `base.css` provides the shared `rk-` UI primitives (buttons, inputs, dialogs, loading/empty/error states) that every component composes.
 
 ## Security Integrations
 - Hardened Assets Endpoints preventing `Path Traversal` and Sandbox Escaping (`.resolve()` bounded paths).

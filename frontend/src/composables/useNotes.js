@@ -61,6 +61,7 @@ export function useNotes() {
   const fetchNotes = async (searchQuery = '') => {
     try {
       loading.value = true
+      error.value = null
       currentPage.value = 0
       notes.value = []
       hasMore.value = true

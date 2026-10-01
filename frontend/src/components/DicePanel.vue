@@ -3,7 +3,7 @@
     <div class="dice-panel-card" @click.stop>
       <header class="panel-header">
         <h3>Roll dice</h3>
-        <button class="icon-btn" title="Clear selection" @click="resetCounts">
+        <button class="rk-icon-btn rk-icon-btn--sm" title="Clear selection" aria-label="Clear selection" @click="resetCounts">
           <span class="mdi mdi-backspace-outline"></span>
         </button>
       </header>
@@ -13,9 +13,9 @@
           <span class="mdi die-icon" :class="d.icon"></span>
           <span class="die-label">{{ d.label }}</span>
           <div class="stepper">
-            <button type="button" :disabled="counts[d.sides] === 0" @click="decrement(d.sides)">-</button>
+            <button type="button" :aria-label="`Remove one ${d.label}`" :disabled="counts[d.sides] === 0" @click="decrement(d.sides)">-</button>
             <span class="stepper-value">{{ counts[d.sides] }}</span>
-            <button type="button" @click="increment(d.sides)">+</button>
+            <button type="button" :aria-label="`Add one ${d.label}`" @click="increment(d.sides)">+</button>
           </div>
         </div>
       </div>
@@ -23,14 +23,14 @@
       <div class="modifier-row">
         <span>Modifier</span>
         <div class="stepper">
-          <button type="button" @click="modifier--">-</button>
+          <button type="button" aria-label="Decrease modifier" @click="modifier--">-</button>
           <span class="stepper-value">{{ modifier > 0 ? '+' : '' }}{{ modifier }}</span>
-          <button type="button" @click="modifier++">+</button>
+          <button type="button" aria-label="Increase modifier" @click="modifier++">+</button>
         </div>
       </div>
 
       <button
-        class="roll-btn"
+        class="roll-btn rk-btn rk-btn--primary rk-btn--block"
         type="button"
         :disabled="!hasSelection || state.isRolling"
         @click="rollQuickPick"
@@ -46,12 +46,13 @@
       <form class="formula-row" @submit.prevent="rollFormula">
         <input
           v-model="formulaText"
-          class="formula-input"
+          class="formula-input rk-input"
           type="text"
           placeholder="e.g. 4d8+5"
+          aria-label="Dice formula"
           :class="{ invalid: formulaText.trim() && !isFormulaValid }"
         />
-        <button type="submit" class="formula-submit" :disabled="!isFormulaValid || state.isRolling">
+        <button type="submit" class="formula-submit rk-icon-btn" aria-label="Roll formula" :disabled="!isFormulaValid || state.isRolling">
           <span class="mdi mdi-send"></span>
         </button>
       </form>
@@ -124,28 +125,30 @@ async function rollFormula() {
 .dice-panel-overlay {
   position: fixed;
   inset: 0;
-  z-index: 2150;
+  z-index: var(--z-floating);
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  padding: 1.5rem;
+  padding: var(--space-6);
   padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 .dice-panel-card {
   width: 280px;
   max-width: calc(100vw - 2rem);
-  max-height: calc(100vh - 7rem);
+  max-height: calc(100dvh - 7rem);
   overflow-y: auto;
-  background: rgba(18, 19, 42, 0.97);
+  background: var(--surface-overlay);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(138, 92, 245, 0.4);
-  border-radius: 12px;
-  padding: 1rem;
-  box-shadow: 0 10px 32px rgba(4, 2, 20, 0.55);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: var(--space-3);
+  animation: rk-rise var(--duration-base) var(--ease-out);
 }
 
 .panel-header {
@@ -155,54 +158,41 @@ async function rollFormula() {
 }
 
 .panel-header h3 {
-  font-size: 1rem;
+  font-size: var(--text-md);
   color: var(--text-primary);
-  margin: 0;
-}
-
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 6px;
-  display: flex;
-}
-
-.icon-btn:hover {
-  color: var(--text-primary);
-  background: rgba(138, 92, 245, 0.15);
 }
 
 .die-grid {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: var(--space-1);
 }
 
 .die-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  background: rgba(138, 92, 245, 0.08);
-  border: 1px solid rgba(138, 92, 245, 0.2);
-  border-radius: 8px;
-  padding: 0.35rem 0.5rem;
+  gap: var(--space-2);
+  background: var(--accent-a08);
+  border: 1px solid var(--accent-a20);
+  border-radius: var(--radius-md);
+  padding: 0.35rem var(--space-2);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
 }
 
 .die-row.active {
-  background: rgba(138, 92, 245, 0.22);
-  border-color: rgba(138, 92, 245, 0.5);
+  background: var(--accent-a20);
+  border-color: var(--accent-a45);
 }
 
 .die-icon {
   font-size: 1.1rem;
-  color: #c4b5fd;
+  color: var(--accent-soft);
 }
 
 .die-label {
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
   flex: 1;
 }
@@ -214,18 +204,20 @@ async function rollFormula() {
 }
 
 .stepper button {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  border: 1px solid rgba(138, 92, 245, 0.4);
-  background: rgba(138, 92, 245, 0.15);
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: var(--accent-a12);
   color: var(--text-primary);
-  cursor: pointer;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .stepper button:disabled {
@@ -234,13 +226,17 @@ async function rollFormula() {
 }
 
 .stepper button:hover:not(:disabled) {
-  background: rgba(138, 92, 245, 0.35);
+  background: var(--accent-a30);
+}
+
+.stepper button:active:not(:disabled) {
+  transform: scale(0.92);
 }
 
 .stepper-value {
   min-width: 1.4rem;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
@@ -249,40 +245,38 @@ async function rollFormula() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
 .roll-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 0.625rem;
-  border-radius: 8px;
-  border: none;
-  background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
-  color: white;
   font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.15s ease, opacity 0.15s ease;
+  /* Long formulas wrap instead of overflowing the card. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  line-height: var(--leading-tight);
+  padding-block: var(--space-2);
+  /* The roll keeps the dice button's gradient; starts on the deeper
+     violet so the white label clears AA. */
+  background: linear-gradient(135deg, var(--accent-strong) 0%, #6366f1 100%);
+  border: none;
 }
 
 .roll-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
+  background: linear-gradient(135deg, var(--accent-strong-hover) 0%, #6d70f3 100%);
 }
 
 .roll-btn:disabled {
   opacity: 0.4;
-  cursor: default;
 }
 
 .panel-divider {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
@@ -297,48 +291,36 @@ async function rollFormula() {
 
 .formula-row {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .formula-input {
   flex: 1;
   min-width: 0;
-  background: rgba(12, 13, 29, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 0.5rem 0.65rem;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  font-size: 1rem;
+  min-height: var(--control-md);
+  font-family: var(--font-mono);
 }
 
-.formula-input:focus {
-  outline: none;
-  border-color: rgba(138, 92, 245, 0.7);
-}
-
-.formula-input.invalid {
+.formula-input.invalid,
+.formula-input.invalid:focus {
   border-color: var(--status-error);
+  box-shadow: 0 0 0 3px var(--status-error-bg);
 }
 
 .formula-submit {
-  width: 38px;
-  border-radius: 8px;
-  border: none;
-  background: rgba(138, 92, 245, 0.25);
+  background: var(--accent-a20);
   color: var(--text-primary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
 .formula-submit:hover:not(:disabled) {
-  background: rgba(138, 92, 245, 0.45);
+  background: var(--accent-a45);
 }
 
 .formula-submit:disabled {
   opacity: 0.35;
-  cursor: default;
 }
-</style>
+
+/* Step aside while any modal is open: every modal renders an .rk-scrim. */
+:global(#app:has(.rk-scrim) .dice-panel-overlay) {
+  display: none;
+}</style>

@@ -1,8 +1,15 @@
 <template>
   <div class="note-view-container">
     <div class="note-main-content">
-      <div v-if="loading" class="loading">
-        <p>Loading note...</p>
+      <div v-if="loading" class="note-content note-loading" aria-busy="true">
+        <span class="rk-visually-hidden">Loading note...</span>
+        <div class="rk-skeleton skeleton-title"></div>
+        <div class="rk-skeleton skeleton-meta"></div>
+        <div class="skeleton-body">
+          <div class="rk-skeleton skeleton-line"></div>
+          <div class="rk-skeleton skeleton-line"></div>
+          <div class="rk-skeleton skeleton-line short"></div>
+        </div>
       </div>
 
       <div v-else-if="isEditing" class="note-content editor-shell">
@@ -11,15 +18,21 @@
           <p class="editor-path">{{ notePath }}</p>
         </header>
 
-        <div class="editor-tabs">
+        <div class="editor-tabs" role="tablist">
           <button
+            type="button"
+            role="tab"
             class="editor-tab"
             :class="{ active: editorTab === 'write' }"
+            :aria-selected="editorTab === 'write'"
             @click="editorTab = 'write'"
           >Write</button>
           <button
+            type="button"
+            role="tab"
             class="editor-tab"
             :class="{ active: editorTab === 'preview' }"
+            :aria-selected="editorTab === 'preview'"
             @click="editorTab = 'preview'"
           >Preview</button>
         </div>
@@ -40,12 +53,15 @@ Write your note in Markdown..."
           v-html="draftPreviewHtml"
         ></article>
 
-        <p v-if="saveError" class="editor-error">{{ saveError }}</p>
+        <div v-if="saveError" class="rk-alert" role="alert">
+          <span class="mdi mdi-alert-circle-outline"></span>
+          <span>{{ saveError }}</span>
+        </div>
 
         <div class="editor-actions">
-          <button class="editor-btn cancel" :disabled="saving" @click="cancelEditing">Cancel</button>
-          <button class="editor-btn save" :disabled="saving" @click="saveNote">
-            <span v-if="saving" class="btn-spinner"></span>
+          <button type="button" class="rk-btn rk-btn--ghost" :disabled="saving" @click="cancelEditing">Cancel</button>
+          <button type="button" class="rk-btn rk-btn--primary" :disabled="saving" @click="saveNote">
+            <span v-if="saving" class="rk-spinner btn-spinner"></span>
             {{ saving ? 'Saving…' : 'Save' }}
           </button>
         </div>
@@ -55,25 +71,37 @@ Write your note in Markdown..."
         <span class="mdi mdi-file-question-outline"></span>
         <h2>This note doesn't exist yet</h2>
         <p class="not-found-path">{{ notePath }}</p>
-        <button v-if="user" class="editor-btn save" @click="startCreating">Create this note</button>
+        <button v-if="user" type="button" class="rk-btn rk-btn--primary" @click="startCreating">Create this note</button>
         <p v-else class="not-found-path">Sign in to create it.</p>
       </div>
 
-      <div v-else-if="error" class="error">
-        <h2>Error</h2>
-        <p>{{ error }}</p>
+      <div v-else-if="error" class="note-content note-error">
+        <div class="rk-alert" role="alert">
+          <span class="mdi mdi-alert-circle-outline"></span>
+          <div>
+            <strong>Could not load this note.</strong>
+            <p>{{ error }}</p>
+          </div>
+        </div>
       </div>
 
       <div v-else-if="note" class="note-content">
         <header class="note-header">
           <div class="note-header-top">
             <h1>{{ note.title }}</h1>
-            <button v-if="user" class="edit-note-btn" title="Edit this note" @click="startEditing">
+            <button
+              v-if="user"
+              type="button"
+              class="rk-icon-btn edit-note-btn"
+              title="Edit this note"
+              aria-label="Edit this note"
+              @click="startEditing"
+            >
               <span class="mdi mdi-pencil-outline"></span>
             </button>
           </div>
           <div class="note-meta">
-            <nav class="note-breadcrumb">
+            <nav class="note-breadcrumb" aria-label="Breadcrumb">
               <template v-for="(crumb, index) in breadcrumbs" :key="index">
                 <router-link
                   v-if="crumb.to"
@@ -87,15 +115,16 @@ Write your note in Markdown..."
               </template>
             </nav>
             <div v-if="note.tags && note.tags.length" class="tags">
-              <span
+              <button
                 v-for="tag in note.tags"
                 :key="tag"
+                type="button"
                 class="tag clickable"
                 @click="filterByTag(tag)"
                 title="Filter by this tag"
               >
                 #{{ tag }}
-              </span>
+              </button>
             </div>
           </div>
         </header>
@@ -602,8 +631,8 @@ export default {
   flex: 1;
   max-width: 1400px;
   margin: 0 auto;
-  padding: 2rem;
-  gap: 2rem;
+  padding: var(--space-8);
+  gap: var(--space-8);
   align-items: flex-start;
 }
 
@@ -613,60 +642,78 @@ export default {
 }
 
 .note-content {
-  background: rgba(12, 13, 29, 0.6);
+  background: var(--surface-app);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(138, 92, 245, 0.3);
-  border-radius: 12px;
-  padding: 2rem;
-  box-shadow: 0 4px 20px rgba(75, 0, 130, 0.3);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  box-shadow: var(--shadow-md);
 }
 
-.loading, .error {
-  text-align: center;
-  padding: 3rem;
+/* ── Loading / error ─────────────────────────────────────────── */
+.note-loading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.error {
-  color: var(--status-error);
+.skeleton-title {
+  width: 45%;
+  height: 2.25rem;
 }
 
+.skeleton-meta {
+  width: 30%;
+  height: 1rem;
+  margin-bottom: var(--space-4);
+}
+
+.skeleton-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.skeleton-line {
+  height: 0.9rem;
+}
+
+.skeleton-line.short {
+  width: 60%;
+}
+
+.note-error .rk-alert strong {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
 .note-header {
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-4);
   border-bottom: 1px solid var(--border-light);
 }
 
 .note-header h1 {
-  margin: 0 0 0.5rem 0;
-  display: inline-block;
+  margin: 0;
+  font-size: var(--text-2xl);
   color: var(--text-primary);
-  font-weight: 600;
 }
 
 .note-header-top {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .edit-note-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  color: var(--text-muted);
 }
 
-.edit-note-btn:hover {
-  background: rgba(138, 92, 245, 0.15);
-  color: var(--interactive-primaryHover);
+.edit-note-btn:hover:not(:disabled) {
+  color: var(--accent-hover);
 }
 
 .edit-note-btn .mdi {
@@ -677,30 +724,30 @@ export default {
 .editor-shell {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: var(--space-4);
 }
 
 .editor-header {
   border-bottom: 1px solid var(--border-light);
-  padding-bottom: 1rem;
+  padding-bottom: var(--space-4);
 }
 
 .editor-header h1 {
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-2xl);
   color: var(--text-primary);
-  font-weight: 600;
 }
 
 .editor-path {
   margin: 0;
-  color: var(--text-tertiary);
-  font-size: 0.875rem;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-family: var(--font-mono);
 }
 
 .editor-tabs {
   display: flex;
-  gap: 0.25rem;
+  gap: var(--space-1);
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -708,176 +755,148 @@ export default {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   color: var(--text-secondary);
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  padding: var(--space-2) var(--space-4);
+  margin-bottom: -1px;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .editor-tab:hover {
   color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+.editor-tab:active {
+  background: var(--accent-a12);
 }
 
 .editor-tab.active {
   color: var(--text-primary);
-  border-bottom-color: var(--interactive-primary);
+  border-bottom-color: var(--accent);
 }
 
 .editor-textarea {
   width: 100%;
-  min-height: 50vh;
+  min-height: 50dvh;
   resize: vertical;
-  background: rgba(8, 9, 20, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 1rem;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
   color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  font-size: 1rem;
+  font-family: var(--font-mono);
+  font-size: var(--text-base);
   line-height: 1.6;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
 }
 
-.editor-textarea:focus {
+.editor-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.editor-textarea:focus,
+.editor-textarea:focus-visible {
   outline: none;
-  border-color: var(--interactive-primary);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-a20);
+  border-radius: var(--radius-md);
 }
 
 .editor-preview {
-  min-height: 50vh;
-  padding: 1rem;
+  min-height: 50dvh;
+  padding: var(--space-4);
   border: 1px solid var(--border-light);
-  border-radius: 8px;
-  background: rgba(8, 9, 20, 0.3);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
 }
 
 .editor-preview :deep(.preview-empty) {
-  color: var(--text-tertiary);
+  color: var(--text-muted);
   font-style: italic;
-}
-
-.editor-error {
-  color: var(--status-error, #f87171);
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.25);
-  padding: 0.625rem 0.9rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  margin: 0;
 }
 
 .editor-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
-.editor-btn {
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid transparent;
-}
-
-.editor-btn.cancel {
-  background: transparent;
-  border-color: var(--border-light);
-  color: var(--text-secondary);
-}
-
-.editor-btn.cancel:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.editor-btn.save {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
-}
-
-.editor-btn.save:hover {
-  background: var(--interactive-primaryHover);
-}
-
-.editor-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
+/* Spinner sits on the solid accent button, so it is drawn in the
+   contrast colour instead of the default accent ring. */
 .btn-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: btn-spin 0.7s linear infinite;
+  border-color: color-mix(in srgb, var(--accent-contrast) 30%, transparent);
+  border-top-color: var(--accent-contrast);
 }
 
-@keyframes btn-spin {
-  to { transform: rotate(360deg); }
-}
-
+/* ── Not found ───────────────────────────────────────────────── */
 .not-found {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   max-width: 420px;
-  margin: 3rem auto;
-  padding: 2.5rem 2rem;
+  margin: var(--space-12) auto;
+  padding: var(--space-10) var(--space-8);
 }
 
 .not-found .mdi {
   font-size: 3rem;
-  color: var(--text-tertiary);
+  color: var(--text-muted);
 }
 
 .not-found h2 {
   margin: 0;
+  font-size: var(--text-xl);
   color: var(--text-primary);
 }
 
 .not-found-path {
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  color: var(--text-tertiary);
-  margin: 0 0 0.5rem 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  margin: 0 0 var(--space-2) 0;
+  word-break: break-all;
 }
 
+/* ── Meta: breadcrumb + tags ─────────────────────────────────── */
 .note-meta {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
 .note-breadcrumb {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.375rem;
-  font-size: 0.875rem;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
   color: var(--text-secondary);
 }
 
 .breadcrumb-link {
   color: var(--text-secondary);
   text-decoration: none;
-  transition: color 0.2s ease;
+  border-radius: var(--radius-sm);
+  transition: color var(--duration-fast) var(--ease-out);
 }
 
 .breadcrumb-link:hover {
-  color: var(--interactive-primary);
+  color: var(--accent-hover);
 }
 
 .breadcrumb-separator {
-  color: var(--text-tertiary);
-  margin: 0 0.125rem;
+  color: var(--text-muted);
+  margin: 0 2px;
 }
 
 .breadcrumb-current {
@@ -887,35 +906,55 @@ export default {
 
 .tags {
   display: flex;
-  gap: 0.5rem;
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
 .tag {
-  background: rgba(138, 92, 245, 0.2);
-  color: #a78bfa;
-  padding: 0.25rem 0.75rem;
-  border-radius: 12px;
-  font-size: 0.875rem;
-  border: 1px solid rgba(138, 92, 245, 0.3);
+  background: var(--accent-a12);
+  color: var(--accent-hover);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1.4;
+  border: 1px solid var(--accent-a30);
 }
 
 .tag.clickable {
-  cursor: pointer;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .tag.clickable:hover {
-  background: rgba(138, 92, 245, 0.4);
-  border-color: rgba(138, 92, 245, 0.6);
-  transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(138, 92, 245, 0.3);
+  background: var(--accent-a30);
+  border-color: var(--accent);
+  color: var(--accent-soft);
 }
 
+.tag.clickable:active {
+  transform: translateY(1px);
+}
+
+.tag.clickable:focus-visible {
+  border-radius: var(--radius-full);
+}
+
+/* ── Rendered markdown ───────────────────────────────────────── */
 .markdown-content {
-  line-height: 1.7;
+  line-height: var(--leading-relaxed);
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: var(--text-md);
+}
+
+/* Prose keeps a readable measure. Headings (and their rules), tables, code,
+   callouts, and paragraphs that only wrap an image or a chart/vista embed
+   still use the full column. */
+.markdown-content :deep(:is(p:not(:has(img, .doc-embed)), ul, ol, blockquote)) {
+  max-width: 70ch;
 }
 
 .markdown-content :deep(h1),
@@ -924,21 +963,25 @@ export default {
 .markdown-content :deep(h4),
 .markdown-content :deep(h5),
 .markdown-content :deep(h6) {
-  margin-top: 2rem;
-  margin-bottom: 1rem;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
   color: var(--text-primary);
   font-weight: 600;
 }
 
+.markdown-content > :deep(:first-child) {
+  margin-top: 0;
+}
+
 .markdown-content :deep(h1) {
   font-size: 1.875rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 2px solid var(--border-light);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-medium);
 }
 
 .markdown-content :deep(h2) {
   font-size: 1.5rem;
-  padding-bottom: 0.25rem;
+  padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -946,30 +989,42 @@ export default {
   font-size: 1.25rem;
 }
 
+.markdown-content :deep(h4) {
+  font-size: 1.0625rem;
+}
+
+.markdown-content :deep(h5),
+.markdown-content :deep(h6) {
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
 .markdown-content :deep(p) {
-  margin-bottom: 1rem;
+  margin-bottom: 1em;
 }
 
 .markdown-content :deep(code) {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  padding: 0.2rem 0.4rem;
-  border-radius: 4px;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-  font-size: 0.9em;
+  background: var(--accent-a12);
+  color: var(--accent-soft);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.875em;
 }
 
 .markdown-content :deep(pre) {
-  background: var(--bg-tertiary);
-  padding: 1rem;
-  border-radius: 8px;
+  background: var(--surface-sunken);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
   overflow-x: auto;
-  margin-bottom: 1rem;
+  margin-bottom: 1em;
   border: 1px solid var(--border-light);
+  line-height: 1.55;
 }
 
 .markdown-content :deep(pre code) {
   background: transparent;
+  color: var(--text-primary);
   padding: 0;
 }
 
@@ -977,11 +1032,14 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  background: rgba(138, 92, 245, 0.18);
-  border: 1px solid rgba(138, 92, 245, 0.4);
-  color: #c4b5fd;
+  background: var(--accent-a20);
+  border: 1px solid var(--accent-a45);
+  color: var(--accent-soft);
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .markdown-content :deep(code.dice-roll .mdi) {
@@ -989,9 +1047,12 @@ export default {
 }
 
 .markdown-content :deep(code.dice-roll:hover) {
-  background: rgba(138, 92, 245, 0.35);
-  border-color: rgba(138, 92, 245, 0.7);
-  transform: translateY(-1px);
+  background: var(--accent-a45);
+  border-color: var(--accent);
+}
+
+.markdown-content :deep(code.dice-roll:active) {
+  transform: translateY(1px);
 }
 
 .markdown-content :deep(.doc-embed) {
@@ -1001,12 +1062,13 @@ export default {
 .markdown-content :deep(.doc-embed-placeholder) {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: var(--space-1);
   color: var(--text-secondary);
-  font-family: monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
 }
 
+/* Song links keep their own teal so they read apart from dice rolls. */
 .markdown-content :deep(code.song-link) {
   display: inline-flex;
   align-items: center;
@@ -1015,7 +1077,10 @@ export default {
   border: 1px solid rgba(45, 212, 191, 0.4);
   color: #5eead4;
   cursor: pointer;
-  transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .markdown-content :deep(code.song-link .mdi) {
@@ -1025,7 +1090,10 @@ export default {
 .markdown-content :deep(code.song-link:hover) {
   background: rgba(45, 212, 191, 0.35);
   border-color: rgba(45, 212, 191, 0.7);
-  transform: translateY(-1px);
+}
+
+.markdown-content :deep(code.song-link:active) {
+  transform: translateY(1px);
 }
 
 .markdown-content :deep(code.song-link.loading) {
@@ -1034,47 +1102,64 @@ export default {
 }
 
 .markdown-content :deep(code.song-link.song-link-error) {
-  background: rgba(239, 68, 68, 0.2);
-  border-color: rgba(239, 68, 68, 0.6);
-  color: #fca5a5;
+  background: var(--status-error-bg);
+  border-color: var(--status-error-border);
+  color: var(--status-error);
 }
 
 .markdown-content :deep(a) {
-  color: var(--interactive-primary);
-  text-decoration: none;
-  transition: all 0.2s ease;
-  position: relative;
-  padding: 0 2px;
+  color: var(--accent-hover);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-a45);
+  text-underline-offset: 0.2em;
+  border-radius: var(--radius-sm);
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    text-decoration-color var(--duration-fast) var(--ease-out);
 }
 
 .markdown-content :deep(a:hover) {
-  color: var(--interactive-primaryHover);
-  text-decoration: underline;
-  background: rgba(138, 92, 245, 0.1);
-  border-radius: 4px;
-  padding: 0 2px;
+  color: var(--accent-soft);
+  text-decoration-color: currentColor;
+  background: var(--hover-tint);
+}
+
+/* Internal note links: no underline until hovered, so prose stays calm. */
+.markdown-content :deep(a[data-note-link]) {
+  text-decoration-color: transparent;
 }
 
 .markdown-content :deep(a[data-note-link]:hover) {
-  box-shadow: 0 0 8px rgba(138, 92, 245, 0.3);
+  text-decoration-color: currentColor;
 }
 
 .markdown-content :deep(blockquote) {
-  border-left: 3px solid var(--border-dark);
-  margin: 1rem 0;
-  padding-left: 1rem;
+  border-left: 3px solid var(--accent-a45);
+  margin: 1em 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-4);
   color: var(--text-secondary);
   font-style: italic;
 }
 
 .markdown-content :deep(ul),
 .markdown-content :deep(ol) {
-  margin-bottom: 1rem;
-  padding-left: 2rem;
+  margin-bottom: 1em;
+  padding-left: 1.75em;
 }
 
 .markdown-content :deep(li) {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.35em;
+}
+
+.markdown-content :deep(li::marker) {
+  color: var(--text-muted);
+}
+
+.markdown-content :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--border-light);
+  margin: 2em 0;
 }
 
 /* Embedded charts/vistas style their own images (pin icons, vista assets).
@@ -1082,9 +1167,9 @@ export default {
    the same column width — both cap out around the same on-screen size. */
 .markdown-content :deep(img:not(.document-embed img)) {
   max-width: 100%;
-  max-height: 60vh;
+  max-height: 60dvh;
   height: auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   margin: 0;
   display: block;
 }
@@ -1098,69 +1183,89 @@ export default {
   position: relative;
   width: fit-content;
   max-width: 100%;
-  margin: 1.5rem auto;
+  margin: var(--space-6) auto;
   line-height: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: visible;
 }
 
 .markdown-content :deep(.img-screen-btn) {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: var(--space-2);
+  right: var(--space-2);
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  background: rgba(10, 10, 25, 0.75);
-  border: 1px solid rgba(138, 92, 245, 0.5);
-  color: #c4b5fd;
-  padding: 0.35rem 0.65rem;
-  border-radius: 8px;
-  font-size: 0.8rem;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  background: var(--surface-chrome);
+  border: 1px solid var(--accent-a45);
+  color: var(--accent-soft);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1;
   font-family: inherit;
-  cursor: pointer;
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   opacity: 0;
   transform: translateY(-4px);
-  transition: opacity 0.2s ease, transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
-  z-index: 5;
+  transition:
+    opacity var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+  z-index: var(--z-raised);
   pointer-events: none;
   white-space: nowrap;
 }
 
-.markdown-content :deep(.img-screen-wrapper:hover .img-screen-btn) {
+.markdown-content :deep(.img-screen-wrapper:hover .img-screen-btn),
+.markdown-content :deep(.img-screen-btn:focus-visible) {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
 
+/* No hover on touch screens: keep the button visible there. */
+@media (hover: none) {
+  .markdown-content :deep(.img-screen-btn) {
+    opacity: 1;
+    transform: none;
+    pointer-events: auto;
+  }
+}
+
 .markdown-content :deep(.img-screen-btn:hover) {
-  background: rgba(138, 92, 245, 0.4);
-  border-color: rgba(138, 92, 245, 0.8);
-  color: #fff;
-  box-shadow: 0 0 12px rgba(138, 92, 245, 0.4);
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
+}
+
+.markdown-content :deep(.img-screen-btn:active) {
+  transform: translateY(1px);
 }
 
 .markdown-content :deep(.img-screen-btn.sent) {
-  background: rgba(34, 211, 238, 0.4) !important;
-  border-color: rgba(34, 211, 238, 0.8) !important;
-  color: #fff !important;
-  box-shadow: 0 0 15px rgba(34, 211, 238, 0.5) !important;
+  background: var(--status-success-bg);
+  border-color: color-mix(in srgb, var(--status-success) 50%, transparent);
+  color: var(--status-success);
 }
 
 .markdown-content :deep(.locked-asset) {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-4);
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
 .markdown-content :deep(pre.mermaid) {
   background: transparent;
   border: none;
-  padding: 1rem 0;
+  padding: var(--space-4) 0;
   overflow-x: auto;
 }
 
@@ -1173,31 +1278,38 @@ export default {
 .markdown-content :deep(table) {
   border-collapse: collapse;
   width: 100%;
-  margin-bottom: 1rem;
+  margin-bottom: 1em;
   border: 1px solid var(--border-light);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
 }
 
 .markdown-content :deep(th),
 .markdown-content :deep(td) {
   border: 1px solid var(--border-light);
-  padding: 0.75rem;
+  padding: var(--space-2) var(--space-3);
   text-align: left;
+  vertical-align: top;
 }
 
 .markdown-content :deep(th) {
-  background: var(--bg-secondary);
+  background: var(--surface-raised);
   font-weight: 600;
   color: var(--text-primary);
 }
 
-/* Obsidian-style callouts */
+.markdown-content :deep(tbody tr:hover) {
+  background: var(--accent-a08);
+}
+
+/* Obsidian-style callouts. Type colours are content, kept literal. */
 .markdown-content :deep(.callout) {
   --callout-color: #a78bfa;
-  margin: 1rem 0;
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
+  margin: 1em 0;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
   border-left: 3px solid var(--callout-color);
   background: color-mix(in srgb, var(--callout-color) 12%, transparent);
 }
@@ -1205,7 +1317,7 @@ export default {
 .markdown-content :deep(.callout-title) {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   margin: 0;
   font-weight: 600;
   color: var(--callout-color);
@@ -1216,7 +1328,7 @@ export default {
 }
 
 .markdown-content :deep(.callout-content) {
-  margin-top: 0.5rem;
+  margin-top: var(--space-2);
 }
 
 .markdown-content :deep(.callout-content) > :first-child {
@@ -1236,4 +1348,32 @@ export default {
 .markdown-content :deep(.callout-red) { --callout-color: #f85149; }
 .markdown-content :deep(.callout-purple) { --callout-color: #a78bfa; }
 .markdown-content :deep(.callout-grey) { --callout-color: #8b949e; }
+
+/* ── Small screens ───────────────────────────────────────────── */
+/* Laptop widths: both sidebars are visible, so give the text the room. */
+@media (max-width: 1439px) {
+  .note-view-container {
+    padding: var(--space-6);
+    gap: var(--space-6);
+  }
+
+  .note-content {
+    padding: var(--space-6);
+  }
+}
+
+@media (max-width: 768px) {
+  .note-view-container {
+    padding: var(--space-4);
+  }
+
+  .note-content {
+    padding: var(--space-5);
+  }
+
+  .note-header h1,
+  .editor-header h1 {
+    font-size: var(--text-xl);
+  }
+}
 </style>

@@ -60,6 +60,22 @@ building blocks. Extend these instead of duplicating them:
 - Frontend: `FolderGallery.vue`, `DocumentModalHeader.vue`, `DocumentEmbed.vue`
   and the composables in `src/composables/`.
 
+### Use the design tokens
+
+All frontend styling builds on `frontend/src/styles/`:
+
+- `tokens.css` holds every colour, radius, spacing step, shadow, easing and
+  z-index layer. Use `var(--…)` instead of literal values; only data-driven
+  colours (pins, graph nodes, callout types, dice themes) stay literal.
+- `base.css` holds the shared `rk-` primitives: `rk-btn`, `rk-icon-btn`,
+  `rk-input`, `rk-field`, `rk-scrim` / `rk-dialog`, `rk-spinner`,
+  `rk-skeleton`, `rk-empty` and `rk-alert`. Compose them in markup and keep
+  only layout rules in a component's scoped styles.
+- Corners use the five radius tokens only (`sm`, `md`, `lg`, `xl`, `full`),
+  and stacking uses the `--z-*` layers only.
+- The brand (nebula palette, the cyan-violet-pink logo gradient, Space
+  Grotesk) is fixed: don't change those tokens without discussing it first.
+
 ### Keep the architecture simple
 
 Realm Keeper deliberately has no database: notes and JSON documents live in

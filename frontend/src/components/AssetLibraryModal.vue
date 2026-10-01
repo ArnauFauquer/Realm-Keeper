@@ -1,6 +1,6 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="close">
-    <div class="modal-content library-modal-content">
+  <div v-if="isOpen" class="rk-scrim library-scrim" @click.self="close">
+    <div class="rk-dialog library-modal-content" role="dialog" aria-modal="true" aria-label="Asset Library">
       <DocumentModalHeader
         :view="view === 'viewer' ? 'editor' : 'gallery'"
         icon="mdi-folder-multiple-image"
@@ -15,7 +15,7 @@
         @close="close"
       />
 
-      <div v-if="view === 'gallery'" class="modal-body library-body">
+      <div v-if="view === 'gallery'" class="library-body">
         <FolderGallery
           :folders="folders"
           :items="assets"
@@ -39,8 +39,9 @@
           @move="onMove"
         >
           <template #actions>
-            <label class="gallery-action-btn upload-btn" :class="{ uploading }">
-              <span class="mdi" :class="uploading ? 'mdi-loading mdi-spin' : 'mdi-upload'"></span>
+            <label class="rk-btn gallery-action-btn upload-btn" :class="{ uploading }">
+              <span v-if="uploading" class="rk-spinner" aria-hidden="true"></span>
+              <span v-else class="mdi mdi-upload"></span>
               <span>{{ uploading ? 'Uploading...' : 'Upload new' }}</span>
               <input type="file" accept="image/*" multiple hidden :disabled="uploading" @change="onFileSelected" />
             </label>
@@ -235,49 +236,38 @@ async function onRenameAsset(item, name) {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 2100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Opens on top of Vistas/Charts (as a picker), so it sits one layer up. */
+.library-scrim {
+  z-index: var(--z-modal-nested);
 }
 
-.modal-content.library-modal-content {
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  width: 95vw;
-  max-width: 1400px;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+.library-modal-content {
+  width: min(100%, 1400px);
+  height: 90dvh;
 }
 
 .library-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .viewer-view {
   flex: 1;
+  min-height: 0;
   overflow: auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .viewer-view img {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .upload-btn.uploading {
@@ -285,12 +275,8 @@ async function onRenameAsset(item, name) {
   opacity: 0.6;
 }
 
-.mdi-spin {
-  animation: mdi-spin 1s linear infinite;
-}
-
-@keyframes mdi-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.upload-btn .rk-spinner {
+  width: 14px;
+  height: 14px;
 }
 </style>

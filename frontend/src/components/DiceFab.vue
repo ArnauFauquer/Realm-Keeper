@@ -20,34 +20,42 @@ const { state, togglePanel } = useDiceRoller()
 <style scoped>
 .dice-fab {
   position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  z-index: 2100;
+  bottom: var(--space-6);
+  right: var(--space-6);
+  z-index: var(--z-modal-nested);
   width: 56px;
   height: 56px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
-  box-shadow: 0 4px 16px rgba(138, 92, 245, 0.4);
-  transition: transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease;
+  background: linear-gradient(135deg, var(--accent) 0%, #6366f1 100%);
+  box-shadow: var(--shadow-accent);
+  transition:
+    transform var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out);
 }
 
 .dice-fab .mdi {
   font-size: 1.6rem;
-  color: white;
+  color: var(--accent-contrast);
 }
 
 .dice-fab:hover:not(:disabled) {
   transform: scale(1.06);
-  box-shadow: 0 6px 20px rgba(138, 92, 245, 0.55);
+  box-shadow: 0 0 0 1px var(--accent-a45), 0 8px 24px var(--accent-a45);
+}
+
+.dice-fab:active:not(:disabled) {
+  transform: scale(0.96);
 }
 
 .dice-fab.is-open {
-  background: rgba(31, 32, 69, 0.95);
+  background: var(--surface-raised-hover);
+  box-shadow: 0 0 0 1px var(--border-medium), var(--shadow-md);
 }
 
 .dice-fab.is-rolling {
@@ -55,6 +63,7 @@ const { state, togglePanel } = useDiceRoller()
   opacity: 0.75;
 }
 
+/* Spin conveys the "rolling" state; stops when the roll settles. */
 .dice-fab.is-rolling .mdi {
   animation: dice-spin 0.9s linear infinite;
 }
@@ -66,8 +75,12 @@ const { state, togglePanel } = useDiceRoller()
 
 @media (max-width: 768px) {
   .dice-fab {
-    bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
-    right: 1rem;
+    bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    right: var(--space-4);
   }
 }
-</style>
+
+/* Step aside while any modal is open: every modal renders an .rk-scrim. */
+:global(#app:has(.rk-scrim) .dice-fab) {
+  display: none;
+}</style>

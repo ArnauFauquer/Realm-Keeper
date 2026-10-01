@@ -1,152 +1,198 @@
 <template>
   <div>
     <!-- Mobile overlay -->
-    <div 
-      v-if="isOpen" 
+    <div
+      v-if="isOpen"
       class="sidebar-overlay"
       @click="closeSidebar"
     ></div>
-    
+
     <!-- Mobile toggle button -->
-    <button 
+    <button
       class="sidebar-toggle"
       :class="{ 'is-open': isOpen }"
-      @click="toggleSidebar"
+      :aria-expanded="isOpen"
+      aria-controls="notes-sidebar"
       aria-label="Toggle sidebar"
+      @click="toggleSidebar"
     >
       <span class="mdi" :class="isOpen ? 'mdi-close' : 'mdi-menu'"></span>
     </button>
-    
-    <div class="sidebar" :class="{ 'is-open': isOpen }">
-      <div class="sidebar-top-section">
-        <div class="app-title">
-          <span class="mdi mdi-orbit"></span>
-          <span class="title-text">RealmKeeper</span>
-          <span class="app-version" title="App version">{{ appVersion }}</span>
-        </div>
 
-        <div v-if="user && !user.local" class="user-chip">
-          <div class="user-avatar">{{ userInitial }}</div>
-          <span class="user-email" :title="user.email">{{ user.email }}</span>
+    <aside id="notes-sidebar" class="sidebar" :class="{ 'is-open': isOpen }">
+      <header class="brand">
+        <span class="brand-mark mdi mdi-orbit" aria-hidden="true"></span>
+        <span class="brand-name">RealmKeeper</span>
+        <span class="brand-version" title="App version">{{ appVersion }}</span>
+      </header>
+
+      <nav class="primary-nav" aria-label="Vault tools">
+        <button class="search-trigger" @click="isSearchModalOpen = true">
+          <span class="mdi mdi-magnify" aria-hidden="true"></span>
+          <span>Search Notes</span>
+        </button>
+        <!-- Charts, vistas and the asset library are behind login, like the player. -->
+        <div v-if="user" class="tool-row">
+          <button class="tool-btn" @click="openCharts">
+            <span class="mdi mdi-map-marker-radius" aria-hidden="true"></span>
+            <span>Charts</span>
+          </button>
+          <button class="tool-btn" @click="openVistas">
+            <span class="mdi mdi-image-frame" aria-hidden="true"></span>
+            <span>Vistas</span>
+          </button>
+          <button class="tool-btn" @click="openAssetLibrary">
+            <span class="mdi mdi-folder-multiple-image" aria-hidden="true"></span>
+            <span>Assets</span>
+          </button>
+        </div>
+      </nav>
+
+      <div class="tree-header">
+        <span class="rk-overline">Notes</span>
+        <button
+          v-if="user"
+          class="rk-icon-btn rk-icon-btn--sm"
+          title="New Note"
+          aria-label="New Note"
+          @click="startNewNote"
+        >
+          <span class="mdi mdi-plus"></span>
+        </button>
+      </div>
+
+      <div v-if="loading && notes.length === 0" class="tree-skeleton" aria-busy="true" aria-label="Loading notes">
+        <div
+          v-for="n in 9"
+          :key="n"
+          class="rk-skeleton tree-skeleton-row"
+          :style="{ width: `${[72, 58, 84, 46, 66, 78, 52, 70, 60][n - 1]}%`, marginLeft: n % 3 === 0 ? '1rem' : '0' }"
+        ></div>
+      </div>
+
+      <div v-else-if="error" class="tree-state">
+        <div class="rk-alert" role="alert">
+          <span class="mdi mdi-alert-circle-outline"></span>
+          <span>{{ error }}</span>
+        </div>
+        <button class="rk-btn rk-btn--sm" @click="fetchNotes()">
+          <span class="mdi mdi-refresh"></span>
+          <span>Retry</span>
+        </button>
+      </div>
+
+      <div v-else-if="notesTree.length === 0" class="rk-empty">
+        <span class="mdi mdi-notebook-outline"></span>
+        <p>No notes in this vault yet.</p>
+        <button v-if="user" class="rk-btn rk-btn--sm" @click="startNewNote">
+          <span class="mdi mdi-plus"></span>
+          <span>New Note</span>
+        </button>
+      </div>
+
+      <div v-else class="notes-tree" ref="treeContainer">
+        <TreeItem
+          v-for="item in notesTree"
+          :key="item.path || item.id"
+          :item="item"
+          :level="0"
+          @toggle="toggleFolder"
+          @note-click="closeSidebar"
+        />
+      </div>
+
+      <!-- Infinite scroll sentinel. It sits outside the scrolling tree on purpose:
+           it stays in view, so every page loads up front and search sees all notes. -->
+      <div v-if="hasMore && notes.length" class="load-more" ref="scrollIndicator">
+        <template v-if="isLoadingMore">
+          <span class="rk-spinner"></span>
+          <span>Loading more notes</span>
+        </template>
+      </div>
+
+      <footer class="sidebar-footer">
+        <section v-if="user" class="now-playing" aria-label="Music player">
+          <div class="now-playing-head">
+            <span class="track-icon mdi" :class="isPlaying ? 'mdi-music' : 'mdi-music-note-outline'" aria-hidden="true"></span>
+            <span class="track-title" :class="{ 'is-idle': !currentTrack }">
+              {{ currentTrack ? currentTrack.name : 'Nothing playing' }}
+            </span>
+            <button class="rk-btn rk-btn--ghost rk-btn--sm player-open-btn" title="Open player" @click="isPlayerModalOpen = true">
+              <span class="mdi mdi-music-box-multiple-outline"></span>
+              <span>Player</span>
+            </button>
+          </div>
+
+          <div class="transport">
+            <button
+              class="rk-icon-btn rk-icon-btn--sm"
+              :class="{ 'is-active': isShuffle }"
+              title="Shuffle"
+              aria-label="Shuffle"
+              :aria-pressed="isShuffle"
+              @click="toggleShuffle"
+            >
+              <span class="mdi mdi-shuffle-variant"></span>
+            </button>
+            <button class="rk-icon-btn rk-icon-btn--sm" title="Previous" aria-label="Previous track" @click="playPrev">
+              <span class="mdi mdi-skip-previous"></span>
+            </button>
+            <button
+              class="play-btn"
+              :title="isPlaying ? 'Pause' : 'Play'"
+              :aria-label="isPlaying ? 'Pause' : 'Play'"
+              @click="togglePlay"
+            >
+              <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
+            </button>
+            <button class="rk-icon-btn rk-icon-btn--sm" title="Next" aria-label="Next track" @click="playNext">
+              <span class="mdi mdi-skip-next"></span>
+            </button>
+            <button
+              class="rk-icon-btn rk-icon-btn--sm"
+              :class="{ 'is-active': isRepeat }"
+              title="Repeat"
+              aria-label="Repeat"
+              :aria-pressed="isRepeat"
+              @click="toggleRepeat"
+            >
+              <span class="mdi mdi-repeat"></span>
+            </button>
+          </div>
+
+          <label class="volume">
+            <span class="mdi" :class="volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high'" aria-hidden="true"></span>
+            <span class="rk-visually-hidden">Volume</span>
+            <input
+              type="range" min="0" max="1" step="0.01"
+              :value="volume"
+              class="volume-bar"
+              @input="setVolume($event.target.valueAsNumber)"
+            />
+          </label>
+        </section>
+
+        <div v-if="user && !user.local" class="account">
+          <div class="avatar" aria-hidden="true">{{ userInitial }}</div>
+          <span class="account-email" :title="user.email">{{ user.email }}</span>
           <button
-            class="logout-btn screen-link-btn"
+            class="rk-icon-btn rk-icon-btn--sm"
             :title="copiedKey === 'screen-link' ? 'Screen link copied' : 'Copy screen link (open it on the TV / projector)'"
+            :aria-label="copiedKey === 'screen-link' ? 'Screen link copied' : 'Copy screen link'"
             @click="copyScreenLink"
           >
             <span class="mdi" :class="copiedKey === 'screen-link' ? 'mdi-check' : 'mdi-monitor-share'"></span>
           </button>
-          <button class="logout-btn" title="Sign out" @click="logout">
+          <button class="rk-icon-btn rk-icon-btn--sm rk-btn--danger" title="Sign out" aria-label="Sign out" @click="logout">
             <span class="mdi mdi-logout-variant"></span>
           </button>
         </div>
-        <button v-else-if="!user" class="sign-in-btn" @click="login">
+        <button v-else-if="!user" class="rk-btn rk-btn--block" @click="login">
           <span class="mdi mdi-login-variant"></span>
           <span>Sign in</span>
         </button>
-      </div>
-
-      <div class="sidebar-header">
-        <button class="action-btn" @click="isSearchModalOpen = true">
-          <span class="mdi mdi-magnify"></span>
-          <span>Search Notes</span>
-        </button>
-        <!-- Charts, vistas and the asset library are behind login, like the player. -->
-        <template v-if="user">
-          <button class="action-btn" @click="openCharts">
-            <span class="mdi mdi-map-marker-radius"></span>
-            <span>Charts</span>
-          </button>
-          <button class="action-btn" @click="openVistas">
-            <span class="mdi mdi-image-frame"></span>
-            <span>Vistas</span>
-          </button>
-          <button class="action-btn" @click="openAssetLibrary">
-            <span class="mdi mdi-folder-multiple-image"></span>
-            <span>Assets</span>
-          </button>
-        </template>
-      </div>
-
-      <div v-if="loading && notes.length === 0" class="loading-state">
-        <div class="loading-spinner"></div>
-        <p>Loading your notes...</p>
-      </div>
-      <div v-else-if="error" class="error">{{ error }}</div>
-      
-      <div v-else class="notes-tree-wrapper">
-        <div class="notes-tree" ref="treeContainer">
-          <TreeItem 
-            v-for="item in notesTree" 
-            :key="item.path || item.id"
-            :item="item"
-            :level="0"
-            @toggle="toggleFolder"
-            @note-click="closeSidebar"
-          />
-        </div>
-        
-        <!-- Infinite scroll indicator -->
-        <div v-if="hasMore" class="infinite-scroll-area" ref="scrollIndicator">
-          <div v-if="isLoadingMore" class="loading-more">
-            <div class="mini-spinner"></div>
-            <span>Loading more notes...</span>
-          </div>
-          <div v-else class="scroll-hint">
-            <span class="mdi mdi-chevron-down"></span>
-            <span>Scroll for more</span>
-          </div>
-        </div>
-      </div>
-
-      <div v-if="user" class="sidebar-footer">
-        <button class="new-note-trigger" @click="startNewNote">
-          <span class="mdi mdi-plus"></span>
-          <span>New Note</span>
-        </button>
-
-        <div class="mini-player-controls">
-          <button class="icon-btn" :class="{ active: isShuffle }" title="Shuffle" @click="toggleShuffle">
-            <span class="mdi mdi-shuffle-variant"></span>
-          </button>
-          <button class="icon-btn" title="Previous" @click="playPrev">
-            <span class="mdi mdi-skip-previous"></span>
-          </button>
-          <button class="icon-btn play-btn" title="Play/Pause" @click="togglePlay">
-            <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
-          </button>
-          <button class="icon-btn" title="Next" @click="playNext">
-            <span class="mdi mdi-skip-next"></span>
-          </button>
-          <button
-            class="icon-btn"
-            :class="{ active: isRepeat }"
-            title="Repeat"
-            @click="toggleRepeat"
-          >
-            <span class="mdi mdi-repeat"></span>
-          </button>
-          <button class="icon-btn player-open-btn" title="Open player" @click="isPlayerModalOpen = true">
-            <span class="mdi mdi-music-box-multiple-outline"></span>
-            <span>Player</span>
-          </button>
-        </div>
-
-        <div class="mini-now-playing">
-          <span class="mdi mdi-music-note"></span>
-          <span class="mini-track-title">{{ currentTrack ? currentTrack.name : 'Nothing playing' }}</span>
-        </div>
-
-        <div class="mini-volume-row">
-          <span class="mdi" :class="volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high'"></span>
-          <input
-            type="range" min="0" max="1" step="0.01"
-            :value="volume"
-            class="mini-volume-bar"
-            @input="setVolume($event.target.valueAsNumber)"
-          />
-        </div>
-      </div>
-    </div>
+      </footer>
+    </aside>
 
     <SearchModal
       ref="searchModalRef"
@@ -167,30 +213,35 @@
     <VistasModal />
     <AssetLibraryModal :is-open="isAssetLibraryOpen" @close="closeAssetLibrary" />
 
-    <div v-if="showNewNoteInput" class="modal-overlay" @click.self="showNewNoteInput = false">
-      <div class="new-note-modal">
-        <div class="modal-header">
-          <h2><span class="mdi mdi-note-plus-outline"></span> New Note</h2>
-          <button class="close-btn" @click="showNewNoteInput = false">
+    <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
+      <div class="rk-dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-title">
+        <div class="rk-dialog__header">
+          <h2 id="new-note-title" class="rk-dialog__title">
+            <span class="mdi mdi-note-plus-outline"></span> New Note
+          </h2>
+          <button class="rk-icon-btn" aria-label="Close" @click="showNewNoteInput = false">
             <span class="mdi mdi-close"></span>
           </button>
         </div>
-        <div class="modal-body">
-          <label class="field-label" for="new-note-path">Note path</label>
-          <input
-            id="new-note-path"
-            ref="newNoteInputRef"
-            v-model="newNotePath"
-            class="new-note-input"
-            placeholder="Oneshots/My New Adventure"
-            @keyup.enter="submitNewNote"
-            @keyup.esc="showNewNoteInput = false"
-          />
-          <p class="field-hint">Use <code>/</code> to place it inside a folder.</p>
+        <div class="rk-dialog__body">
+          <div class="rk-field">
+            <label class="rk-label" for="new-note-path">Note path</label>
+            <input
+              id="new-note-path"
+              ref="newNoteInputRef"
+              v-model="newNotePath"
+              class="rk-input"
+              placeholder="Oneshots/My New Adventure"
+              aria-describedby="new-note-hint"
+              @keyup.enter="submitNewNote"
+              @keyup.esc="showNewNoteInput = false"
+            />
+            <p id="new-note-hint" class="rk-hint">Use <code class="rk-code">/</code> to place it inside a folder.</p>
+          </div>
         </div>
-        <div class="modal-actions">
-          <button class="modal-btn cancel" @click="showNewNoteInput = false">Cancel</button>
-          <button class="modal-btn primary" :disabled="!newNotePath.trim()" @click="submitNewNote">Create Note</button>
+        <div class="rk-dialog__actions">
+          <button class="rk-btn rk-btn--ghost" @click="showNewNoteInput = false">Cancel</button>
+          <button class="rk-btn rk-btn--primary" :disabled="!newNotePath.trim()" @click="submitNewNote">Create Note</button>
         </div>
       </div>
     </div>
@@ -234,7 +285,7 @@ async function copyScreenLink() {
   }
   // No clipboard (plain-HTTP LAN, or Safari after the awaited request):
   // hand the link over for a manual copy rather than silently doing nothing.
-  if (!(await copy(link, 'screen-link'))) window.prompt('Screen link — copy it and open it on the screen device:', link)
+  if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const { open: openCharts } = useChartsModal()
@@ -301,7 +352,7 @@ defineExpose({
 
 /**
  * Computes a nested tree structure out of flat note arrays depending on tag filters.
- * 
+ *
  * Algorithm:
  * 1. Iterates over notes and extracts their folder path chunks.
  * 2. Builds `folderMap` to construct standard directories as intermediate tree branches.
@@ -312,11 +363,11 @@ defineExpose({
 const notesTree = computed(() => {
   const root = []
   const folderMap = {}
-  
+
   const safeNotes = Array.isArray(notes.value) ? notes.value : []
   safeNotes.forEach(note => {
     const parts = note.id.split('/')
-    
+
     // Create folders
     for (let i = 0; i < parts.length - 1; i++) {
       const folderPath = parts.slice(0, i + 1).join('/')
@@ -338,7 +389,7 @@ const notesTree = computed(() => {
     if (parentPath) folderMap[parentPath].notes.push(note)
     else root.push({ ...note, isFolder: false })
   })
-  
+
   return root
 })
 
@@ -365,11 +416,11 @@ const closeSidebar = () => {
 const setupScrollObserver = () => {
   nextTick(() => {
     if (!scrollIndicator.value) return
-    
+
     if (scrollObserver) {
       scrollObserver.disconnect()
     }
-    
+
     scrollObserver = new IntersectionObserver(
       (entries) => {
         entries.forEach(entry => {
@@ -380,12 +431,10 @@ const setupScrollObserver = () => {
       },
       { threshold: 0.1 }
     )
-    
+
     scrollObserver.observe(scrollIndicator.value)
   })
 }
-
-
 
 watch(notes, () => {
   setupScrollObserver()
@@ -407,692 +456,360 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .sidebar {
-  width: 300px;
-  height: 100vh;
-  background: rgba(12, 13, 29, 0.85);
+  width: var(--sidebar-width);
+  height: 100%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-chrome);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-right: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
 }
 
-.sidebar-header {
-  padding: 1rem;
-  background: rgba(18, 19, 42, 0.6);
-  border-bottom: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sidebar-top-section {
-  padding: 1rem;
-  background: rgba(12, 13, 29, 0.85);
-  border-bottom: 1px solid var(--border-light);
-}
-
-.app-title {
+/* ── Brand ─────────────────────────────────────────────────────── */
+.brand {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  font-size: 2rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-5) var(--space-4);
 }
 
-.app-version {
-  align-self: flex-end;
-  margin-bottom: 0.45rem;
-  font-size: 0.7rem;
-  font-weight: 500;
-  color: var(--text-secondary);
-  opacity: 0.7;
-}
-
-.app-title .mdi {
-  font-size: 2.35rem;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+.brand-mark {
+  font-size: 1.9rem;
+  line-height: 1;
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text; /* Added standard property */
 }
 
-.app-title .title-text {
+.brand-name {
   font-family: var(--font-display);
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1;
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
-  background-clip: text; /* Added standard property */
 }
 
-.user-chip {
+.brand-version {
+  margin-left: auto;
+  align-self: flex-end;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+}
+
+/* ── Primary nav ───────────────────────────────────────────────── */
+.primary-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.search-trigger {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-}
-
-.user-avatar {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: #0c0d1d;
-  background: linear-gradient(135deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
-}
-
-.user-email {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.8rem;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--surface-sunken);
   color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-.logout-btn {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+.search-trigger .mdi {
+  font-size: 1.1rem;
+}
+
+.search-trigger:hover {
+  border-color: var(--border-medium);
+  color: var(--text-primary);
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-1);
+}
+
+.tool-btn {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: transparent;
+  gap: 2px;
+  padding: var(--space-2) var(--space-1);
   border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.logout-btn:hover {
-  background: rgba(248, 113, 113, 0.12);
-  color: var(--status-error, #f87171);
-}
-
-.screen-link-btn:hover {
-  background: rgba(167, 139, 250, 0.12);
-  color: var(--interactive-primary);
-}
-
-.logout-btn .mdi {
-  font-size: 1.1rem;
-}
-
-.sign-in-btn {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  font-size: 0.8rem;
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.sign-in-btn:hover {
-  border-color: var(--interactive-primary);
-  background: rgba(138, 92, 245, 0.25);
-}
-
-.sign-in-btn .mdi {
-  font-size: 1.05rem;
-}
-
-/* Action Buttons */
-.action-btn {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  font-size: 0.875rem;
-  background: rgba(26, 27, 58, 0.6);
-  color: var(--text-secondary);
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  cursor: pointer;
-}
-
-.action-btn:hover {
-  border-color: var(--interactive-primary);
-  background: rgba(31, 32, 69, 0.8);
-  color: var(--text-primary);
-  box-shadow: 0 0 12px rgba(138, 92, 245, 0.2);
-}
-
-.action-btn .mdi {
-  font-size: 1.1rem;
-}
-
-.action-btn.disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.action-btn.disabled:hover {
-  border-color: var(--border-light);
-  background: rgba(26, 27, 58, 0.6);
-  color: var(--text-secondary);
-  box-shadow: none;
-}
-
-.sidebar-footer {
-  flex-shrink: 0;
-  padding: 0.75rem;
-  border-top: 1px solid var(--border-light);
-  background: rgba(12, 13, 29, 0.85);
-}
-
-.new-note-trigger {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border: 1px dashed var(--border-medium);
-  border-radius: 8px;
-  font-size: 0.875rem;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
-.new-note-trigger:hover {
-  border-style: solid;
-  border-color: var(--interactive-primary);
-  background: var(--interactive-secondary);
+.tool-btn .mdi {
+  font-size: 1.3rem;
+  line-height: 1.2;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.tool-btn:hover {
+  background: var(--hover-tint);
   color: var(--text-primary);
 }
 
-.new-note-trigger .mdi {
-  font-size: 1.1rem;
+.tool-btn:hover .mdi {
+  color: var(--accent-hover);
 }
 
-.mini-player-controls {
-  margin-top: 0.6rem;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  background: rgba(26, 27, 58, 0.6);
+.tool-btn:active {
+  transform: translateY(1px);
 }
 
-.mini-player-controls .icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.3rem;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all 0.15s ease;
-}
-
-.mini-player-controls .icon-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.mini-player-controls .icon-btn.active {
-  color: var(--interactive-primary);
-  background: rgba(138, 92, 245, 0.2);
-}
-
-.mini-player-controls .play-btn {
-  width: 28px;
-  height: 28px;
-  background: var(--interactive-primary);
-  color: white;
-}
-
-.mini-player-controls .play-btn:hover {
-  background: var(--interactive-primaryHover);
-  color: white;
-}
-
-.player-open-btn {
-  flex: 1;
-  min-width: 0;
-  gap: 0.4rem;
-  font-size: 0.8rem;
-  width: auto;
-}
-
-.player-open-btn span:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-now-playing {
-  margin-top: 0.4rem;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0 0.2rem;
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-}
-
-.mini-now-playing .mdi {
-  flex-shrink: 0;
-  font-size: 0.9rem;
-}
-
-.mini-track-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mini-volume-row {
-  margin-top: 0.3rem;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0 0.2rem;
-  color: var(--text-secondary);
-}
-
-.mini-volume-row .mdi {
-  flex-shrink: 0;
-  font-size: 0.9rem;
-}
-
-.mini-volume-bar {
-  flex: 1;
-  accent-color: var(--interactive-primary);
-}
-
-/* ── New Note modal ─────────────────────────────────────────── */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 2000;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.new-note-modal {
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  width: min(90vw, 420px);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-.new-note-modal .modal-header {
+/* ── Tree ──────────────────────────────────────────────────────── */
+.tree-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.1rem 1.4rem;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.new-note-modal .modal-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.new-note-modal .close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-
-.new-note-modal .close-btn .mdi {
-  font-size: 1.5rem;
-}
-
-.new-note-modal .close-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.new-note-modal .modal-body {
-  padding: 1.4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.field-label {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  font-weight: 500;
-}
-
-.new-note-input {
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 8px;
-  padding: 0.625rem 0.8rem;
-  color: var(--text-primary);
-  font-size: 1rem;
-}
-
-.new-note-input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
-}
-
-.field-hint {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--text-tertiary);
-}
-
-.field-hint code {
-  background: rgba(138, 92, 245, 0.15);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  color: #c4b5fd;
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  padding: 0.75rem 1.4rem 1.4rem;
-}
-
-.modal-btn {
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 1px solid transparent;
-}
-
-.modal-btn.cancel {
-  background: transparent;
-  border-color: var(--border-light);
-  color: var(--text-secondary);
-}
-
-.modal-btn.cancel:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.modal-btn.primary {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
-}
-
-.modal-btn.primary:hover {
-  background: var(--interactive-primaryHover);
-}
-
-.modal-btn.primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.notes-tree-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  padding: var(--space-3) var(--space-3) var(--space-1) var(--space-5);
+  min-height: 40px;
 }
 
 .notes-tree {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 0.5rem;
-  display: flex;
-  flex-direction: column;
+  padding: 0 var(--space-3) var(--space-3);
 }
 
-.notes-tree::-webkit-scrollbar {
-  width: 6px;
-}
-
-.notes-tree::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.notes-tree::-webkit-scrollbar-thumb {
-  background: rgba(138, 92, 245, 0.3);
-  border-radius: 3px;
-  transition: background 0.2s ease;
-}
-
-.notes-tree::-webkit-scrollbar-thumb:hover {
-  background: rgba(138, 92, 245, 0.6);
-}
-
-/* Loading State */
-.loading-state {
+.tree-skeleton {
   flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding: 2rem 1rem;
-  color: var(--text-secondary);
-  background: radial-gradient(circle at center, rgba(138, 92, 245, 0.1), transparent);
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
 }
 
-.loading-spinner {
-  width: 48px;
-  height: 48px;
-  border: 3px solid rgba(138, 92, 245, 0.2);
-  border-top-color: var(--interactive-primary);
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
-  box-shadow: 0 0 16px rgba(138, 92, 245, 0.2);
+.tree-skeleton-row {
+  height: 14px;
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.tree-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
 }
 
-.loading-state p {
-  font-size: 0.875rem;
-  opacity: 0.8;
-  margin: 0;
-  letter-spacing: 0.3px;
-}
-
-/* Infinite Scroll Indicator */
-.infinite-scroll-area {
-  padding: 1.25rem 0.5rem 0.75rem;
-  text-align: center;
-  border-top: 1px solid rgba(138, 92, 245, 0.15);
-  background: linear-gradient(to top, rgba(138, 92, 245, 0.08), rgba(138, 92, 245, 0.02), transparent);
-  min-height: 70px;
+.load-more {
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
+  gap: var(--space-2);
+  min-height: 48px;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 
-.infinite-scroll-area::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(to right, transparent, rgba(138, 92, 245, 0.3), transparent);
-  opacity: 0.5;
-}
-
-.loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  padding: 0.85rem 1.5rem;
-  color: var(--text-secondary);
-  font-size: 0.8rem;
-  animation: fadeIn 0.4s ease;
-  background: rgba(138, 92, 245, 0.12);
-  border-radius: 8px;
-  border: 1px solid rgba(138, 92, 245, 0.2);
-  font-weight: 500;
-  letter-spacing: 0.2px;
-  position: relative;
-  z-index: 1;
-}
-
-.mini-spinner {
-  width: 16px;
-  height: 16px;
-  border: 2px solid rgba(138, 92, 245, 0.2);
-  border-top-color: var(--interactive-primary);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+/* ── Footer: player + account ──────────────────────────────────── */
+.sidebar-footer {
   flex-shrink: 0;
-  box-shadow: 0 0 6px rgba(138, 92, 245, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-top: 1px solid var(--border-light);
 }
 
-.scroll-hint {
+.now-playing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-light);
+}
+
+.now-playing-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.player-open-btn {
+  flex-shrink: 0;
+  margin-right: calc(-1 * var(--space-1));
+  padding: 0 var(--space-2);
+}
+
+.track-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: var(--accent-hover);
+}
+
+.track-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.track-title.is-idle {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.play-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-md);
+  height: var(--control-md);
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-accent);
+  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+}
+
+.play-btn .mdi {
+  font-size: 1.3rem;
+}
+
+.play-btn:hover {
+  background: var(--accent-strong-hover);
+}
+
+.play-btn:active {
+  transform: scale(0.94);
+}
+
+.volume {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+.volume .mdi {
+  flex-shrink: 0;
+  font-size: 0.95rem;
+}
+
+.volume-bar {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent);
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.avatar {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  color: var(--text-tertiary);
-  font-size: 0.8rem;
-  padding: 0.75rem 1.25rem;
-  animation: slideInUp 0.5s ease;
-  letter-spacing: 0.5px;
-  position: relative;
-  z-index: 1;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--bg-primary);
+  background: var(--brand-gradient-diagonal);
 }
 
-.scroll-hint .mdi {
-  font-size: 1.2rem;
-  animation: bounce 1.6s ease-in-out infinite;
-  color: rgba(138, 92, 245, 0.6);
-}
-
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(4px); }
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-/* Error and Loading States */
-.loading, .error {
-  padding: 1.5rem 1rem;
-  text-align: center;
+.account-email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-xs);
   color: var(--text-secondary);
-  font-size: 0.875rem;
 }
 
-.error {
-  color: var(--status-error);
-}
-
-/* Mobile toggle button */
+/* ── Mobile drawer ─────────────────────────────────────────────── */
 .sidebar-toggle {
   display: none;
   position: fixed;
-  bottom: 1.5rem;
-  left: 1.5rem;
-  z-index: 1001;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #8a5cf5 0%, #6366f1 100%);
+  left: var(--space-4);
+  bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+  z-index: var(--z-drawer-toggle);
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
   border: none;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(138, 92, 245, 0.4);
-  transition: all 0.3s ease;
+  border-radius: var(--radius-full);
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+  box-shadow: var(--shadow-md), var(--shadow-accent);
+  transition: background-color var(--duration-base) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .sidebar-toggle .mdi {
   font-size: 1.5rem;
-  color: white;
 }
 
-.sidebar-toggle:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 20px rgba(138, 92, 245, 0.5);
+.sidebar-toggle:active {
+  transform: scale(0.95);
 }
 
 .sidebar-toggle.is-open {
-  background: rgba(31, 32, 69, 0.95);
+  background: var(--bg-elevated);
 }
 
-/* Mobile overlay */
 .sidebar-overlay {
   display: none;
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
+  inset: 0;
+  z-index: calc(var(--z-drawer) - 1);
+  background: var(--scrim);
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
-/* Mobile responsive styles */
 @media (max-width: 768px) {
   .sidebar-toggle {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    bottom: calc(70px + 1rem + env(safe-area-inset-bottom, 0px));
   }
 
   .sidebar-overlay {
@@ -1103,13 +820,14 @@ onBeforeUnmount(() => {
     position: fixed;
     top: 0;
     left: 0;
-    z-index: 1000;
-    width: 85%;
-    max-width: 320px;
-    height: calc(100vh - 70px - env(safe-area-inset-bottom, 0px));
+    z-index: var(--z-drawer);
+    width: min(86vw, 320px);
+    /* Leave the bottom strip free for the floating toggle. */
+    height: calc(100dvh - var(--mobile-bar-height) - env(safe-area-inset-bottom, 0px));
+    border-bottom-right-radius: var(--radius-lg);
     transform: translateX(-100%);
-    transition: transform 0.3s ease;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.3);
+    transition: transform var(--duration-slow) var(--ease-out);
+    box-shadow: var(--shadow-lg);
   }
 
   .sidebar.is-open {

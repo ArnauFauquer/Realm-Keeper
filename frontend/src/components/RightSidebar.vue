@@ -2,15 +2,15 @@
   <aside class="right-sidebar">
     <div class="sidebar-section mini-graph-section">
       <div class="section-header">
-        <h3>Interactive Graph</h3>
-        <button class="full-graph-link" @click="openGraphModal">
-          <span>Full graph</span>
+        <h3 class="rk-overline">Interactive Graph</h3>
+        <button class="rk-btn rk-btn--ghost rk-btn--sm full-graph-link" aria-label="Open full graph" title="Open full graph" @click="openGraphModal">
+          <span class="full-graph-label">Full graph</span>
           <span class="mdi mdi-arrow-expand"></span>
         </button>
       </div>
       <div class="mini-graph-container" ref="graphContainer">
-        <div v-if="loading" class="loading">Loading...</div>
-        <div v-else-if="error" class="error">{{ error }}</div>
+        <div v-if="loading" class="graph-state" aria-busy="true"><span class="rk-spinner" role="status" aria-label="Loading graph"></span></div>
+        <div v-else-if="error" class="graph-state graph-error"><span class="mdi mdi-graph-outline"></span><span>{{ error }}</span></div>
         <template v-else>
           <canvas ref="starCanvas" class="star-canvas"></canvas>
           <svg ref="svg" class="graph-svg"></svg>
@@ -19,10 +19,10 @@
     </div>
     
     <div class="sidebar-section toc-section">
-      <h3>On this page</h3>
-      <nav class="toc-nav">
+      <h3 class="rk-overline">On this page</h3>
+      <nav class="toc-nav" aria-label="Table of contents">
         <ul v-if="headers.length">
-          <li v-for="header in headers" :key="header.id" :class="`toc-level-${header.level}`">
+          <li v-for="header in headers" :key="header.id" :class="[`toc-level-${header.level}`, { active: header.id === activeId }]">
             <a :href="`#${header.id}`" @click.prevent="scrollTo(header.id)">{{ header.text }}</a>
           </li>
         </ul>
@@ -58,7 +58,10 @@ export default {
       simulation: null,
       svg: null,
       g: null,
-      zoom: null
+      zoom: null,
+      activeId: null,
+      headingObserver: null,
+      headingTimer: null
     }
   },
   computed: {
@@ -100,14 +103,46 @@ export default {
           this.fetchGraphData()
         }
       }
+    },
+    headers() {
+      this.observeHeadings()
     }
+  },
+  mounted() {
+    this.observeHeadings()
   },
   beforeUnmount() {
     if (this.simulation) {
       this.simulation.stop()
     }
+    if (this.headingObserver) this.headingObserver.disconnect()
+    clearTimeout(this.headingTimer)
   },
   methods: {
+    // Highlights the TOC entry for the heading nearest the top of the
+    // note's scroll area. The note renders its HTML asynchronously, so wait a
+    // frame after the header list changes before looking the ids up.
+    observeHeadings() {
+      if (this.headingObserver) this.headingObserver.disconnect()
+      clearTimeout(this.headingTimer)
+      this.activeId = null
+      if (!this.headers.length || typeof IntersectionObserver === 'undefined') return
+      this.headingTimer = setTimeout(() => {
+        const els = this.headers.map(h => document.getElementById(h.id)).filter(Boolean)
+        if (!els.length) return
+        this.headingObserver = new IntersectionObserver((entries) => {
+          const visible = entries.filter(e => e.isIntersecting)
+          if (visible.length) {
+            visible.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
+            this.activeId = visible[0].target.id
+          }
+        }, {
+          root: document.querySelector('.main-content'),
+          rootMargin: '0px 0px -70% 0px'
+        })
+        els.forEach(el => this.headingObserver.observe(el))
+      }, 150)
+    },
     openGraphModal() {
       useGraphModal().open()
     },
@@ -115,6 +150,7 @@ export default {
       const element = document.getElementById(id)
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        this.activeId = id
         // Update URL hash without jumping
         history.pushState(null, null, `#${id}`)
       }
@@ -342,73 +378,49 @@ export default {
 
 <style scoped>
 .right-sidebar {
-  width: 300px;
+  width: var(--aside-width);
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 2rem;
-  padding: 1rem 0 1rem 2rem;
+  gap: var(--space-8);
+  padding: var(--space-6) 0 var(--space-6) var(--space-6);
   border-left: 1px solid var(--border-light);
 }
 
 .sidebar-section h3 {
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-tertiary);
-  margin-bottom: 1rem;
-  font-weight: 600;
+  margin-bottom: var(--space-3);
 }
 
 .section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
 }
 
 .section-header h3 {
   margin-bottom: 0;
+  white-space: nowrap;
 }
 
 .full-graph-link {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
   flex-shrink: 0;
-  background: transparent;
-  border: none;
-  padding: 0;
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.full-graph-link:hover {
-  color: var(--interactive-primaryHover);
-}
-
-.full-graph-link .mdi {
-  font-size: 0.85rem;
 }
 
 .mini-graph-container {
-  height: 250px;
-  background: radial-gradient(ellipse at 40% 40%, rgba(18, 12, 55, 0.95) 0%, rgba(4, 5, 18, 1) 70%);
-  border: 1px solid rgba(100, 140, 255, 0.2);
-  border-radius: 12px;
-  overflow: hidden;
   position: relative;
-  box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
+  height: 240px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(100, 140, 255, 0.2);
+  background: radial-gradient(ellipse at 40% 40%, rgba(18, 12, 55, 0.95) 0%, rgba(4, 5, 18, 1) 70%);
+  box-shadow: inset 0 2px 10px rgba(4, 3, 20, 0.4);
 }
 
 .star-canvas {
   position: absolute;
-  top: 0;
-  left: 0;
+  inset: 0;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -424,90 +436,87 @@ export default {
   cursor: grabbing;
 }
 
-.loading, .error {
+.graph-state {
   position: absolute;
-  top: 0; left: 0; right: 0; bottom: 0;
+  inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.graph-error .mdi {
+  font-size: 1.5rem;
 }
 
 .toc-nav {
-  max-height: calc(100vh - 400px);
+  max-height: calc(100dvh - 420px);
   overflow-y: auto;
-  padding-right: 10px;
-}
-
-.toc-nav::-webkit-scrollbar {
-  width: 4px;
-}
-
-.toc-nav::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.toc-nav::-webkit-scrollbar-thumb {
-  background: var(--border-medium);
-  border-radius: 4px;
+  padding-right: var(--space-3);
 }
 
 .toc-nav ul {
+  position: relative;
   list-style: none;
-  padding: 0;
-  margin: 0;
-  position: relative;
-}
-
-/* Vertical line for toc */
-.toc-nav ul::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 2px;
-  width: 1px;
-  background: var(--border-light);
-}
-
-.toc-nav li {
-  margin-bottom: 0.5rem;
-  position: relative;
+  border-left: 1px solid var(--border-light);
 }
 
 .toc-nav a {
   display: block;
+  margin-left: -1px;
+  padding: 5px 0 5px var(--toc-indent, var(--space-3));
+  border-left: 2px solid transparent;
   color: var(--text-secondary);
   text-decoration: none;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   line-height: 1.4;
-  transition: all 0.2s ease;
-  border-left: 2px solid transparent;
-  padding: 4px 0;
+  transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
 .toc-nav a:hover {
   color: var(--text-primary);
+  border-left-color: var(--border-medium);
+}
+
+.toc-nav li.active > a {
+  color: var(--text-primary);
+  border-left-color: var(--accent-hover);
 }
 
 /* Indentation based on heading level */
-.toc-level-1 a { padding-left: 1rem; font-weight: 500; }
-.toc-level-2 a { padding-left: 1.5rem; }
-.toc-level-3 a { padding-left: 2rem; font-size: 0.85rem; }
-.toc-level-4 a { padding-left: 2.5rem; font-size: 0.85rem; color: var(--text-tertiary); }
-.toc-level-5 a { padding-left: 3rem; font-size: 0.8rem; color: var(--text-tertiary); }
-.toc-level-6 a { padding-left: 3.5rem; font-size: 0.8rem; color: var(--text-tertiary); }
+.toc-level-1 a { --toc-indent: var(--space-3); font-weight: 500; color: var(--text-primary); }
+.toc-level-2 a { --toc-indent: var(--space-3); }
+.toc-level-3 a { --toc-indent: var(--space-6); }
+.toc-level-4 a,
+.toc-level-5 a,
+.toc-level-6 a { --toc-indent: var(--space-8); font-size: var(--text-xs); color: var(--text-muted); }
 
 .no-headers {
-  color: var(--text-tertiary);
-  font-size: 0.9rem;
-  font-style: italic;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1279px) {
+  .right-sidebar {
+    width: 232px;
+    padding-left: var(--space-5);
+  }
+
+  .mini-graph-container {
+    height: 200px;
+  }
+
+  .full-graph-label {
+    display: none;
+  }
 }
 
 @media (max-width: 1024px) {
   .right-sidebar {
-    display: none; /* Hide on smaller screens for now */
+    display: none;
   }
 }
 </style>

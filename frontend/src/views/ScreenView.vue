@@ -441,6 +441,9 @@ export default {
 
 <style scoped>
 .screen-root {
+  /* Positioned content is measured in px: keep the line-height it was
+     laid out with before the global type scale (body line-height 1.5). */
+  line-height: normal;
   position: fixed;
   inset: 0;
   background: radial-gradient(ellipse at 30% 35%, rgba(18, 10, 55, 1) 0%, rgba(5, 4, 20, 1) 45%, rgba(2, 2, 10, 1) 100%);
@@ -468,7 +471,7 @@ export default {
   pointer-events: none;
   z-index: 0;
   opacity: 0.5;
-  transition: background 1.5s ease;
+  transition: background 1.5s var(--ease-in-out);
 }
 
 /* ─── Chart area ─── */
@@ -476,7 +479,7 @@ export default {
   position: relative;
   z-index: 1;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
 }
 
 /* ─── Vista area ─── */
@@ -484,7 +487,7 @@ export default {
   position: relative;
   z-index: 1;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
 }
 
 /* ─── Media area ─── */
@@ -496,15 +499,15 @@ export default {
   align-items: center;
   justify-content: center;
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
 }
 
 .screen-image-fill {
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
   object-fit: contain; /* Prevent stretching while showing the entire image */
   user-select: none;
-  transition: opacity 0.5s ease;
+  transition: opacity 0.5s var(--ease-out);
 }
 
 /* ─── Caption (Subtle overlay) ─── */
@@ -514,14 +517,15 @@ export default {
   left: 0;
   right: 0;
   z-index: 10;
-  padding: 2rem;
+  padding: var(--space-8);
   background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
   color: rgba(255, 255, 255, 0.9);
-  font-size: 1.5rem;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   font-weight: 500;
   text-align: center;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-  transition: opacity 1s ease, transform 1s ease;
+  transition: opacity 1s var(--ease-out), transform 1s var(--ease-out);
 }
 
 .screen-caption.hidden {
@@ -534,19 +538,20 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: var(--space-6);
   color: rgba(255, 255, 255, 0.3);
   font-size: 1.2rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
+/* Projector-sized spinner: conveys the waiting/loading state. */
 .loading-spinner {
   width: 60px;
   height: 60px;
-  border: 4px solid rgba(138, 92, 245, 0.1);
-  border-top-color: #8a5cf5;
-  border-radius: 50%;
+  border: 4px solid var(--accent-a12);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
   animation: spin 1.5s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
 }
 
@@ -567,30 +572,48 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
-  color: rgba(255, 100, 100, 0.5);
+  gap: var(--space-4);
+  color: var(--status-error);
+}
+
+.screen-error svg,
+.screen-error p {
+  opacity: 0.6;
+}
+
+.screen-error small {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
 }
 
 .retry-btn {
-  margin-top: 1rem;
-  background: rgba(255, 100, 100, 0.2);
-  border: 1px solid rgba(255, 100, 100, 0.3);
-  color: #ff9999;
-  padding: 0.5rem 1.5rem;
-  border-radius: 8px;
+  margin-top: var(--space-4);
+  min-height: var(--control-md);
+  background: var(--status-error-bg);
+  border: 1px solid var(--status-error-border);
+  color: var(--status-error);
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  font-family: inherit;
-  transition: all 0.2s ease;
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    color var(--duration-base) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
   pointer-events: auto;
 }
 
 .retry-btn:hover {
-  background: rgba(255, 100, 100, 0.4);
-  color: #fff;
+  background: rgba(248, 113, 113, 0.3);
+  color: var(--text-primary);
+}
+
+.retry-btn:active {
+  transform: translateY(1px);
 }
 
 .loading-text {
-  font-size: 0.9rem;
+  font-size: var(--text-base);
   opacity: 0.7;
 }
 
@@ -627,8 +650,8 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.75rem;
-  padding: 2.5rem 2rem 3rem;
+  gap: var(--space-3);
+  padding: var(--space-10) var(--space-8) var(--space-12);
   background: linear-gradient(to top, rgba(2, 2, 10, 0.85) 0%, transparent 100%);
   pointer-events: none;
 }
@@ -638,15 +661,16 @@ export default {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(199, 178, 255, 0.75);
-  font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 .dice-breakdown {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.6rem;
+  gap: var(--space-2);
   font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
   color: rgba(255, 255, 255, 0.65);
   max-width: 80vw;
 }
@@ -657,13 +681,15 @@ export default {
 }
 
 .dice-total {
+  font-family: var(--font-display);
   font-size: 6rem;
   font-weight: 700;
   line-height: 1;
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  font-variant-numeric: tabular-nums;
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  filter: drop-shadow(0 0 40px rgba(138, 92, 245, 0.5));
+  filter: drop-shadow(0 0 40px var(--accent-a45));
 }
 </style>
