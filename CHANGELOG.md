@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.77](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.76...v0.1.77) (2026-10-01)
+
+
+### Features
+
+* **dice:** Hope & Fear, advantage/disadvantage, criticals and roller fixes ([#15](https://github.com/ArnauFauquer/Realm-Keeper/issues/15)) ([18435ab](https://github.com/ArnauFauquer/Realm-Keeper/commit/18435ab9a4f832985fd7b07b1b935562a7aa48b9))
+* **frontend:** design-token system and UI restructure, brand unchanged ([#13](https://github.com/ArnauFauquer/Realm-Keeper/issues/13)) ([f717905](https://github.com/ArnauFauquer/Realm-Keeper/commit/f717905ed65c9dc488324a4359b8e73260b9a61e))
+
 ## [0.1.76](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.75...v0.1.76) (2026-09-23)
 
 
