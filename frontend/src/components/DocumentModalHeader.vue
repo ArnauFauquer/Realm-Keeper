@@ -1,16 +1,16 @@
 <template>
   <div class="modal-header">
     <h2>
-      <button v-if="view === 'editor'" class="back-btn" :title="`Back to ${galleryTitle}`" @click="$emit('back')">
+      <button v-if="view === 'editor'" class="rk-icon-btn" :title="`Back to ${galleryTitle}`" :aria-label="`Back to ${galleryTitle}`" @click="$emit('back')">
         <span class="mdi mdi-arrow-left"></span>
       </button>
-      <span class="mdi" :class="icon"></span>
-      {{ view === 'editor' && itemTitle ? itemTitle : galleryTitle }}
+      <span class="title-icon mdi" :class="icon" aria-hidden="true"></span>
+      <span class="title-text">{{ view === 'editor' && itemTitle ? itemTitle : galleryTitle }}</span>
     </h2>
     <div class="header-actions">
       <button
         v-if="view === 'editor' && canEdit && showSave"
-        class="header-btn primary"
+        class="rk-btn rk-btn--primary header-btn"
         :disabled="!hasUnsavedChanges || saving"
         title="Save changes"
         @click="$emit('save')"
@@ -20,7 +20,7 @@
       </button>
       <button
         v-if="view === 'editor' && canEdit && copyText"
-        class="header-btn"
+        class="rk-btn header-btn"
         title="Copy reference to paste into a note"
         @click="copy(copyText)"
       >
@@ -29,7 +29,7 @@
       </button>
       <button
         v-if="view === 'editor' && canEdit"
-        class="header-btn"
+        class="rk-btn header-btn"
         :disabled="!canSendToScreen || sendingToScreen"
         title="Send to screen"
         @click="$emit('send-to-screen')"
@@ -37,7 +37,7 @@
         <span class="mdi mdi-monitor-share"></span>
         <span>{{ sendingToScreen ? 'Sent!' : 'Send to screen' }}</span>
       </button>
-      <button class="close-btn" @click="$emit('close')">
+      <button class="rk-icon-btn close-btn" aria-label="Close" @click="$emit('close')">
         <span class="mdi mdi-close"></span>
       </button>
     </div>
@@ -73,93 +73,57 @@ defineEmits(['back', 'save', 'send-to-screen', 'close'])
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1.25rem 1.5rem;
+  gap: var(--space-4);
+  min-height: 64px;
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
   border-bottom: 1px solid var(--border-light);
 }
 
 .modal-header h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
   margin: 0;
-  font-size: 1.25rem;
+  font-size: var(--text-lg);
   color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 }
 
-.back-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
+.modal-header h2 .rk-icon-btn {
+  margin-left: calc(-1 * var(--space-2));
 }
 
-.back-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
+.title-icon {
+  flex-shrink: 0;
+  color: var(--accent-hover);
+}
+
+.title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-actions {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-}
-
-.header-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border-radius: 8px;
-  border: 1px solid var(--border-medium);
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.header-btn:hover:not(:disabled) {
-  border-color: var(--interactive-primary);
-}
-
-.header-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.header-btn.primary:not(:disabled) {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
-}
-
-.header-btn.primary:not(:disabled):hover {
-  background: var(--interactive-primaryHover);
+  flex-shrink: 0;
+  gap: var(--space-2);
 }
 
 .close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  transition: all 0.2s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin-left: var(--space-1);
 }
 
-.close-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
+@media (max-width: 640px) {
+  /* Icon-only actions on phones so the title keeps its room. */
+  .header-btn span:not(.mdi) {
+    display: none;
+  }
 
-.close-btn .mdi {
-  font-size: 1.5rem;
+  .header-btn {
+    padding: 0 var(--space-3);
+  }
 }
 </style>

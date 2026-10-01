@@ -3,7 +3,7 @@
     <div v-if="!chart.image_url" class="empty-map">
       <span class="mdi mdi-image-plus"></span>
       <p>This chart has no map image yet.</p>
-      <button v-if="editable" class="upload-btn" @click="openLibraryForMap">
+      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForMap">
         <span class="mdi mdi-folder-multiple-image"></span> Choose map image
       </button>
     </div>
@@ -184,19 +184,19 @@
 
       <!-- Toolbar -->
       <div v-if="editable" class="chart-toolbar">
-        <button class="tool-btn" :class="{ active: mode === 'select' }" title="Select / move" @click="setMode('select')">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'select' }" title="Select / move" aria-label="Select / move" :aria-pressed="mode === 'select'" @click="setMode('select')">
           <span class="mdi mdi-cursor-default"></span>
         </button>
-        <button class="tool-btn" :class="{ active: mode === 'pin' }" title="Place pin" @click="setMode('pin')">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'pin' }" title="Place pin" aria-label="Place pin" :aria-pressed="mode === 'pin'" @click="setMode('pin')">
           <span class="mdi mdi-map-marker-plus"></span>
         </button>
-        <button class="tool-btn" :class="{ active: mode === 'path' }" title="Draw path" @click="setMode('path')">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'path' }" title="Draw path" aria-label="Draw path" :aria-pressed="mode === 'path'" @click="setMode('path')">
           <span class="mdi mdi-vector-line"></span>
         </button>
-        <button class="tool-btn" :class="{ active: mode === 'annotation' }" title="Add annotation" @click="setMode('annotation')">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'annotation' }" title="Add annotation" aria-label="Add annotation" :aria-pressed="mode === 'annotation'" @click="setMode('annotation')">
           <span class="mdi mdi-note-plus-outline"></span>
         </button>
-        <button class="tool-btn" title="Replace map image" @click="openLibraryForMap">
+        <button class="tool-btn rk-icon-btn" title="Replace map image" aria-label="Replace map image" @click="openLibraryForMap">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
@@ -212,13 +212,14 @@
           <span class="selection-title">{{ selectedPin.name || 'Unlinked pin' }}</span>
           <button
             v-if="selectedPin.note_path"
-            class="icon-btn"
+            class="rk-icon-btn rk-icon-btn--sm"
             title="Open linked note"
+            aria-label="Open linked note"
             @click="emit('open-note', selectedPin.note_path)"
           >
             <span class="mdi mdi-open-in-new"></span>
           </button>
-          <button class="icon-btn danger" title="Delete pin" @click="deletePin(selectedPin.id)">
+          <button class="rk-icon-btn rk-icon-btn--sm danger" title="Delete pin" aria-label="Delete pin" @click="deletePin(selectedPin.id)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
@@ -226,7 +227,7 @@
         <div class="note-picker">
           <input
             v-model="pinNoteQuery"
-            class="selection-name-input"
+            class="selection-name-input rk-input"
             :placeholder="selectedPin.note_path ? 'Link a different note...' : 'Search a note to link...'"
             @focus="pinPickerOpen = true"
             @blur="closePinPickerSoon"
@@ -252,6 +253,7 @@
             :class="{ active: pinColor(selectedPin) === c }"
             :style="{ background: c }"
             :title="c"
+            :aria-label="`Pin colour ${c}`"
             @click="setPinColor(selectedPin, c)"
           ></button>
         </div>
@@ -261,6 +263,7 @@
           <input
             type="range"
             class="pin-size-slider"
+            aria-label="Pin size"
             :min="PIN_SCALE_MIN"
             :max="PIN_SCALE_MAX"
             step="0.1"
@@ -270,7 +273,7 @@
           <span class="mdi mdi-map-marker"></span>
         </div>
 
-        <button class="upload-btn small" @click="openLibraryForPinIcon(selectedPin)">
+        <button class="upload-btn rk-btn rk-btn--sm" @click="openLibraryForPinIcon(selectedPin)">
           <span class="mdi mdi-folder-multiple-image"></span> {{ selectedPin.icon_url ? 'Change icon' : 'Choose icon' }}
         </button>
       </div>
@@ -279,7 +282,7 @@
         <div class="selection-panel-header">
           <span class="mdi mdi-vector-line"></span>
           <span class="selection-title">Path</span>
-          <button class="icon-btn danger" title="Delete path" @click="deletePath(selectedPath.id)">
+          <button class="rk-icon-btn rk-icon-btn--sm danger" title="Delete path" aria-label="Delete path" @click="deletePath(selectedPath.id)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
@@ -298,7 +301,7 @@
         <div class="selection-panel-header">
           <span class="mdi mdi-note-text-outline"></span>
           <span class="selection-title">Annotation</span>
-          <button class="icon-btn danger" title="Delete annotation" @click="deleteAnnotation(selectedAnnotation.id)">
+          <button class="rk-icon-btn rk-icon-btn--sm danger" title="Delete annotation" aria-label="Delete annotation" @click="deleteAnnotation(selectedAnnotation.id)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
@@ -699,6 +702,9 @@ function onLibrarySelect(item) {
 
 <style scoped>
 .chart-canvas {
+  /* Positioned content is measured in px: keep the line-height it was
+     laid out with before the global type scale (body line-height 1.5). */
+  line-height: normal;
   width: 100%;
   height: 100%;
   position: relative;
@@ -711,15 +717,19 @@ function onLibrarySelect(item) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   color: var(--text-secondary);
   text-align: center;
-  padding: 2rem;
+  padding: var(--space-8);
 }
 
 .empty-map .mdi {
   font-size: 3rem;
-  opacity: 0.5;
+  color: var(--text-muted);
+}
+
+.empty-map .rk-btn {
+  margin-top: var(--space-2);
 }
 
 .canvas-viewport {
@@ -759,7 +769,7 @@ function onLibrarySelect(item) {
 .pin-halo {
   fill: rgba(138, 92, 245, 0.25);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .chart-pin:hover .pin-halo,
@@ -835,7 +845,7 @@ function onLibrarySelect(item) {
   height: 100%;
   background: rgba(12, 13, 29, 0.88);
   border: 1px solid var(--border-medium);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 6% 8%;
   display: flex;
   align-items: center;
@@ -846,7 +856,7 @@ function onLibrarySelect(item) {
 }
 
 .annotation-box.selected .annotation-content {
-  border-color: var(--interactive-primary);
+  border-color: var(--accent);
 }
 
 .annotation-text {
@@ -873,17 +883,18 @@ function onLibrarySelect(item) {
 
 .pin-tooltip {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
+  top: var(--space-4);
+  left: var(--space-4);
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  background: rgba(12, 13, 29, 0.92);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-medium);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   pointer-events: none;
   z-index: 5;
 }
@@ -892,49 +903,38 @@ function onLibrarySelect(item) {
   width: 20px;
   height: 20px;
   object-fit: contain;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .chart-toolbar {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: var(--space-4);
+  right: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  background: rgba(12, 13, 29, 0.9);
+  gap: var(--space-1);
+  background: var(--surface-chrome);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 0.4rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
 }
 
 .tool-btn {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
 }
 
 .tool-btn .mdi {
   font-size: 1.3rem;
 }
 
-.tool-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.tool-btn.active {
-  background: var(--interactive-primary);
-  color: white;
+.tool-btn.active,
+.tool-btn.active:hover {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
 .path-hint {
@@ -942,58 +942,55 @@ function onLibrarySelect(item) {
   bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(12, 13, 29, 0.9);
+  background: var(--surface-chrome);
   border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .selection-panel {
   position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  background: rgba(12, 13, 29, 0.92);
+  bottom: var(--space-4);
+  left: var(--space-4);
+  background: var(--surface-overlay);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
   min-width: 220px;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: var(--space-3);
 }
 
 .selection-panel-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 
 .selection-title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-primary);
+  font-weight: 500;
 }
 
+/* Compact variant of .rk-input for the floating panel. */
 .selection-name-input {
-  flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-  color: var(--text-primary);
-  font-size: 0.875rem;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
   user-select: text;
   -webkit-user-select: text;
-}
-
-.selection-name-input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
 }
 
 .note-picker {
@@ -1008,10 +1005,10 @@ function onLibrarySelect(item) {
   z-index: 10;
   max-height: 180px;
   overflow-y: auto;
-  background: rgba(12, 13, 29, 0.98);
+  background: var(--surface-overlay);
   border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
 }
@@ -1021,12 +1018,13 @@ function onLibrarySelect(item) {
   flex-direction: column;
   align-items: flex-start;
   gap: 0.1rem;
-  padding: 0.45rem 0.6rem;
+  padding: var(--space-2) var(--space-3);
   background: transparent;
   border: none;
   border-bottom: 1px solid var(--border-light);
   cursor: pointer;
   text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-out);
 }
 
 .note-picker-item:last-child {
@@ -1034,51 +1032,47 @@ function onLibrarySelect(item) {
 }
 
 .note-picker-item:hover {
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
 }
 
 .note-picker-title {
   color: var(--text-primary);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
 }
 
 .note-picker-path {
-  color: var(--text-tertiary, var(--text-secondary));
+  color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 0.7rem;
 }
 
-.icon-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.icon-btn.danger:hover {
-  background: rgba(248, 113, 113, 0.15);
-  color: var(--status-error, #f87171);
+.danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
 .pin-color-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }
 
 .pin-color-swatch {
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   border: 2px solid transparent;
   cursor: pointer;
   padding: 0;
+  transition: transform var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
+}
+
+.pin-color-swatch:hover {
+  transform: scale(1.1);
+}
+
+.pin-color-swatch:active {
+  transform: scale(0.94);
 }
 
 .pin-color-swatch.active {
@@ -1088,7 +1082,7 @@ function onLibrarySelect(item) {
 .pin-size-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 
@@ -1098,54 +1092,47 @@ function onLibrarySelect(item) {
 
 .pin-size-slider {
   flex: 1;
-  accent-color: var(--interactive-primary);
+  accent-color: var(--accent);
 }
 
 .upload-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.upload-btn:hover {
-  border-color: var(--interactive-primary);
-}
-
-.upload-btn.small {
-  padding: 0.35rem 0.7rem;
-  font-size: 0.8rem;
   align-self: flex-start;
 }
 
 .direction-toggle {
   display: flex;
-  gap: 0.35rem;
+  gap: var(--space-1);
 }
 
 .direction-btn {
   flex: 1;
-  padding: 0.3rem 0.5rem;
-  border-radius: 6px;
+  padding: 0.3rem var(--space-2);
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-light);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   text-transform: capitalize;
   cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.direction-btn:hover:not(.active) {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.direction-btn:active {
+  transform: translateY(1px);
 }
 
 .direction-btn.active {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 </style>

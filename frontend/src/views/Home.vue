@@ -1,12 +1,13 @@
 <template>
-  <div class="home">
-    <div class="welcome">
-      <h1><span class="mdi mdi-saturn"></span> Welcome to Realm Keeper</h1>
-      <p>Loading home page...</p>
-    </div>
+  <div class="home" aria-busy="true">
+    <span class="home-mark mdi mdi-saturn" aria-hidden="true"></span>
+    <h1 class="home-title">Welcome to Realm Keeper</h1>
+    <p class="home-status" role="status">
+      <span class="rk-spinner" aria-hidden="true"></span>
+      <span>Loading home page...</span>
+    </p>
   </div>
 </template>
-
 <script>
 export default {
   name: 'Home',
@@ -19,23 +20,31 @@ export default {
 
 <style scoped>
 .home {
-  padding: 2rem;
-}
-
-.welcome {
-  max-width: 600px;
-  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-8) var(--space-4);
   text-align: center;
 }
 
-.welcome h1 {
-  margin-bottom: 1rem;
-  color: var(--text-primary);
+.home-mark {
+  font-size: 2.5rem;
+  line-height: 1;
+  color: var(--accent);
 }
 
-.welcome h1 .mdi {
-  font-size: 2rem;
-  color: var(--interactive-primary);
-  margin-right: 0.5rem;
+.home-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.home-title {
+  font-size: var(--text-xl);
+  color: var(--text-primary);
 }
 </style>

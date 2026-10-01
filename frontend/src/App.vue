@@ -3,7 +3,7 @@
     <NebulaBackground />
 
     <div v-if="!checked && !$route.meta.public" class="auth-loading">
-      <div class="auth-loading-spinner"></div>
+      <div class="rk-spinner rk-spinner--lg" role="status" aria-label="Checking session"></div>
     </div>
 
     <LoginGate v-else-if="showLoginGate" :error="authError" @login="login" />
@@ -34,7 +34,6 @@ import DicePanel from './components/DicePanel.vue'
 import DiceOverlay from './components/DiceOverlay.vue'
 import DiceToastStack from './components/DiceToastStack.vue'
 import LoginGate from './components/LoginGate.vue'
-import { applyTheme } from './config/theme'
 import { useAuth } from './composables/useAuth'
 
 const AUTH_ERROR_MESSAGES = {
@@ -70,8 +69,6 @@ export default {
     }
   },
   mounted() {
-    applyTheme()
-
     const params = new URLSearchParams(window.location.search)
     const authErrorCode = params.get('auth_error')
     if (authErrorCode) {
@@ -87,45 +84,10 @@ export default {
 </script>
 
 <style>
-:root {
-  --bg-primary: #0c0d1d;
-  --bg-secondary: #12132a;
-  --bg-tertiary: #1a1b3a;
-  --bg-elevated: #1f2045;
-  --text-primary: #f0f0ff;
-  --text-secondary: #a8a8c8;
-  --text-tertiary: #6b6b8d;
-  --border-light: rgba(138, 43, 226, 0.2);
-  --border-medium: rgba(138, 43, 226, 0.35);
-  --interactive-primary: #8a5cf5;
-  --interactive-primaryHover: #a78bfa;
-  --interactive-secondary: rgba(138, 43, 226, 0.15);
-  --shadow-md: 0 2px 8px rgba(75, 0, 130, 0.3);
-  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  --font-display: 'Space Grotesk Variable', 'Space Grotesk', var(--font-body);
-}
-
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: var(--font-body);
-  background: transparent;
-  color: var(--text-primary);
-}
-
-h1, h2, h3 {
-  font-family: var(--font-display);
-  letter-spacing: -0.01em;
-}
-
 #app {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   position: relative;
 }
@@ -133,86 +95,45 @@ h1, h2, h3 {
 .auth-loading {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  z-index: var(--z-gate);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.auth-loading-spinner {
-  width: 40px;
-  height: 40px;
-  border: 3px solid rgba(138, 92, 245, 0.2);
-  border-top-color: var(--interactive-primary);
-  border-radius: 50%;
-  animation: auth-spin 0.9s linear infinite;
-  box-shadow: 0 0 16px rgba(138, 92, 245, 0.2);
-}
-
-@keyframes auth-spin {
-  to { transform: rotate(360deg); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .auth-loading-spinner { animation-duration: 1.8s; }
-}
-
 .main-container {
   flex: 1;
+  min-height: 0;
   display: flex;
-  flex-direction: row;
   overflow: hidden;
   position: relative;
-  z-index: 1;
+  z-index: var(--z-base);
 }
 
 .main-content {
   flex: 1;
+  min-width: 0;
   overflow-y: auto;
-  background: rgba(12, 13, 29, 0.7);
+  background: var(--surface-app);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   position: relative;
 }
 
-/* Base styles for router-view content previously in tab-content/notes-content */
 .main-content h2 {
-  margin-bottom: 1rem;
+  margin-bottom: var(--space-4);
   color: var(--text-primary);
-  font-weight: 600;
 }
 
 .main-content p {
   color: var(--text-secondary);
-  font-size: 1rem;
-  line-height: 1.6;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: rgba(12, 13, 29, 0.5);
-}
-
-::-webkit-scrollbar-thumb {
-  background: rgba(138, 92, 245, 0.4);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(138, 92, 245, 0.6);
+  font-size: var(--text-md);
+  line-height: var(--leading-relaxed);
 }
 
 @media (max-width: 768px) {
-  .main-container {
-    flex-direction: row; /* Keep row, since sidebar goes off-canvas */
-  }
-
   .main-content {
-    /* Extra padding at bottom for any floating things, though toggle button takes space */
-    padding-bottom: 70px;
+    padding-bottom: calc(var(--mobile-bar-height) + env(safe-area-inset-bottom, 0px));
   }
 }
 </style>

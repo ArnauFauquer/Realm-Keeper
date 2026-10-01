@@ -1,6 +1,6 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
-    <div class="modal-content vistas-modal-content">
+  <div v-if="isOpen" class="rk-scrim" @click.self="closeModal">
+    <div class="rk-dialog vistas-modal-content" role="dialog" aria-modal="true" aria-label="Vistas">
       <DocumentModalHeader
         :view="view"
         icon="mdi-image-frame"
@@ -18,7 +18,7 @@
         @close="closeModal"
       />
 
-      <div class="modal-body vistas-body">
+      <div class="vistas-body">
         <!-- Gallery -->
         <div v-if="view === 'gallery'" class="gallery-view">
           <FolderGallery
@@ -34,7 +34,7 @@
             root-icon="mdi-image-frame"
             loading-text="Loading vistas..."
             empty-icon="mdi-image-frame"
-            empty-text="No vistas yet."
+            empty-text="No vistas yet. Create one to stage a scene for the table screen."
             @navigate="goToPath"
             @enter-folder="enterFolder"
             @open-item="(v) => openVista(v.id)"
@@ -50,19 +50,16 @@
                 <input
                   ref="newVistaInputRef"
                   v-model="newVistaName"
+                  class="rk-input inline-input"
                   placeholder="Vista name"
+                  aria-label="Vista name"
                   @keyup.enter="submitNewVista"
                   @keyup.esc="showNewVistaInput = false"
                 />
-                <button class="icon-btn" @click="submitNewVista"><span class="mdi mdi-check"></span></button>
-                <button class="icon-btn" @click="showNewVistaInput = false"><span class="mdi mdi-close"></span></button>
+                <button class="rk-icon-btn" aria-label="Create vista" @click="submitNewVista"><span class="mdi mdi-check"></span></button>
+                <button class="rk-icon-btn" aria-label="Cancel" @click="showNewVistaInput = false"><span class="mdi mdi-close"></span></button>
               </div>
-              <button v-else class="gallery-action-btn" @click="startNewVista">
-                <span class="mdi mdi-plus"></span> New vista
-              </button>
-            </template>
-            <template #empty-actions>
-              <button v-if="user" class="gallery-action-btn" @click="startNewVista">
+              <button v-else class="rk-btn gallery-action-btn" @click="startNewVista">
                 <span class="mdi mdi-plus"></span> New vista
               </button>
             </template>
@@ -75,7 +72,10 @@
 
         <!-- Editor / viewer -->
         <div v-else-if="view === 'editor'" class="editor-view">
-          <div v-if="loadingVista" class="hint-state">Loading vista...</div>
+          <div v-if="loadingVista" class="loading-state" role="status">
+            <span class="rk-spinner rk-spinner--lg"></span>
+            <span>Loading vista...</span>
+          </div>
           <template v-else-if="activeVista">
             <VistaCanvas
               :vista="activeVista"
@@ -305,31 +305,15 @@ async function sendToScreen() {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Shell comes from .rk-scrim / .rk-dialog; only the large-canvas size lives here. */
+.vistas-modal-content {
+  width: min(100%, 1400px);
+  height: 90dvh;
 }
 
-.modal-content.vistas-modal-content {
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  width: 95vw;
-  max-width: 1400px;
-  height: 90vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-.modal-body.vistas-body {
+.vistas-body {
   flex: 1;
+  min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -338,48 +322,24 @@ async function sendToScreen() {
 .gallery-view {
   flex: 1;
   overflow-y: auto;
-  padding: 1.5rem;
+  padding: var(--space-6);
 }
 
 .new-vista-form {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-.new-vista-form input {
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 0.5rem 0.7rem;
-  color: var(--text-primary);
-}
-
-.new-vista-form input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
-}
-
-.icon-btn {
-  width: 36px;
-  height: 36px;
+.loading-state {
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
-  background: var(--interactive-secondary);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.hint-state {
+  gap: var(--space-3);
   color: var(--text-secondary);
-  text-align: center;
-  padding: 2rem;
-}
-
-.hint-state.error {
-  color: var(--status-error);
+  font-size: var(--text-sm);
 }
 
 .editor-view {

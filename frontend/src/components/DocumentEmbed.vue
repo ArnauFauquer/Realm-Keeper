@@ -3,11 +3,15 @@
     <span v-if="locked" class="embed-state">
       <span class="mdi mdi-lock-outline"></span> Sign in to view this {{ type }}
     </span>
-    <span v-else-if="loading" class="embed-state">
-      <span class="mdi mdi-loading mdi-spin"></span> Loading {{ type }}…
+    <span v-else-if="loading" class="embed-loading" aria-busy="true">
+      <span class="rk-skeleton embed-skeleton" :style="{ aspectRatio: config.aspectRatio || '16 / 9' }"></span>
+      <span class="embed-bar">
+        <span class="mdi" :class="config.icon"></span>
+        <span class="embed-name muted">Loading {{ type }}…</span>
+      </span>
     </span>
-    <span v-else-if="error" class="embed-state error">
-      <span class="mdi mdi-alert-circle-outline"></span> {{ type }}:{{ id }} — {{ error }}
+    <span v-else-if="error" class="embed-state error" role="alert">
+      <span class="mdi mdi-alert-circle-outline"></span> {{ type }}:{{ id }}: {{ error }}
     </span>
     <template v-else-if="doc">
       <!-- Same read-only canvases /screen uses, sized to the document's own
@@ -25,7 +29,8 @@
         <span class="embed-name">{{ doc.name }}</span>
         <button
           v-if="canInteract && hasImage"
-          class="embed-btn"
+          type="button"
+          class="rk-btn rk-btn--sm embed-btn"
           :class="{ sent }"
           title="Display on screen"
           @click.stop="sendToScreen"
@@ -156,36 +161,54 @@ onBeforeUnmount(() => clearTimeout(sentTimeout))
 <style scoped>
 .document-embed {
   display: block;
-  margin: 1rem 0;
-  border: 1px solid rgba(138, 92, 245, 0.3);
-  border-radius: 10px;
+  margin: var(--space-4) 0;
+  border: 1px solid var(--accent-a30);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background: rgba(5, 6, 20, 0.8);
+  background: var(--surface-sunken);
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.document-embed.interactive:hover {
+  border-color: var(--accent-a45);
 }
 
 .embed-frame {
   display: block;
   position: relative;
   width: 100%;
-  max-height: 70vh;
+  max-height: 70dvh;
 }
 
 .document-embed.interactive .embed-frame {
   cursor: pointer;
 }
 
+/* Placeholder at the scene's own proportions so the note doesn't jump
+   when the canvas arrives. */
+.embed-loading {
+  display: block;
+}
+
+.embed-skeleton {
+  display: block;
+  width: 100%;
+  max-height: 70dvh;
+}
+
 .embed-bar {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
-  border-top: 1px solid rgba(138, 92, 245, 0.2);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--accent-a20);
   color: var(--text-secondary);
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
 .embed-bar > .mdi {
-  color: #a78bfa;
+  color: var(--accent-hover);
 }
 
 .embed-name {
@@ -194,43 +217,51 @@ onBeforeUnmount(() => clearTimeout(sentTimeout))
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-primary, #f0f0ff);
+  color: var(--text-primary);
+}
+
+.embed-name.muted {
+  color: var(--text-muted);
 }
 
 .embed-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.6rem;
-  border-radius: 6px;
-  border: 1px solid rgba(138, 92, 245, 0.4);
-  background: rgba(138, 92, 245, 0.15);
-  color: #e0d4ff;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
+  border-color: var(--accent-a45);
+  background: var(--accent-a12);
+  color: var(--accent-soft);
 }
 
-.embed-btn:hover {
-  background: rgba(138, 92, 245, 0.3);
+.embed-btn:hover:not(:disabled) {
+  background: var(--accent-a30);
 }
 
-.embed-btn.sent {
-  border-color: rgba(52, 211, 153, 0.5);
-  background: rgba(52, 211, 153, 0.15);
-  color: #34d399;
+.embed-btn.sent,
+.embed-btn.sent:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--status-success) 50%, transparent);
+  background: var(--status-success-bg);
+  color: var(--status-success);
 }
 
 .embed-state {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1rem;
+  gap: var(--space-2);
+  padding: var(--space-4);
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+}
+
+.embed-state .mdi {
+  font-size: 1.1rem;
+  color: var(--text-muted);
 }
 
 .embed-state.error {
-  color: var(--status-error, #f87171);
+  color: var(--status-error);
+  background: var(--status-error-bg);
+}
+
+.embed-state.error .mdi {
+  color: inherit;
 }
 </style>

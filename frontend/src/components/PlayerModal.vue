@@ -1,18 +1,18 @@
 <template>
-  <div v-if="isOpen" class="modal-overlay" @click.self="closeModal">
-    <div class="modal-content player-modal-content">
-      <div class="modal-header">
-        <h2><span class="mdi mdi-music-box-multiple-outline"></span> Player</h2>
-        <button class="close-btn" @click="closeModal">
+  <div v-if="isOpen" class="rk-scrim" @click.self="closeModal">
+    <div class="rk-dialog player-modal-content" role="dialog" aria-modal="true" aria-labelledby="player-modal-title">
+      <div class="rk-dialog__header">
+        <h2 id="player-modal-title" class="rk-dialog__title"><span class="mdi mdi-music-box-multiple-outline"></span> Player</h2>
+        <button class="rk-icon-btn" aria-label="Close player" @click="closeModal">
           <span class="mdi mdi-close"></span>
         </button>
       </div>
 
-      <div class="modal-body player-body">
+      <div class="player-body">
         <aside class="album-list">
           <div class="album-list-header">
-            <h3>Albums</h3>
-            <button class="icon-btn" title="New album" @click="startNewAlbum">
+            <h3 class="rk-overline">Albums</h3>
+            <button class="rk-icon-btn rk-icon-btn--sm" title="New album" aria-label="New album" @click="startNewAlbum">
               <span class="mdi mdi-folder-plus-outline"></span>
             </button>
           </div>
@@ -21,16 +21,23 @@
             <input
               ref="newAlbumInputRef"
               v-model="newAlbumName"
+              class="rk-input album-name-input"
               placeholder="Album name"
+              aria-label="Album name"
               @keyup.enter="submitNewAlbum"
               @keyup.esc="showNewAlbumInput = false"
             />
-            <button class="icon-btn" @click="submitNewAlbum"><span class="mdi mdi-check"></span></button>
-            <button class="icon-btn" @click="showNewAlbumInput = false"><span class="mdi mdi-close"></span></button>
+            <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Create album" @click="submitNewAlbum"><span class="mdi mdi-check"></span></button>
+            <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Cancel" @click="showNewAlbumInput = false"><span class="mdi mdi-close"></span></button>
           </div>
 
-          <div v-if="loadingAlbums" class="hint-state">Loading…</div>
-          <div v-else-if="error && !albums.length" class="hint-state error">{{ error }}</div>
+          <div v-if="loadingAlbums" class="album-skeleton" role="status" aria-label="Loading albums">
+            <div v-for="n in 5" :key="n" class="rk-skeleton album-skeleton-row"></div>
+          </div>
+          <div v-else-if="error && !albums.length" class="rk-alert" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>{{ error }}</span>
+          </div>
           <ul v-else ref="albumListRef" class="album-items">
             <li
               v-for="album in albums"
@@ -48,6 +55,7 @@
                 v-if="renamingAlbum === album"
                 v-model="renameValue"
                 class="album-rename-input"
+                aria-label="Album name"
                 @click.stop
                 @keyup.enter="submitRenameAlbum(album)"
                 @keyup.esc="renamingAlbum = null"
@@ -56,35 +64,37 @@
               <span v-else class="album-name">{{ album }}</span>
               <button
                 v-if="renamingAlbum !== album"
-                class="icon-btn album-hover-btn"
+                class="rk-icon-btn rk-icon-btn--sm album-hover-btn"
                 :class="{ 'force-visible': pendingDeleteAlbum === album }"
                 title="Rename album"
+                aria-label="Rename album"
                 @click.stop="startRenameAlbum(album)"
               >
                 <span class="mdi mdi-pencil-outline"></span>
               </button>
               <button
-                class="icon-btn danger album-hover-btn"
+                class="rk-icon-btn rk-icon-btn--sm danger album-hover-btn"
                 :class="{ 'force-visible': pendingDeleteAlbum === album }"
                 :title="pendingDeleteAlbum === album ? 'Confirm delete' : 'Delete album'"
+                :aria-label="pendingDeleteAlbum === album ? 'Confirm delete' : 'Delete album'"
                 @click.stop="confirmDeleteAlbum(album)"
               >
                 <span class="mdi" :class="pendingDeleteAlbum === album ? 'mdi-check-circle' : 'mdi-trash-can-outline'"></span>
               </button>
             </li>
-            <li v-if="!albums.length" class="empty-hint">No albums yet.</li>
+            <li v-if="!albums.length" class="empty-hint">No albums yet. Use the folder button above to create one.</li>
           </ul>
         </aside>
 
         <section class="track-panel">
-          <div v-if="!currentAlbum" class="empty-state">
+          <div v-if="!currentAlbum" class="rk-empty empty-state">
             <span class="mdi mdi-music-note-outline"></span>
             <p>Select or create an album to see its tracks.</p>
           </div>
           <template v-else>
             <div class="track-panel-header">
               <h3>{{ currentAlbum }}</h3>
-              <label class="upload-btn">
+              <label class="rk-btn upload-btn">
                 <span class="mdi mdi-upload"></span> Upload audio
                 <input type="file" accept="audio/*" multiple hidden @change="onFilesSelected" />
               </label>
@@ -97,8 +107,13 @@
               </div>
             </div>
 
-            <div v-if="loadingTracks" class="hint-state">Loading tracks…</div>
-            <div v-else-if="error" class="hint-state error">{{ error }}</div>
+            <div v-if="loadingTracks" class="track-skeleton" role="status" aria-label="Loading tracks">
+              <div v-for="n in 6" :key="n" class="rk-skeleton track-skeleton-row"></div>
+            </div>
+            <div v-else-if="error" class="rk-alert" role="alert">
+              <span class="mdi mdi-alert-circle-outline"></span>
+              <span>{{ error }}</span>
+            </div>
             <ul v-else ref="trackListRef" class="track-items">
               <li
                 v-for="(track, idx) in tracks"
@@ -110,13 +125,14 @@
                 @dragstart="startDrag(track)"
                 @dragend="endDrag"
               >
-                <button class="track-play-btn" @click="playTrackAt(idx)">
+                <button class="track-play-btn" :aria-label="`Play ${track.name}`" @click="playTrackAt(idx)">
                   <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
                 </button>
                 <input
                   v-if="renamingTrack === track.key"
                   v-model="trackRenameValue"
                   class="track-rename-input"
+                  aria-label="Track name"
                   @click.stop
                   @keyup.enter="submitRenameTrack(track)"
                   @keyup.esc="renamingTrack = null"
@@ -126,25 +142,31 @@
                 <span class="track-size">{{ formatSize(track.size) }}</span>
                 <button
                   v-if="renamingTrack !== track.key"
-                  class="icon-btn"
+                  class="rk-icon-btn rk-icon-btn--sm"
                   :title="copiedTrack === track.key ? 'Copied!' : 'Copy track reference'"
+                  :aria-label="copiedTrack === track.key ? 'Copied' : 'Copy track reference'"
                   @click="copyTrackKey(track)"
                 >
                   <span class="mdi" :class="copiedTrack === track.key ? 'mdi-check' : 'mdi-content-copy'"></span>
                 </button>
                 <button
                   v-if="renamingTrack !== track.key"
-                  class="icon-btn"
+                  class="rk-icon-btn rk-icon-btn--sm"
                   title="Rename track"
+                  aria-label="Rename track"
                   @click="startRenameTrack(track)"
                 >
                   <span class="mdi mdi-pencil-outline"></span>
                 </button>
-                <button class="icon-btn danger" title="Delete track" @click="deleteTrack(track)">
+                <button class="rk-icon-btn rk-icon-btn--sm danger" title="Delete track" aria-label="Delete track" @click="deleteTrack(track)">
                   <span class="mdi mdi-trash-can-outline"></span>
                 </button>
               </li>
-              <li v-if="!tracks.length" class="empty-hint">This album is empty. Upload some audio.</li>
+              <li v-if="!tracks.length" class="rk-empty">
+                <span class="mdi mdi-playlist-music-outline"></span>
+                <p>This album is empty.</p>
+                <p class="rk-hint">Upload some audio.</p>
+              </li>
             </ul>
           </template>
         </section>
@@ -152,24 +174,24 @@
 
       <div class="playback-bar">
         <div class="now-playing">
-          <span class="mdi mdi-music-note"></span>
+          <span class="mdi mdi-music-note" :class="{ 'is-playing': isPlaying }"></span>
           <span class="track-title">{{ currentTrack ? currentTrack.name : 'Nothing playing' }}</span>
         </div>
 
         <div class="playback-controls">
-          <button class="icon-btn" :class="{ active: isShuffle }" title="Shuffle" @click="toggleShuffle">
+          <button class="rk-icon-btn" :class="{ 'is-active': isShuffle }" title="Shuffle" aria-label="Shuffle" :aria-pressed="isShuffle" @click="toggleShuffle">
             <span class="mdi mdi-shuffle-variant"></span>
           </button>
-          <button class="icon-btn" title="Previous" @click="playPrev">
+          <button class="rk-icon-btn" title="Previous" aria-label="Previous track" @click="playPrev">
             <span class="mdi mdi-skip-previous"></span>
           </button>
-          <button class="icon-btn play-btn" title="Play/Pause" @click="togglePlay">
+          <button class="rk-icon-btn play-btn" title="Play/Pause" :aria-label="isPlaying ? 'Pause' : 'Play'" @click="togglePlay">
             <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
           </button>
-          <button class="icon-btn" title="Next" @click="playNext">
+          <button class="rk-icon-btn" title="Next" aria-label="Next track" @click="playNext">
             <span class="mdi mdi-skip-next"></span>
           </button>
-          <button class="icon-btn" :class="{ active: isRepeat }" title="Repeat" @click="toggleRepeat">
+          <button class="rk-icon-btn" :class="{ 'is-active': isRepeat }" title="Repeat" aria-label="Repeat" :aria-pressed="isRepeat" @click="toggleRepeat">
             <span class="mdi mdi-repeat"></span>
           </button>
         </div>
@@ -181,6 +203,7 @@
             :max="duration || 0"
             :value="progress"
             class="seek-bar"
+            aria-label="Seek"
             @input="seek($event.target.valueAsNumber)"
           />
           <span class="time">{{ formatTime(duration) }}</span>
@@ -192,6 +215,7 @@
             type="range" min="0" max="1" step="0.01"
             :value="volume"
             class="volume-bar"
+            aria-label="Volume"
             @input="setVolume($event.target.valueAsNumber)"
           />
         </div>
@@ -381,70 +405,13 @@ function formatTime(seconds) {
 </script>
 
 <style scoped>
-.modal-overlay {
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(4px);
-  z-index: 2000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+/* Shell comes from .rk-scrim / .rk-dialog; only the player's size lives here. */
+.player-modal-content {
+  width: min(100%, 1100px);
+  height: 85dvh;
 }
 
-.modal-content.player-modal-content {
-  background: rgba(18, 19, 42, 0.98);
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  width: 95vw;
-  max-width: 1100px;
-  height: 85vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-}
-
-.modal-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--border-light);
-  flex-shrink: 0;
-}
-
-.modal-header h2 {
-  margin: 0;
-  font-size: 1.25rem;
-  color: var(--text-primary);
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.close-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
-}
-
-.close-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.close-btn .mdi {
-  font-size: 1.5rem;
-}
-
-.modal-body.player-body {
+.player-body {
   flex: 1;
   display: flex;
   overflow: hidden;
@@ -458,7 +425,7 @@ function formatTime(seconds) {
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border-light);
-  padding: 1rem;
+  padding: var(--space-4);
   overflow-y: auto;
 }
 
@@ -466,73 +433,61 @@ function formatTime(seconds) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
-}
-
-.album-list-header h3 {
-  font-size: 0.875rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-tertiary);
-  font-weight: 600;
+  margin-bottom: var(--space-3);
 }
 
 .new-album-form {
   display: flex;
-  gap: 0.4rem;
-  margin-bottom: 0.75rem;
+  align-items: center;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
 }
 
-.new-album-form input {
+.album-name-input {
   flex: 1;
   min-width: 0;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 0.4rem 0.6rem;
-  color: var(--text-primary);
-  font-size: 1rem;
-}
-
-.new-album-form input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
+  min-height: var(--control-md);
+  font-size: var(--text-sm);
 }
 
 .album-items {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 2px;
 }
 
 .album-item {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: 0 var(--space-1) 0 var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
   cursor: pointer;
   color: var(--text-secondary);
-  border: 1px solid transparent;
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .album-item:hover {
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
   color: var(--text-primary);
 }
 
 .album-item.active {
-  background: rgba(138, 92, 245, 0.2);
-  border-color: rgba(138, 92, 245, 0.5);
+  background: var(--accent-a20);
+  border-color: var(--accent-a45);
   color: var(--text-primary);
 }
 
 .album-item.drag-over {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
 .album-name {
@@ -541,33 +496,61 @@ function formatTime(seconds) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
-.album-rename-input {
+.album-rename-input,
+.track-rename-input {
   flex: 1;
   min-width: 0;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--interactive-primary);
-  border-radius: 6px;
-  padding: 0.2rem 0.4rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
   color: var(--text-primary);
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
 }
 
-.album-rename-input:focus {
+.album-rename-input:focus,
+.album-rename-input:focus-visible,
+.track-rename-input:focus,
+.track-rename-input:focus-visible {
   outline: none;
+  box-shadow: 0 0 0 3px var(--accent-a20);
+  border-radius: var(--radius-sm);
 }
 
+/* Hidden with opacity only, so keyboard users can still Tab to them. */
 .album-hover-btn {
   opacity: 0;
-  visibility: hidden;
+  pointer-events: none;
 }
 
 .album-item:hover .album-hover-btn,
+.album-item:focus-within .album-hover-btn,
 .album-hover-btn.force-visible {
   opacity: 1;
-  visibility: visible;
+  pointer-events: auto;
+}
+
+@media (hover: none) {
+  .album-hover-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.album-skeleton,
+.track-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.album-skeleton-row,
+.track-skeleton-row {
+  height: var(--control-md);
+  border-radius: var(--radius-md);
 }
 
 /* ── Track panel ────────────────────────────────────────────── */
@@ -575,70 +558,45 @@ function formatTime(seconds) {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 1rem 1.5rem;
+  padding: var(--space-4) var(--space-6);
   overflow-y: auto;
   min-width: 0;
 }
 
 .empty-state {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-  color: var(--text-tertiary);
-}
-
-.empty-state .mdi {
-  font-size: 3rem;
-  opacity: 0.5;
 }
 
 .track-panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
   flex-shrink: 0;
 }
 
 .track-panel-header h3 {
   color: var(--text-primary);
-  font-size: 1.1rem;
-}
-
-.upload-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  background: rgba(138, 92, 245, 0.15);
-  color: var(--text-primary);
-  font-size: 0.875rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.upload-btn:hover {
-  background: rgba(138, 92, 245, 0.3);
-  border-color: var(--interactive-primary);
+  font-size: var(--text-lg);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .upload-progress-list {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .upload-progress-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-size: 0.8rem;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
   color: var(--text-secondary);
 }
 
@@ -653,61 +611,73 @@ function formatTime(seconds) {
 .progress-track {
   flex: 1;
   height: 4px;
-  background: rgba(138, 92, 245, 0.15);
-  border-radius: 2px;
   overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--accent-a20);
 }
 
 .progress-fill {
   height: 100%;
-  background: var(--interactive-primary);
-  transition: width 0.15s ease;
+  background: var(--accent);
+  transition: width var(--duration-fast) var(--ease-out);
 }
 
 .track-items {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
+  gap: 2px;
 }
 
 .track-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
+  gap: var(--space-3);
+  min-height: var(--control-lg);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   color: var(--text-secondary);
-  transition: all 0.15s ease;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
 }
 
 .track-item:hover {
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
 }
 
 .track-item.active {
-  background: rgba(138, 92, 245, 0.15);
-  border-color: rgba(138, 92, 245, 0.4);
+  background: var(--accent-a12);
+  border-color: var(--accent-a45);
   color: var(--text-primary);
 }
 
+.track-item.active .track-play-btn {
+  color: var(--accent-hover);
+}
+
 .track-play-btn {
-  background: transparent;
-  border: none;
-  color: inherit;
-  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
   flex-shrink: 0;
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border: none;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: inherit;
+  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
 }
 
 .track-play-btn:hover {
-  background: rgba(138, 92, 245, 0.25);
+  background: var(--accent-a30);
+}
+
+.track-play-btn:active {
+  transform: scale(0.92);
 }
 
 .track-name {
@@ -716,97 +686,51 @@ function formatTime(seconds) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.875rem;
-}
-
-.track-rename-input {
-  flex: 1;
-  min-width: 0;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--interactive-primary);
-  border-radius: 6px;
-  padding: 0.2rem 0.4rem;
-  color: var(--text-primary);
-  font-size: 0.875rem;
-}
-
-.track-rename-input:focus {
-  outline: none;
+  font-size: var(--text-sm);
 }
 
 .track-size {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
   flex-shrink: 0;
 }
 
 .empty-hint {
-  color: var(--text-tertiary);
-  font-size: 0.875rem;
-  font-style: italic;
-  padding: 0.5rem;
+  padding: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
-.hint-state {
-  padding: 1rem 0.5rem;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-}
-
-.hint-state.error {
-  color: var(--status-error, #f87171);
-}
-
-/* ── Shared icon buttons ────────────────────────────────────── */
-.icon-btn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0.3rem;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.icon-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.icon-btn.active {
-  color: var(--interactive-primary);
-  background: rgba(138, 92, 245, 0.2);
-}
-
-.icon-btn.danger:hover {
-  color: var(--status-error, #f87171);
-  background: rgba(248, 113, 113, 0.15);
+.rk-icon-btn.danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
 /* ── Playback bar ───────────────────────────────────────────── */
 .playback-bar {
   flex-shrink: 0;
-  border-top: 1px solid var(--border-light);
-  padding: 0.85rem 1.5rem;
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  background: rgba(12, 13, 29, 0.6);
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--border-light);
+  background: var(--surface-sunken);
 }
 
 .now-playing {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 200px;
   flex-shrink: 0;
-  color: var(--text-secondary);
-  font-size: 0.875rem;
   overflow: hidden;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.now-playing .mdi.is-playing {
+  color: var(--accent-hover);
 }
 
 .now-playing .track-title {
@@ -818,44 +742,40 @@ function formatTime(seconds) {
 .playback-controls {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1);
   flex-shrink: 0;
 }
 
 .play-btn {
-  width: 36px;
-  height: 36px;
-  background: var(--interactive-primary);
-  color: white;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
-.play-btn:hover {
-  background: var(--interactive-primaryHover);
-  color: white;
-}
-
-.play-btn .mdi {
-  font-size: 1.2rem;
+.play-btn:hover:not(:disabled) {
+  background: var(--accent-strong-hover);
+  color: var(--accent-contrast);
 }
 
 .seek-row {
   flex: 1;
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: var(--space-2);
   min-width: 120px;
 }
 
 .time {
-  font-size: 0.75rem;
-  color: var(--text-tertiary);
   min-width: 34px;
   text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
-.seek-bar, .volume-bar {
-  accent-color: var(--interactive-primary);
+.seek-bar,
+.volume-bar {
+  accent-color: var(--accent);
   cursor: pointer;
 }
 
@@ -866,7 +786,7 @@ function formatTime(seconds) {
 .volume-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   width: 120px;
   flex-shrink: 0;
   color: var(--text-secondary);
@@ -877,8 +797,8 @@ function formatTime(seconds) {
 }
 
 @media (max-width: 768px) {
-  .modal-content.player-modal-content {
-    height: 92vh;
+  .player-modal-content {
+    height: 92dvh;
   }
 
   .player-body {
@@ -892,9 +812,14 @@ function formatTime(seconds) {
     border-bottom: 1px solid var(--border-light);
   }
 
+  .track-panel {
+    padding: var(--space-4);
+  }
+
   .playback-bar {
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
   }
 
   .now-playing {

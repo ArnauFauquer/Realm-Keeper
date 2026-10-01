@@ -1,54 +1,53 @@
 <template>
   <div class="tree-item">
-    <div v-if="item.isFolder">
-      <div 
-        class="folder"
-        :style="{ paddingLeft: (level * 1) + 'rem' }"
+    <template v-if="item.isFolder">
+      <button
+        type="button"
+        class="row folder"
+        :style="{ paddingLeft: `calc(${level} * var(--tree-indent) + var(--space-2))` }"
+        :aria-expanded="item.expanded"
         @click="$emit('toggle', item.path)"
       >
-        <span class="folder-toggle">
-          <span v-if="hasChildren(item)" class="mdi" :class="item.expanded ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span>
-          <span v-else class="mdi mdi-circle-small"></span>
-        </span>
-        <span class="mdi" :class="item.expanded ? 'mdi-folder-open' : 'mdi-folder'"></span>
-        {{ item.name }}
-      </div>
-      
-      <div v-if="item.expanded">
-        <TreeItem 
-          v-for="child in item.children" 
+        <span class="chevron mdi" :class="hasChildren(item) ? 'mdi-chevron-right' : 'mdi-circle-small'" :data-open="item.expanded" aria-hidden="true"></span>
+        <span class="row-icon mdi" :class="item.expanded ? 'mdi-folder-open' : 'mdi-folder'" aria-hidden="true"></span>
+        <span class="row-label">{{ item.name }}</span>
+      </button>
+
+      <div v-if="item.expanded" class="children" :style="{ '--guide-left': `calc(${level} * var(--tree-indent) + var(--space-2) + 9px)` }">
+        <TreeItem
+          v-for="child in item.children"
           :key="child.path"
           :item="child"
           :level="level + 1"
           @toggle="(path) => $emit('toggle', path)"
           @note-click="$emit('note-click')"
         />
-        
-        <router-link 
-          v-for="note in item.notes" 
+
+        <router-link
+          v-for="note in item.notes"
           :key="note.id"
           :to="'/note/' + encodeURIComponent(note.id)"
-          class="note-link"
+          class="row note-link"
           active-class="active"
-          :style="{ paddingLeft: ((level + 1) * 1 + 0.5) + 'rem' }"
+          :style="{ paddingLeft: `calc(${level + 1} * var(--tree-indent) + var(--space-2) + 20px)` }"
           @click="$emit('note-click')"
         >
-          <span class="mdi mdi-file-document-outline"></span>
-          {{ note.title }}
+          <span class="row-icon mdi mdi-file-document-outline" aria-hidden="true"></span>
+          <span class="row-label">{{ note.title }}</span>
         </router-link>
       </div>
-    </div>
-    
-    <router-link 
+    </template>
+
+    <router-link
       v-else
       :to="'/note/' + encodeURIComponent(item.id)"
-      class="note-link"
+      class="row note-link"
       active-class="active"
-      :style="{ paddingLeft: (level * 1 + 0.5) + 'rem' }"
+      :style="{ paddingLeft: `calc(${level} * var(--tree-indent) + var(--space-2) + 20px)` }"
       @click="$emit('note-click')"
     >
-      <span class="mdi mdi-file-document-outline"></span>
-      {{ item.title }}
+      <span class="row-icon mdi mdi-file-document-outline" aria-hidden="true"></span>
+      <span class="row-label">{{ item.title }}</span>
     </router-link>
   </div>
 </template>
@@ -77,67 +76,102 @@ export default {
 
 <style scoped>
 .tree-item {
-  margin-bottom: 0.25rem;
+  --tree-indent: 0.875rem;
+}
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 32px;
+  padding-right: var(--space-2);
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  text-decoration: none;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.row:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row-icon {
+  flex-shrink: 0;
+  font-size: 1rem;
+  color: var(--text-muted);
 }
 
 .folder {
-  padding: 0.5rem;
-  cursor: pointer;
-  font-weight: 600;
-  border-radius: 4px;
-  transition: background 0.2s;
   color: var(--text-primary);
+  font-weight: 500;
 }
 
-.folder:hover {
-  background: rgba(138, 92, 245, 0.1);
-}
-
-.folder-toggle {
-  margin-right: 0.25rem;
-  cursor: pointer;
-  user-select: none;
+.folder .row-icon {
   color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  width: 1.25rem;
 }
 
-.folder-toggle .mdi {
+.chevron {
+  flex-shrink: 0;
+  width: 18px;
+  margin-right: -6px;
   font-size: 1rem;
-  transition: transform 0.2s ease;
+  color: var(--text-muted);
+  transition: transform var(--duration-base) var(--ease-out);
 }
 
-.folder .mdi-folder,
-.folder .mdi-folder-open {
-  margin-right: 0.5rem;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
+.chevron[data-open='true'].mdi-chevron-right {
+  transform: rotate(90deg);
 }
 
-.mdi-file-document-outline {
-  margin-right: 0.5rem;
-  color: var(--text-secondary);
-  font-size: 1rem;
+/* Indent guide so deep folders stay readable. */
+.children {
+  position: relative;
 }
 
-.note-link {
-  display: flex;
-  align-items: center;
-  padding: 0.5rem;
-  text-decoration: none;
-  color: var(--text-primary);
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-
-.note-link:hover {
-  background: rgba(138, 92, 245, 0.1);
+.children::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: var(--guide-left);
+  width: 1px;
+  background: var(--border-light);
+  pointer-events: none;
 }
 
 .note-link.active {
-  background: linear-gradient(135deg, rgba(138, 92, 245, 0.35), rgba(99, 102, 241, 0.35));
+  background: var(--accent-a20);
   color: var(--text-primary);
-  box-shadow: 0 0 10px rgba(138, 92, 245, 0.25);
+  font-weight: 500;
+}
+
+.note-link.active .row-icon {
+  color: var(--accent-hover);
+}
+
+.note-link.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--accent-hover);
 }
 </style>

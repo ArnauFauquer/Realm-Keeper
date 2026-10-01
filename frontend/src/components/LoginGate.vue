@@ -1,7 +1,7 @@
 <template>
   <div class="login-gate">
     <div class="login-panel">
-      <div class="seal">
+      <div class="seal" aria-hidden="true">
         <span class="mdi mdi-shield-lock-outline"></span>
       </div>
 
@@ -21,9 +21,9 @@
         <span>Sign in with Google</span>
       </button>
 
-      <p v-if="error" class="error-msg">
+      <p v-if="error" class="rk-alert" role="alert">
         <span class="mdi mdi-alert-circle-outline"></span>
-        {{ error }}
+        <span>{{ error }}</span>
       </p>
 
       <p class="fine-print">Access is limited to invited players.</p>
@@ -42,10 +42,11 @@ defineEmits(['login'])
 .login-gate {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  z-index: var(--z-gate);
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: var(--space-4);
   /* No solid fill on purpose: NebulaBackground's animated starfield sits
      behind this overlay and should still read through it. */
   background: radial-gradient(ellipse at center, rgba(12, 13, 29, 0.45) 0%, rgba(2, 3, 12, 0.82) 100%);
@@ -53,85 +54,82 @@ defineEmits(['login'])
 
 .login-panel {
   position: relative;
-  background: rgba(18, 19, 42, 0.82);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-light);
-  border-radius: 16px;
-  padding: 2.75rem 2.5rem 2.25rem;
-  box-shadow:
-    0 24px 70px rgba(0, 0, 0, 0.55),
-    0 0 90px rgba(138, 43, 226, 0.14);
+  width: min(100%, 360px);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.4rem;
-  width: min(90vw, 360px);
+  gap: var(--space-5);
+  padding: var(--space-10) var(--space-8) var(--space-8);
   text-align: center;
-  animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes rise {
-  from { opacity: 0; transform: translateY(18px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .login-panel { animation: none; }
+  background: rgba(18, 19, 42, 0.82);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg), 0 0 90px rgba(138, 43, 226, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: rk-rise 0.5s var(--ease-out);
 }
 
 .seal {
   width: 52px;
   height: 52px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: var(--radius-full);
   background: radial-gradient(circle, rgba(138, 92, 245, 0.28), transparent 72%);
   border: 1px solid var(--border-medium);
 }
 
 .seal .mdi {
   font-size: 1.6rem;
-  color: var(--interactive-primaryHover);
+  color: var(--accent-hover);
 }
 
 .brand {
   display: flex;
   align-items: center;
-  font-size: 1.35rem;
-  font-weight: 500;
+  margin-top: calc(-1 * var(--space-2));
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
 }
 
 .brand-name {
   font-family: var(--font-display);
-  background: linear-gradient(90deg, #22d3ee 0%, #a78bfa 50%, #f472b6 100%);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
   background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .tagline {
+  max-width: 30ch;
+  margin: calc(-1 * var(--space-2)) 0 0;
   color: var(--text-secondary);
-  font-size: 0.875rem;
-  line-height: 1.5;
-  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
 }
 
+/* Google's own dark sign-in button spec: keep its colours, not ours. */
 .google-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.65rem;
   width: 100%;
+  min-height: var(--control-lg);
+  padding: 0 var(--space-5);
   background: #131314;
   color: #e3e3e3;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 10px;
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
   font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color var(--duration-base) var(--ease-out),
+    border-color var(--duration-base) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .google-btn:hover {
@@ -144,28 +142,15 @@ defineEmits(['login'])
   transform: translateY(0) scale(0.98);
 }
 
-.error-msg {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  color: var(--status-error, #f87171);
-  font-size: 0.8rem;
-  line-height: 1.4;
+.rk-alert {
+  width: 100%;
   margin: 0;
-  background: rgba(248, 113, 113, 0.1);
-  border: 1px solid rgba(248, 113, 113, 0.25);
-  padding: 0.625rem 0.8rem;
-  border-radius: 8px;
-}
-
-.error-msg .mdi {
-  flex-shrink: 0;
-  font-size: 1rem;
+  text-align: left;
 }
 
 .fine-print {
-  color: var(--text-tertiary);
-  font-size: 0.75rem;
   margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
 }
 </style>

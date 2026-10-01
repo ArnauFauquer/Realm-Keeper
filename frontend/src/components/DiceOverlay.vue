@@ -32,10 +32,10 @@ onBeforeUnmount(() => {
 .dice-overlay {
   position: fixed;
   inset: 0;
-  z-index: 3000;
+  z-index: var(--z-overlay-top);
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.4s ease;
+  transition: opacity var(--duration-slow) var(--ease-out);
 }
 
 .dice-overlay.visible {

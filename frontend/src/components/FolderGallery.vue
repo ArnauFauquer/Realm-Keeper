@@ -1,6 +1,6 @@
 <template>
   <div class="folder-gallery" ref="galleryRef">
-    <div class="breadcrumb">
+    <nav class="breadcrumb" aria-label="Folder path">
       <button
         class="breadcrumb-item"
         :class="{ current: currentPath === '', 'drag-over': dragOverTarget === '' }"
@@ -12,7 +12,7 @@
         <span class="mdi" :class="rootIcon"></span> {{ rootLabel }}
       </button>
       <template v-for="crumb in breadcrumb" :key="crumb.path">
-        <span class="breadcrumb-sep mdi mdi-chevron-right"></span>
+        <span class="breadcrumb-sep mdi mdi-chevron-right" aria-hidden="true"></span>
         <button
           class="breadcrumb-item"
           :class="{ current: crumb.path === currentPath, 'drag-over': dragOverTarget === crumb.path }"
@@ -24,29 +24,44 @@
           {{ crumb.name }}
         </button>
       </template>
-    </div>
+    </nav>
 
     <div v-if="canEdit" class="gallery-header">
       <div v-if="creatingFolder" class="new-folder-form">
         <input
           ref="newFolderInputRef"
           v-model="newFolderName"
+          class="rk-input inline-input"
           placeholder="Folder name"
+          aria-label="Folder name"
           @keyup.enter="submitNewFolder"
           @keyup.esc="creatingFolder = false"
         />
-        <button class="icon-btn" @click="submitNewFolder"><span class="mdi mdi-check"></span></button>
-        <button class="icon-btn" @click="creatingFolder = false"><span class="mdi mdi-close"></span></button>
+        <button class="rk-icon-btn" aria-label="Create folder" @click="submitNewFolder"><span class="mdi mdi-check"></span></button>
+        <button class="rk-icon-btn" aria-label="Cancel" @click="creatingFolder = false"><span class="mdi mdi-close"></span></button>
       </div>
-      <button v-else class="gallery-action-btn" @click="startNewFolder">
+      <button v-else class="rk-btn gallery-action-btn" @click="startNewFolder">
         <span class="mdi mdi-folder-plus-outline"></span> New folder
       </button>
       <slot name="actions" />
     </div>
 
-    <div v-if="loading" class="hint-state">{{ loadingText }}</div>
-    <div v-else-if="error" class="hint-state error">{{ error }}</div>
-    <div v-else-if="!folders.length && !items.length" class="empty-state">
+    <!-- Skeleton cards share .gallery-card's footprint so the grid doesn't jump. -->
+    <div v-if="loading" class="gallery-grid" role="status" aria-live="polite">
+      <span class="rk-visually-hidden">{{ loadingText }}</span>
+      <div v-for="n in 8" :key="n" class="skeleton-card" aria-hidden="true">
+        <div class="rk-skeleton skeleton-thumb"></div>
+        <div class="gallery-card-info">
+          <div class="rk-skeleton skeleton-line"></div>
+          <div class="rk-skeleton skeleton-line short"></div>
+        </div>
+      </div>
+    </div>
+    <div v-else-if="error" class="rk-alert" role="alert">
+      <span class="mdi mdi-alert-circle-outline"></span>
+      <span>{{ error }}</span>
+    </div>
+    <div v-else-if="!folders.length && !items.length" class="rk-empty">
       <span class="mdi" :class="emptyIcon"></span>
       <p>{{ emptyText }}</p>
       <slot name="empty-actions" />
@@ -66,10 +81,10 @@
         @drop.prevent="onDrop(folderPath(folder))"
       >
         <div v-if="canEdit" class="gallery-card-actions">
-          <button class="gallery-card-tool" title="Rename folder" @click.stop="startRename(folder)">
+          <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool" title="Rename folder" aria-label="Rename folder" @click.stop="startRename(folder)">
             <span class="mdi mdi-pencil-outline"></span>
           </button>
-          <button class="gallery-card-tool danger" title="Delete folder" @click.stop="$emit('delete-folder', folder)">
+          <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool danger" title="Delete folder" aria-label="Delete folder" @click.stop="$emit('delete-folder', folder)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
@@ -81,6 +96,7 @@
             v-if="renamingFolder === folder"
             v-model="renameValue"
             class="gallery-rename-input"
+            aria-label="Folder name"
             @click.stop
             @keyup.enter="submitRename(folder)"
             @keyup.esc="renamingFolder = null"
@@ -102,16 +118,17 @@
         <div v-if="canEdit" class="gallery-card-actions">
           <button
             v-if="itemCopyText"
-            class="gallery-card-tool"
+            class="rk-icon-btn rk-icon-btn--sm gallery-card-tool"
             :title="copiedItem === itemKey(item) ? 'Copied!' : 'Copy'"
+            :aria-label="copiedItem === itemKey(item) ? 'Copied' : 'Copy reference'"
             @click.stop="copyItem(item)"
           >
             <span class="mdi" :class="copiedItem === itemKey(item) ? 'mdi-check' : 'mdi-content-copy'"></span>
           </button>
-          <button class="gallery-card-tool" title="Rename" @click.stop="startItemRename(item)">
+          <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool" title="Rename" aria-label="Rename" @click.stop="startItemRename(item)">
             <span class="mdi mdi-pencil-outline"></span>
           </button>
-          <button class="gallery-card-tool danger" title="Delete" @click.stop="$emit('delete-item', item)">
+          <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool danger" title="Delete" aria-label="Delete" @click.stop="$emit('delete-item', item)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
@@ -123,6 +140,7 @@
             v-if="renamingItem === itemKey(item)"
             v-model="itemRenameValue"
             class="gallery-rename-input"
+            aria-label="Name"
             @click.stop
             @keyup.enter="submitItemRename(item)"
             @keyup.esc="renamingItem = null"
@@ -258,32 +276,41 @@ function copyItem(item) {
 .folder-gallery {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: var(--space-5);
 }
 
+/* ── Breadcrumb ────────────────────────────────────────────────── */
 .breadcrumb {
   display: flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
   flex-wrap: wrap;
 }
 
 .breadcrumb-item {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
   background: transparent;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--text-secondary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  padding: 0.2rem 0.4rem;
-  border-radius: 6px;
+  font-size: var(--text-sm);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .breadcrumb-item:hover {
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
   color: var(--text-primary);
+}
+
+.breadcrumb-item:active:not(.current) {
+  transform: translateY(1px);
 }
 
 .breadcrumb-item.current {
@@ -293,195 +320,141 @@ function copyItem(item) {
 }
 
 .breadcrumb-item.drag-over {
-  background: var(--interactive-primary);
-  color: white;
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
 .breadcrumb-sep {
-  color: var(--text-secondary);
-  opacity: 0.5;
+  color: var(--text-muted);
   font-size: 1rem;
 }
 
+/* ── Header actions ────────────────────────────────────────────── */
 .gallery-header {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: var(--space-3);
 }
 
-/* :deep() so this also styles the #actions slot's own "new item" button,
-   which every gallery (vistas, charts, assets) renders with this same
-   class from its own template (parent scope, not FolderGallery's). */
-.gallery-header :deep(.gallery-action-btn) {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.55rem 1rem;
-  border: 1px dashed var(--border-medium);
-  border-radius: 8px;
+/* Dashed "add" variant layered over .rk-btn. :deep() so it also styles the
+   #actions / #empty-actions slot buttons, which every gallery (vistas,
+   charts, assets) renders with this same class from its own template
+   (parent scope, not FolderGallery's). */
+.folder-gallery :deep(.gallery-action-btn) {
+  border-style: dashed;
   background: transparent;
   color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 0.875rem;
 }
 
-.gallery-header :deep(.gallery-action-btn:hover) {
+.folder-gallery :deep(.gallery-action-btn:hover) {
   border-style: solid;
-  border-color: var(--interactive-primary);
-  background: var(--interactive-secondary);
+  background: var(--hover-tint);
   color: var(--text-primary);
 }
 
 .new-folder-form {
   display: flex;
-  gap: 0.4rem;
-}
-
-.new-folder-form input {
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 0.5rem 0.7rem;
-  color: var(--text-primary);
-}
-
-.new-folder-form input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
-}
-
-.icon-btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: var(--interactive-secondary);
-  border: 1px solid var(--border-light);
-  color: var(--text-primary);
-  cursor: pointer;
-  flex-shrink: 0;
+  gap: var(--space-1);
 }
 
-.hint-state {
-  color: var(--text-secondary);
-  text-align: center;
-  padding: 2rem;
+/* Compact .rk-input for the inline header forms; :deep() so the parents'
+   own "new item" forms in the #actions slot share it. */
+.folder-gallery :deep(.inline-input) {
+  width: 220px;
+  min-height: var(--control-md);
+  font-size: var(--text-sm);
 }
 
-.hint-state.error {
-  color: var(--status-error);
-}
-
-.empty-state {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  color: var(--text-secondary);
-  padding: 3rem 1rem;
-  text-align: center;
-}
-
-.empty-state .mdi {
-  font-size: 3rem;
-  opacity: 0.5;
-}
-
+/* ── Grid & cards ──────────────────────────────────────────────── */
 .gallery-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 1.25rem;
+  gap: var(--space-5);
 }
 
 .gallery-card {
   position: relative;
-  border: 1px solid var(--border-light);
-  border-radius: 10px;
-  overflow: hidden;
-  cursor: pointer;
-  background: rgba(26, 27, 58, 0.4);
-  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  transition:
+    border-color var(--duration-base) var(--ease-out),
+    background-color var(--duration-base) var(--ease-out),
+    transform var(--duration-base) var(--ease-out),
+    box-shadow var(--duration-base) var(--ease-out);
 }
 
 .gallery-card:hover {
-  border-color: var(--interactive-primary);
+  border-color: var(--accent);
   transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.gallery-card:active {
+  transform: translateY(0);
 }
 
 .gallery-card.drag-over {
-  border-color: var(--interactive-primary);
-  background: var(--interactive-secondary);
+  border-color: var(--accent);
+  background: var(--accent-a20);
 }
 
 .gallery-card-actions {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: var(--z-raised);
   display: flex;
-  gap: 0.3rem;
+  gap: var(--space-1);
   opacity: 0;
-  transition: all 0.15s ease;
-  z-index: 2;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
-.gallery-card:hover .gallery-card-actions {
+.gallery-card:hover .gallery-card-actions,
+.gallery-card-actions:focus-within {
   opacity: 1;
 }
 
+/* Opaque backing so the tools stay legible over any thumbnail. */
 .gallery-card-tool {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: rgba(12, 13, 29, 0.85);
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s ease;
+  background: var(--surface-chrome);
 }
 
-.gallery-card-tool:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.gallery-card-tool.danger:hover {
-  background: rgba(248, 113, 113, 0.2);
-  color: var(--status-error, #f87171);
+.gallery-card-tool.danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
 .gallery-rename-input {
   width: 100%;
-  box-sizing: border-box;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--interactive-primary);
-  border-radius: 6px;
-  padding: 0.2rem 0.4rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
 }
 
-.gallery-rename-input:focus {
+.gallery-rename-input:focus,
+.gallery-rename-input:focus-visible {
   outline: none;
+  box-shadow: 0 0 0 3px var(--accent-a20);
+  border-radius: var(--radius-sm);
 }
 
 .gallery-card-thumb {
   aspect-ratio: 16 / 10;
-  background: rgba(12, 13, 29, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  background: var(--surface-sunken);
 }
 
 .gallery-card-thumb :deep(img) {
@@ -490,29 +463,25 @@ function copyItem(item) {
   object-fit: cover;
 }
 
+/* Folder and placeholder glyphs keep the muted look they always rendered
+   with (the old amber .folder-icon rule never won on specificity). */
 .gallery-card-thumb :deep(.mdi) {
   font-size: 2.5rem;
   color: var(--text-secondary);
   opacity: 0.5;
 }
 
-.folder-icon {
-  font-size: 2.5rem;
-  color: #fbbf24;
-  opacity: 0.85;
-}
-
 .gallery-card-info {
-  padding: 0.75rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: var(--space-1);
+  padding: var(--space-3);
 }
 
 .gallery-card-name {
   color: var(--text-primary);
   font-weight: 500;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -520,9 +489,33 @@ function copyItem(item) {
 
 .gallery-card-desc {
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Loading skeleton ──────────────────────────────────────────── */
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+
+.skeleton-thumb {
+  aspect-ratio: 16 / 10;
+  border-radius: 0;
+}
+
+.skeleton-line {
+  height: 0.75rem;
+  width: 70%;
+}
+
+.skeleton-line.short {
+  width: 40%;
 }
 </style>

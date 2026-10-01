@@ -1,0 +1,479 @@
+/*
+ * Global base styles and shared UI primitives.
+ *
+ * Primitives are prefixed `rk-` so they never collide with a component's
+ * scoped classes. Components compose them in markup (`class="rk-btn
+ * rk-btn--primary"`) and keep only layout-specific rules in their own
+ * <style scoped> block.
+ */
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+  line-height: var(--leading-tight);
+  font-weight: 600;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Ligatures off: `=>` or `!=` must read as typed, not as ⇒ or ≠. */
+code,
+kbd,
+pre,
+.rk-code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-feature-settings: 'calt' 0, 'liga' 0;
+}
+
+::selection {
+  background: var(--accent-a45);
+  color: var(--text-primary);
+}
+
+/* One keyboard focus treatment for the whole app. An outline (not a
+   box-shadow) so it never fights a component's own shadow, and it follows
+   each element's radius, so round buttons keep a round ring. */
+:focus-visible {
+  outline: 2px solid var(--accent-hover);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent-a30) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--accent-a30);
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-a45);
+  background-clip: padding-box;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────── */
+.rk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-medium);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.rk-btn .mdi {
+  font-size: 1.1em;
+}
+
+.rk-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--surface-raised-hover);
+}
+
+.rk-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.rk-btn:disabled {
+  opacity: 0.5;
+}
+
+.rk-btn--primary {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
+}
+
+.rk-btn--primary:hover:not(:disabled) {
+  background: var(--accent-strong-hover);
+  border-color: var(--accent-strong-hover);
+}
+
+.rk-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.rk-btn--ghost:hover:not(:disabled) {
+  background: var(--hover-tint);
+  border-color: transparent;
+  color: var(--text-primary);
+}
+
+.rk-btn--danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  border-color: var(--status-error-border);
+  color: var(--status-error);
+}
+
+.rk-btn--block {
+  width: 100%;
+}
+
+.rk-btn--sm {
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.rk-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: var(--control-md);
+  height: var(--control-md);
+  border-radius: var(--radius-md);
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.rk-icon-btn .mdi {
+  font-size: 1.25rem;
+}
+
+.rk-icon-btn:hover:not(:disabled) {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.rk-icon-btn.rk-btn--danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+}
+
+.rk-icon-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.rk-icon-btn:disabled {
+  opacity: 0.4;
+}
+
+.rk-icon-btn--sm {
+  width: var(--control-sm);
+  height: var(--control-sm);
+  border-radius: var(--radius-sm);
+}
+
+.rk-icon-btn--sm .mdi {
+  font-size: 1.05rem;
+}
+
+.rk-icon-btn.is-active {
+  color: var(--accent-hover);
+  background: var(--accent-a20);
+}
+
+/* ── Form fields ────────────────────────────────────────────────── */
+.rk-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rk-label {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.rk-hint {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  opacity: 0.85;
+}
+
+.rk-input {
+  width: 100%;
+  min-height: var(--control-lg);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-medium);
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-size: var(--text-md);
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.rk-input::placeholder {
+  color: var(--text-muted);
+}
+
+.rk-input:focus,
+.rk-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-a20);
+  border-radius: var(--radius-md);
+}
+
+.rk-code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a12);
+  color: var(--accent-soft);
+}
+
+/* ── Modal shell ────────────────────────────────────────────────── */
+.rk-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background: var(--scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: rk-fade-in var(--duration-base) var(--ease-out);
+}
+
+.rk-dialog {
+  width: min(100%, 440px);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-lg);
+  animation: rk-rise var(--duration-slow) var(--ease-out);
+}
+
+.rk-dialog__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.rk-dialog__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.rk-dialog__body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+}
+
+.rk-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: 0 var(--space-5) var(--space-5);
+}
+
+/* ── Feedback states ────────────────────────────────────────────── */
+.rk-spinner {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--accent-a20);
+  border-top-color: var(--accent);
+  animation: rk-spin 0.8s linear infinite;
+}
+
+.rk-spinner--lg {
+  width: 36px;
+  height: 36px;
+  border-width: 3px;
+}
+
+.rk-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a08);
+}
+
+.rk-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(167, 139, 250, 0.1), transparent);
+  animation: rk-shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+.rk-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-8) var(--space-4);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.rk-empty .mdi {
+  font-size: 2rem;
+  color: var(--text-muted);
+}
+
+.rk-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--status-error);
+  background: var(--status-error-bg);
+  border: 1px solid var(--status-error-border);
+}
+
+.rk-alert .mdi {
+  flex-shrink: 0;
+  font-size: 1.1em;
+  line-height: inherit;
+}
+
+/* ── Small-caps section label, used sparingly (aside headers) ───── */
+.rk-overline {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.rk-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Keyframes ──────────────────────────────────────────────────── */
+@keyframes rk-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rk-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes rk-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes rk-shimmer {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Spinners still need to read as "busy", just calmer: the shared one, the
+     /screen waiting ring and the dice button while a roll is in flight. */
+  .rk-spinner,
+  .loading-spinner,
+  .dice-fab.is-rolling .mdi {
+    animation-duration: 1.6s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

@@ -3,7 +3,7 @@
     <div v-if="!vista.background_url" class="empty-stage">
       <span class="mdi mdi-image-plus"></span>
       <p>This vista has no background yet.</p>
-      <button v-if="editable" class="upload-btn" @click="openLibraryForBackground">
+      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForBackground">
         <span class="mdi mdi-folder-multiple-image"></span> Choose background
       </button>
     </div>
@@ -107,7 +107,7 @@
           v-if="editable"
           class="vanishing-point"
           :style="vanishingPointStyle"
-          title="Vanishing point — drag to calibrate perspective for this background"
+          title="Vanishing point. Drag to calibrate perspective for this background"
           @pointerdown.stop="startDrag('vanishingPoint', null)"
           @click.stop="justDragged = false"
           @mousedown.stop.prevent
@@ -119,13 +119,13 @@
 
       <!-- Toolbar -->
       <div v-if="editable" class="vista-toolbar" @click.stop>
-        <button class="tool-btn" :class="{ active: mode === 'select' }" title="Select / move" @click="setMode('select')">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'select' }" title="Select / move" aria-label="Select / move" :aria-pressed="mode === 'select'" @click="setMode('select')">
           <span class="mdi mdi-cursor-default"></span>
         </button>
-        <button class="tool-btn" :class="{ active: mode === 'asset' }" title="Place asset" @click="openLibraryForNewAsset">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'asset' }" title="Place asset" aria-label="Place asset" :aria-pressed="mode === 'asset'" @click="openLibraryForNewAsset">
           <span class="mdi mdi-account-plus-outline"></span>
         </button>
-        <button class="tool-btn" title="Replace background" @click="openLibraryForBackground">
+        <button class="tool-btn rk-icon-btn" title="Replace background" aria-label="Replace background" @click="openLibraryForBackground">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
@@ -140,49 +140,50 @@
           <span class="mdi mdi-account-outline"></span>
           <input
             v-model="selectedAsset.name"
-            class="selection-name-input"
+            class="selection-name-input rk-input"
             placeholder="Asset name"
+            aria-label="Asset name"
             @input="emitChange"
           />
-          <button class="icon-btn danger" title="Delete asset" @click="deleteAsset(selectedAsset.id)">
+          <button class="rk-icon-btn rk-icon-btn--sm danger" title="Delete asset" aria-label="Delete asset" @click="deleteAsset(selectedAsset.id)">
             <span class="mdi mdi-trash-can-outline"></span>
           </button>
         </div>
 
         <div class="panel-row">
-          <button class="upload-btn small" @click="openLibraryForAsset(selectedAsset)">
+          <button class="rk-btn rk-btn--sm" @click="openLibraryForAsset(selectedAsset)">
             <span class="mdi mdi-folder-multiple-image"></span> {{ selectedAsset.image_url ? 'Change image' : 'Choose image' }}
           </button>
-          <button class="upload-btn small" title="Reset scale, rotation, flip and color adjustments" @click="resetAsset(selectedAsset)">
+          <button class="rk-btn rk-btn--sm" title="Reset scale, rotation, flip and color adjustments" @click="resetAsset(selectedAsset)">
             <span class="mdi mdi-restore"></span> Reset to default
           </button>
         </div>
 
-        <button class="flip-btn" :class="{ active: selectedAsset.flip_h }" @click="toggleFlip(selectedAsset)">
+        <button class="flip-btn" :class="{ active: selectedAsset.flip_h }" :aria-pressed="!!selectedAsset.flip_h" @click="toggleFlip(selectedAsset)">
           <span class="mdi mdi-flip-horizontal"></span> Flip
         </button>
 
         <div class="slider-row">
           <span class="mdi mdi-opacity"></span>
-          <input type="range" min="0" max="100" step="1" v-model.number="opacityPct" @input="emitChange" />
+          <input type="range" min="0" max="100" step="1" aria-label="Opacity" v-model.number="opacityPct" @input="emitChange" />
           <span class="slider-value">{{ Math.round(opacityPct) }}%</span>
         </div>
 
         <div class="slider-row">
           <span class="mdi mdi-brightness-6"></span>
-          <input type="range" min="0" max="200" step="1" v-model.number="brightnessPct" @input="emitChange" />
+          <input type="range" min="0" max="200" step="1" aria-label="Brightness" v-model.number="brightnessPct" @input="emitChange" />
           <span class="slider-value">{{ Math.round(brightnessPct) }}%</span>
         </div>
 
         <div class="slider-row">
           <span class="mdi mdi-contrast-circle"></span>
-          <input type="range" min="0" max="200" step="1" v-model.number="saturationPct" @input="emitChange" />
+          <input type="range" min="0" max="200" step="1" aria-label="Saturation" v-model.number="saturationPct" @input="emitChange" />
           <span class="slider-value">{{ Math.round(saturationPct) }}%</span>
         </div>
 
         <div class="slider-row">
           <span class="mdi mdi-palette"></span>
-          <input type="range" min="0" max="360" step="1" v-model.number="selectedAsset.hue_rotate" @input="emitChange" />
+          <input type="range" min="0" max="360" step="1" aria-label="Hue" v-model.number="selectedAsset.hue_rotate" @input="emitChange" />
           <span class="slider-value">{{ Math.round(selectedAsset.hue_rotate) }}°</span>
         </div>
       </div>
@@ -697,6 +698,9 @@ function resetAsset(asset) {
 
 <style scoped>
 .vista-canvas {
+  /* Positioned content is measured in px: keep the line-height it was
+     laid out with before the global type scale (body line-height 1.5). */
+  line-height: normal;
   width: 100%;
   height: 100%;
   position: relative;
@@ -710,15 +714,19 @@ function resetAsset(asset) {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
+  gap: var(--space-3);
   color: var(--text-secondary);
   text-align: center;
-  padding: 2rem;
+  padding: var(--space-8);
 }
 
 .empty-stage .mdi {
   font-size: 3rem;
-  opacity: 0.5;
+  color: var(--text-muted);
+}
+
+.empty-stage .rk-btn {
+  margin-top: var(--space-2);
 }
 
 .stage-viewport {
@@ -794,18 +802,19 @@ function resetAsset(asset) {
 
 .placeholder-icon {
   font-size: 2rem;
+  line-height: normal;
   color: rgba(226, 224, 235, 0.6);
   background: rgba(12, 13, 29, 0.6);
   border: 1px dashed var(--border-medium);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   padding: 0.6em;
 }
 
 .vista-asset.selected .vista-asset-image,
 .vista-asset.selected .placeholder-icon {
-  outline: 2px solid var(--interactive-primary);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .rotate-handle,
@@ -813,9 +822,9 @@ function resetAsset(asset) {
   position: absolute;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
-  background: var(--interactive-primary);
-  border: 2px solid white;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  border: 2px solid var(--accent-contrast);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   z-index: 700;
   pointer-events: auto;
@@ -828,7 +837,7 @@ function resetAsset(asset) {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--accent-contrast);
   font-size: 0.85rem;
   cursor: grab;
 }
@@ -844,7 +853,7 @@ function resetAsset(asset) {
   left: 50%;
   width: 2px;
   height: 20px;
-  background: var(--interactive-primary);
+  background: var(--accent);
   transform: translateX(-50%);
 }
 
@@ -859,13 +868,13 @@ function resetAsset(asset) {
   position: absolute;
   width: 16px;
   height: 16px;
-  border-radius: 50%;
-  background: rgba(12, 13, 29, 0.85);
+  border-radius: var(--radius-full);
+  background: var(--surface-chrome);
   border: 2px solid #fbbf24;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   transform: translate(-50%, -50%);
   cursor: ns-resize;
-  z-index: 2000;
+  z-index: var(--z-modal);
   touch-action: none;
 }
 
@@ -879,7 +888,7 @@ function resetAsset(asset) {
   border-left: 2px dashed rgba(251, 191, 36, 0.7);
   transform: translateX(-1px);
   pointer-events: none;
-  z-index: 1999;
+  z-index: calc(var(--z-modal) - 1);
 }
 
 .vanishing-point {
@@ -891,6 +900,7 @@ function resetAsset(asset) {
   opacity: 0.75;
   text-shadow: 0 0 6px rgba(34, 211, 238, 0.7);
   z-index: 500;
+  transition: opacity var(--duration-fast) var(--ease-out);
 }
 
 .vanishing-point:active {
@@ -903,45 +913,34 @@ function resetAsset(asset) {
 
 .vista-toolbar {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: var(--space-4);
+  right: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
-  background: rgba(12, 13, 29, 0.9);
+  gap: var(--space-1);
+  background: var(--surface-chrome);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 0.4rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
   z-index: 600;
 }
 
 .tool-btn {
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
 }
 
 .tool-btn .mdi {
   font-size: 1.3rem;
 }
 
-.tool-btn:hover {
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-}
-
-.tool-btn.active {
-  background: var(--interactive-primary);
-  color: white;
+.tool-btn.active,
+.tool-btn.active:hover {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
 .asset-hint {
@@ -950,120 +949,76 @@ function resetAsset(asset) {
   bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(12, 13, 29, 0.9);
+  background: var(--surface-chrome);
   border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-sm);
   z-index: 600;
 }
 
 .selection-panel {
   position: absolute;
-  bottom: 1rem;
-  left: 1rem;
-  background: rgba(12, 13, 29, 0.92);
+  bottom: var(--space-4);
+  left: var(--space-4);
+  background: var(--surface-overlay);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-light);
-  border-radius: 12px;
-  padding: 0.75rem;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-3);
   min-width: 240px;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: var(--space-3);
   z-index: 600;
 }
 
 .selection-panel-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 
+/* Compact variant of .rk-input for the floating panel. */
 .selection-name-input {
   flex: 1;
-  width: 100%;
-  box-sizing: border-box;
-  background: rgba(26, 27, 58, 0.6);
-  border: 1px solid var(--border-light);
-  border-radius: 6px;
-  padding: 0.35rem 0.5rem;
-  color: var(--text-primary);
-  font-size: 0.875rem;
+  min-height: var(--control-sm);
+  padding: 0 var(--space-2);
+  font-size: var(--text-sm);
   user-select: text;
   -webkit-user-select: text;
 }
 
-.selection-name-input:focus {
-  outline: none;
-  border-color: var(--interactive-primary);
-}
-
-.icon-btn {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.icon-btn.danger:hover {
-  background: rgba(248, 113, 113, 0.15);
-  color: var(--status-error, #f87171);
-}
-
-.upload-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--border-medium);
-  border-radius: 8px;
-  background: var(--interactive-secondary);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.upload-btn:hover {
-  border-color: var(--interactive-primary);
-}
-
-.upload-btn.small {
-  padding: 0.35rem 0.7rem;
-  font-size: 0.8rem;
-  align-self: flex-start;
+.danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
 }
 
 .panel-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: var(--space-2);
 }
 
 .slider-row {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--space-2);
   color: var(--text-secondary);
 }
 
 .slider-row input[type="range"] {
   flex: 1;
+  accent-color: var(--accent);
 }
 
 .slider-value {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   min-width: 2.5em;
   text-align: right;
 }
@@ -1072,20 +1027,35 @@ function resetAsset(asset) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.7rem;
-  border-radius: 6px;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border-light);
   background: transparent;
   color: var(--text-secondary);
-  font-size: 0.8rem;
+  font-size: var(--text-xs);
   cursor: pointer;
   align-self: flex-start;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.flip-btn:hover:not(.active) {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.flip-btn:active {
+  transform: translateY(1px);
 }
 
 .flip-btn.active {
-  background: var(--interactive-primary);
-  border-color: var(--interactive-primary);
-  color: white;
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 </style>
