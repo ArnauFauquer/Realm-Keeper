@@ -8,14 +8,48 @@
         </button>
       </header>
 
+      <button
+        type="button"
+        class="duality-toggle"
+        :class="{ active: duality }"
+        :aria-pressed="duality"
+        title="Two d12: same number is a critical, otherwise the higher die decides Hope or Fear"
+        @click="duality = !duality"
+      >
+        <span class="duality-pips" aria-hidden="true">
+          <span class="pip pip--hope"></span>
+          <span class="pip pip--fear"></span>
+        </span>
+        <span class="duality-label">Hope &amp; Fear</span>
+        <span class="duality-hint">2d12</span>
+        <span class="duality-switch" aria-hidden="true"></span>
+      </button>
+
       <div class="die-grid">
-        <div v-for="d in dieTypes" :key="d.sides" class="die-row" :class="{ active: counts[d.sides] > 0 }">
+        <div
+          v-for="d in dieTypes"
+          :key="d.sides"
+          class="die-row"
+          :class="{ active: counts[d.sides] > 0, negative: counts[d.sides] < 0 }"
+        >
           <span class="mdi die-icon" :class="d.icon"></span>
           <span class="die-label">{{ d.label }}</span>
+          <div v-if="d.sides === 20" class="d20-mode" role="group" aria-label="Advantage or disadvantage">
+            <button
+              v-for="m in d20Modes"
+              :key="m.mode"
+              type="button"
+              class="d20-mode-btn"
+              :class="{ active: d20Mode === m.mode }"
+              :aria-pressed="d20Mode === m.mode"
+              :title="m.title"
+              @click="toggleD20Mode(m.mode)"
+            >{{ m.label }}</button>
+          </div>
           <div class="stepper">
-            <button type="button" :aria-label="`Remove one ${d.label}`" :disabled="counts[d.sides] === 0" @click="decrement(d.sides)">-</button>
+            <button type="button" :aria-label="`Remove one ${d.label}`" :disabled="counts[d.sides] <= -MAX_COUNT" @click="decrement(d.sides)">-</button>
             <span class="stepper-value">{{ counts[d.sides] }}</span>
-            <button type="button" :aria-label="`Add one ${d.label}`" @click="increment(d.sides)">+</button>
+            <button type="button" :aria-label="`Add one ${d.label}`" :disabled="counts[d.sides] >= MAX_COUNT" @click="increment(d.sides)">+</button>
           </div>
         </div>
       </div>
@@ -32,11 +66,12 @@
       <button
         class="roll-btn rk-btn rk-btn--primary rk-btn--block"
         type="button"
-        :disabled="!hasSelection || state.isRolling"
+        :disabled="!hasSelection || tooManyDice || state.isRolling"
         @click="rollQuickPick"
       >
         <span class="mdi mdi-dice-multiple"></span>
-        Roll {{ quickFormulaPreview }}
+        <template v-if="tooManyDice">Too many dice (max {{ MAX_DICE }})</template>
+        <template v-else>Roll {{ quickFormulaPreview }}</template>
       </button>
 
       <div class="panel-divider">
@@ -61,9 +96,9 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, watch } from 'vue'
 import { useDiceRoller } from '@/composables/useDiceRoller'
-import { parseDiceFormula } from '@/utils/diceNotation'
+import { parseDiceFormula, formatDiceFormula, DUALITY_TOKEN, ADVANTAGE_TOKENS, MAX_DICE } from '@/utils/diceNotation'
 
 const { state, roll, closePanel } = useDiceRoller()
 
@@ -78,38 +113,71 @@ const dieTypes = [
   { sides: 100, label: 'd100', icon: 'mdi-dice-multiple' }
 ]
 
+// A negative count subtracts those dice (e.g. 1d20 - 1d4, or a
+// disadvantage d6 off a Hope & Fear roll).
+const MAX_COUNT = 20
+
 const counts = reactive(Object.fromEntries(dieTypes.map(d => [d.sides, 0])))
 const modifier = ref(0)
+const duality = ref(false)
 const formulaText = ref('')
 
+// Advantage / disadvantage: the single d20 is rolled twice, keeping the
+// higher / lower die. Only meaningful for exactly one d20, so changing the
+// d20 count drops back to a normal roll.
+const d20Modes = [
+  { mode: 'high', label: 'Adv', title: 'Advantage: roll two d20, keep the higher' },
+  { mode: 'low', label: 'Dis', title: 'Disadvantage: roll two d20, keep the lower' }
+]
+const d20Mode = ref(null)
+
+function toggleD20Mode(mode) {
+  if (d20Mode.value === mode) {
+    d20Mode.value = null
+    return
+  }
+  counts[20] = 1
+  d20Mode.value = mode
+}
+
+watch(() => counts[20], count => {
+  if (count !== 1) d20Mode.value = null
+})
+
 function increment(sides) {
-  if (counts[sides] < 20) counts[sides]++
+  if (counts[sides] < MAX_COUNT) counts[sides]++
 }
 function decrement(sides) {
-  if (counts[sides] > 0) counts[sides]--
+  if (counts[sides] > -MAX_COUNT) counts[sides]--
 }
 function resetCounts() {
   dieTypes.forEach(d => { counts[d.sides] = 0 })
   modifier.value = 0
+  duality.value = false
+  d20Mode.value = null
 }
 
-const hasSelection = computed(() => dieTypes.some(d => counts[d.sides] > 0))
+const hasSelection = computed(() => duality.value || dieTypes.some(d => counts[d.sides] !== 0))
 
 function buildQuickFormula() {
-  const parts = dieTypes
-    .filter(d => counts[d.sides] > 0)
-    .map(d => `${counts[d.sides]}d${d.sides}`)
-  let formula = parts.join('+')
+  const added = dieTypes.filter(d => counts[d.sides] > 0).map(d =>
+    d.sides === 20 && d20Mode.value ? `+${ADVANTAGE_TOKENS[d20Mode.value]}` : `+${counts[d.sides]}d${d.sides}`)
+  const subtracted = dieTypes.filter(d => counts[d.sides] < 0).map(d => `${counts[d.sides]}d${d.sides}`)
+  let formula = [duality.value ? DUALITY_TOKEN : '', ...added, ...subtracted].join('')
   if (modifier.value !== 0) {
     formula += modifier.value > 0 ? `+${modifier.value}` : `${modifier.value}`
   }
-  return formula
+  return formula.replace(/^\+/, '')
 }
 
-const quickFormulaPreview = computed(() => hasSelection.value ? buildQuickFormula() : '')
+const quickParsed = computed(() => hasSelection.value ? parseDiceFormula(buildQuickFormula()) : null)
+// The panel only builds valid terms, so a selection that doesn't parse is
+// one over MAX_DICE.
+const tooManyDice = computed(() => hasSelection.value && !quickParsed.value)
+const quickFormulaPreview = computed(() => quickParsed.value ? formatDiceFormula(quickParsed.value) : '')
 
 async function rollQuickPick() {
-  if (!hasSelection.value) return
+  if (!quickParsed.value) return
   await roll(buildQuickFormula())
 }
 
@@ -186,6 +254,99 @@ async function rollFormula() {
   border-color: var(--accent-a45);
 }
 
+.die-row.negative {
+  background: var(--status-error-bg);
+  border-color: var(--status-error-border);
+}
+
+.die-row.negative .stepper-value {
+  color: var(--status-error);
+}
+
+/* Hope & Fear colours match the dice themselves (dice/diceTheme.js). */
+.duality-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.45rem var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--accent-a20);
+  background: var(--accent-a08);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.duality-toggle:hover {
+  background: var(--accent-a12);
+}
+
+.duality-toggle.active {
+  color: var(--text-primary);
+  border-color: rgba(227, 179, 65, 0.55);
+  background: linear-gradient(90deg, rgba(227, 179, 65, 0.16) 0%, rgba(224, 90, 133, 0.16) 100%);
+}
+
+.duality-pips {
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+.pip--hope { background: #e3b341; }
+.pip--fear { background: #c2335f; }
+
+.duality-label {
+  flex: 1;
+  font-weight: 600;
+}
+
+.duality-hint {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.duality-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: var(--radius-full);
+  background: var(--border-medium);
+  transition: background-color var(--duration-fast) var(--ease-out);
+}
+
+.duality-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.duality-toggle.active .duality-switch {
+  background: #e3b341;
+}
+
+.duality-toggle.active .duality-switch::after {
+  transform: translateX(12px);
+}
+
 .die-icon {
   font-size: 1.1rem;
   color: var(--accent-soft);
@@ -195,6 +356,36 @@ async function rollFormula() {
   font-size: var(--text-sm);
   color: var(--text-secondary);
   flex: 1;
+}
+
+.d20-mode {
+  display: flex;
+  gap: 2px;
+}
+
+.d20-mode-btn {
+  height: 22px;
+  padding: 0 0.4rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.d20-mode-btn:hover {
+  background: var(--accent-a12);
+  color: var(--text-primary);
+}
+
+.d20-mode-btn.active {
+  background: var(--accent-a45);
+  border-color: var(--accent-a45);
+  color: var(--text-primary);
 }
 
 .stepper {

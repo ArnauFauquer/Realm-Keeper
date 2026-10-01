@@ -3,12 +3,43 @@ import * as CANNON from 'cannon-es'
 import { buildDie } from './diceGeometries'
 import { buildFaceMaterials } from './diceTextures'
 import { convexShapeForGeometry } from './dicePhysics'
+import { themeForKind } from './diceTheme'
+import { droppedIndices } from '@/utils/diceNotation'
 
 const UP = new THREE.Vector3(0, 1, 0)
 // If the winning and runner-up face are this close in "up-ness", the die is
 // treated as resting in an ambiguous/edge-balanced pose (mainly a risk for
 // the d10's kite faces) and gets one corrective nudge before being read.
 const AMBIGUOUS_MARGIN = 0.12
+// The camera looks almost straight down (see diceWorld.js), so spawn heights
+// cycle through a few layers instead of stacking one die per layer forever -
+// a big roll would otherwise start dice above (or right in front of) the
+// camera. Consecutive dice get spread around the tray by the golden angle
+// so dice sharing a layer don't start inside each other.
+const SPAWN_LAYERS = 8
+
+const LINEAR_DAMPING = 0.12
+const ANGULAR_DAMPING = 0.2
+// A die counts as at rest once it has stayed below these speeds for
+// REST_TIME of simulated time. cannon's own sleep test (one combined, much
+// stricter limit) is easily kept awake by the tiny contact jitter of a
+// convex polyhedron on the floor or against another die, which used to make
+// a roll wait out the full timeout before showing its result.
+const REST_LINEAR_SPEED = 0.15
+const REST_ANGULAR_SPEED = 0.35
+const REST_TIME = 0.25
+// A die jittering in place - wedged against another die or a wall - can keep
+// a high instantaneous speed while going nowhere, so a die that stays within
+// these of where its rest window began also counts as at rest.
+const STILL_DISTANCE = 0.03
+const STILL_ANGLE = 0.05
+// Simulated seconds after which dice still moving get heavy damping, so a
+// die spinning on a vertex or rocking on an edge stops instead of stalling
+// the result. The corrective nudge is only a small hop, so it gets less.
+const ASSIST_AFTER = 1.8
+const NUDGE_ASSIST_AFTER = 0.9
+const ASSIST_DAMPING = 0.7
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
 function spawnDie(world, { sides, variant, index, theme }) {
   const { geometry, faceTable, materialLabels } = buildDie(sides, variant)
@@ -18,11 +49,12 @@ function spawnDie(world, { sides, variant, index, theme }) {
   const cacheKey = variant ? `${sides}-${variant}` : `${sides}`
   const shape = convexShapeForGeometry(cacheKey, geometry)
 
-  const angle = Math.random() * Math.PI * 2
-  const dist = 0.6 + Math.random() * (world.trayHalfSize * 0.5)
-  const x = Math.cos(angle) * dist
-  const z = Math.sin(angle) * dist
-  const y = 5.5 + index * 0.55
+  const angle = index * GOLDEN_ANGLE + (Math.random() - 0.5) * 0.6
+  // Somewhere in the middle of the tray, following its shape.
+  const dist = 0.16 + Math.random() * 0.5
+  const x = Math.cos(angle) * dist * world.trayHalf.x
+  const z = Math.sin(angle) * dist * world.trayHalf.z
+  const y = 4.5 + (index % SPAWN_LAYERS) * 0.6
 
   const body = new CANNON.Body({ mass: 1, position: new CANNON.Vec3(x, y, z), shape })
   body.quaternion.setFromEuler(
@@ -39,11 +71,11 @@ function spawnDie(world, { sides, variant, index, theme }) {
   body.allowSleep = true
   body.sleepSpeedLimit = 0.09
   body.sleepTimeLimit = 0.35
-  body.linearDamping = 0.12
-  body.angularDamping = 0.2
+  body.linearDamping = LINEAR_DAMPING
+  body.angularDamping = ANGULAR_DAMPING
 
   world.addDie(mesh, body)
-  return { mesh, body, faceTable, invertUp: sides === 4 }
+  return { mesh, body, faceTable }
 }
 
 function readFace(entry) {
@@ -54,8 +86,7 @@ function readFace(entry) {
   let secondDot = -Infinity
   entry.faceTable.forEach(face => {
     const n = face.localNormal.clone().applyQuaternion(quat)
-    let dot = n.dot(UP)
-    if (entry.invertUp) dot = -dot
+    const dot = n.dot(UP)
     if (dot > bestDot) {
       secondDot = bestDot
       bestDot = dot
@@ -69,6 +100,8 @@ function readFace(entry) {
 
 function nudge(entry) {
   entry.body.wakeUp()
+  entry.body.linearDamping = LINEAR_DAMPING
+  entry.body.angularDamping = ANGULAR_DAMPING
   entry.body.velocity.set((Math.random() - 0.5) * 1.5, 2 + Math.random(), (Math.random() - 0.5) * 1.5)
   entry.body.angularVelocity.set(
     (Math.random() - 0.5) * 10,
@@ -77,23 +110,80 @@ function nudge(entry) {
   )
 }
 
-function waitForSettle(entries, { timeoutMs = 6000 } = {}) {
+function isSlow(body) {
+  return body.velocity.length() < REST_LINEAR_SPEED &&
+    body.angularVelocity.length() < REST_ANGULAR_SPEED
+}
+
+function hasMoved(body, anchor) {
+  if (body.position.distanceTo(anchor.position) > STILL_DISTANCE) return true
+  const dot = Math.min(1, Math.abs(
+    body.quaternion.x * anchor.quaternion.x + body.quaternion.y * anchor.quaternion.y +
+    body.quaternion.z * anchor.quaternion.z + body.quaternion.w * anchor.quaternion.w
+  ))
+  return 2 * Math.acos(dot) > STILL_ANGLE
+}
+
+function anchorOf(body) {
+  return { position: body.position.clone(), quaternion: body.quaternion.clone() }
+}
+
+/**
+ * Resolves once every die has been at rest for REST_TIME (then freezes it,
+ * so a die bumped later can't change what was read), checked after each
+ * physics step in simulated time - so a slow or throttled frame rate
+ * doesn't change when dice count as settled. `timeoutMs` is a wall-clock
+ * backstop for when steps stop coming at all (e.g. a hidden tab).
+ */
+function waitForSettle(world, entries, { timeoutMs = 4500, assistAfter = ASSIST_AFTER } = {}) {
   return new Promise(resolve => {
-    const pending = new Set(entries.map(e => e.body))
+    const physics = world.world
+    // A die that is already asleep (settled in an earlier wait) counts as at
+    // rest straight away - it only holds things up if something wakes it.
+    const restFor = new Map(entries.map(e => [e.body, e.body.sleepState === CANNON.Body.SLEEPING ? REST_TIME : 0]))
+    const anchors = new Map(entries.map(e => [e.body, anchorOf(e.body)]))
+    let elapsed = 0
+    let assisted = false
     let settled = false
     const timeout = setTimeout(finish, timeoutMs)
 
-    function onSleep(event) {
-      pending.delete(event.target)
-      if (pending.size === 0) finish()
+    function onPostStep() {
+      const dt = physics.dt > 0 ? physics.dt : 1 / 60
+      elapsed += dt
+
+      if (!assisted && elapsed >= assistAfter) {
+        assisted = true
+        restFor.forEach((t, body) => {
+          if (t < REST_TIME) {
+            body.linearDamping = ASSIST_DAMPING
+            body.angularDamping = ASSIST_DAMPING
+          }
+        })
+      }
+
+      let allAtRest = true
+      restFor.forEach((t, body) => {
+        const moved = hasMoved(body, anchors.get(body))
+        if (moved) anchors.set(body, anchorOf(body))
+        const atRest = body.sleepState === CANNON.Body.SLEEPING || isSlow(body) || !moved
+        const next = atRest ? t + dt : 0
+        restFor.set(body, next)
+        if (next < REST_TIME) allAtRest = false
+      })
+      if (allAtRest) finish()
     }
-    entries.forEach(e => e.body.addEventListener('sleep', onSleep))
+    physics.addEventListener('postStep', onPostStep)
 
     function finish() {
       if (settled) return
       settled = true
       clearTimeout(timeout)
-      entries.forEach(e => e.body.removeEventListener('sleep', onSleep))
+      physics.removeEventListener('postStep', onPostStep)
+      restFor.forEach((t, body) => {
+        body.velocity.set(0, 0, 0)
+        body.angularVelocity.set(0, 0, 0)
+        body.sleep()
+      })
       resolve()
     }
   })
@@ -119,21 +209,24 @@ export async function rollParsedFormula(world, parsed, theme) {
         entries.push(tens, units)
         dice.push({ pair: [tens, units] })
       } else {
-        const die = spawnDie(world, { sides: term.sides, index: index++, theme })
+        const die = spawnDie(world, { sides: term.sides, index: index++, theme: themeForKind(term.kind, theme) })
         entries.push(die)
         dice.push({ single: die })
       }
     }
-    return { sides: term.sides, sign: term.sign, dice }
+    return { sides: term.sides, sign: term.sign, kind: term.kind, keep: term.keep, dice }
   })
 
   world.start()
-  await waitForSettle(entries)
+  await waitForSettle(world, entries)
 
   const ambiguous = entries.filter(e => readFace(e).margin < AMBIGUOUS_MARGIN)
   if (ambiguous.length) {
     ambiguous.forEach(nudge)
-    await waitForSettle(ambiguous, { timeoutMs: 3000 })
+    // Wait on every die, not just the nudged ones: a hop can knock into a
+    // die that had already settled, and it must come to rest again before
+    // anything is read.
+    await waitForSettle(world, entries, { timeoutMs: 2500, assistAfter: NUDGE_ASSIST_AFTER })
   }
 
   let total = parsed.flatModifier
@@ -146,8 +239,13 @@ export async function rollParsedFormula(world, parsed, theme) {
       }
       return readFace(d.single).value
     })
-    total += rolls.reduce((a, b) => a + b, 0) * plan.sign
-    return { sides: plan.sides, sign: plan.sign, rolls }
+    const dropped = droppedIndices(rolls, plan.keep)
+    const kept = rolls.filter((v, i) => !dropped.includes(i))
+    total += kept.reduce((a, b) => a + b, 0) * plan.sign
+    const group = { sides: plan.sides, sign: plan.sign, rolls }
+    if (plan.kind) group.kind = plan.kind
+    if (plan.keep) group.dropped = dropped
+    return group
   })
 
   return { total, groups, flatModifier: parsed.flatModifier }
@@ -161,13 +259,13 @@ function decomposePercentile(total) {
   return { tens: Math.floor(total / 10) * 10, units: total % 10 }
 }
 
-/** The quaternion that rotates the given face's local normal to point
- * "up" (or "down" for a die like d4 that reads its floor-touching face) -
- * the inverse of readFace's argmax, used to force a die to land on a
- * predetermined value for a replay rather than an organically-read one. */
-function quaternionForValue(faceTable, value, invertUp) {
+/** The quaternion that rotates the given face's local normal (a vertex
+ * direction for the d4) to point "up" - the inverse of readFace's argmax,
+ * used to force a die to land on a predetermined value for a replay rather
+ * than an organically-read one. */
+function quaternionForValue(faceTable, value) {
   const face = faceTable.find(f => f.value === value) || faceTable[0]
-  const target = invertUp ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 1, 0)
+  const target = new THREE.Vector3(0, 1, 0)
   const align = new THREE.Quaternion().setFromUnitVectors(face.localNormal.clone().normalize(), target)
   // Random spin around the vertical axis so repeat rolls of the same value
   // don't all look visually identical once settled.
@@ -197,7 +295,7 @@ export async function replayGroups(world, groups, theme, { tumbleMs = 1700 } = {
         const unitsDie = spawnDie(world, { sides: 100, variant: 'units', index: index++, theme })
         targets.push({ entry: tensDie, value: tens }, { entry: unitsDie, value: units })
       } else {
-        const die = spawnDie(world, { sides: group.sides, index: index++, theme })
+        const die = spawnDie(world, { sides: group.sides, index: index++, theme: themeForKind(group.kind, theme) })
         targets.push({ entry: die, value })
       }
     })
@@ -206,7 +304,7 @@ export async function replayGroups(world, groups, theme, { tumbleMs = 1700 } = {
   await tumble(world, tumbleMs)
 
   targets.forEach(({ entry, value }) => {
-    const quat = quaternionForValue(entry.faceTable, value, entry.invertUp)
+    const quat = quaternionForValue(entry.faceTable, value)
     entry.body.quaternion.copy(quat)
     entry.body.velocity.set(0, 0, 0)
     entry.body.angularVelocity.set(0, 0, 0)

@@ -1,5 +1,5 @@
 // Inline-code spans in a note that turn into something actionable instead of
-// plain code: a dice formula (`4d8+2d2`), a music track
+// plain code: a dice formula (`4d8+2d2`, `adv+5`, `roll:hf`), a music track
 // (`Action/01 Beyond Distant Lands.mp3`), or an embedded chart / vista
 // (`chart:regions/tavern-map`, `vista:tavern/night`). The note renderer only
 // emits placeholder markup here; NoteView wires the behavior afterwards.
@@ -27,13 +27,33 @@ export function docRefMarkdown(type, id) {
   return '`' + `${type}:${id}` + '`'
 }
 
+const ROLL_PREFIX_RE = /^roll:\s*/i
+const DICE_KEYWORD_RE = /hf|adv|dis/gi
+
+/**
+ * The dice formula an inline-code span stands for, or null. `roll:` makes
+ * any formula explicit. Without it, a formula made only of keywords (`hf`,
+ * `adv`, `dis`) is left as ordinary code - those are plain words someone
+ * may well write as code meaning something else - while one that also has
+ * a number or dice (`adv+5`, `hf+1d6`, `2d6`) is clearly a roll.
+ */
+export function parseDiceRef(text) {
+  const trimmed = text.trim()
+  const explicit = ROLL_PREFIX_RE.test(trimmed)
+  const formula = trimmed.replace(ROLL_PREFIX_RE, '')
+  if (!parseDiceFormula(formula)) return null
+  if (!explicit && !/\d|d%/i.test(formula.replace(DICE_KEYWORD_RE, ''))) return null
+  return formula
+}
+
 /** Classifies an inline-code span, or returns null for ordinary code. */
 export function parseInlineRef(text) {
-  const formula = text.trim()
-  if (parseDiceFormula(formula)) return { kind: 'dice', formula }
-  const song = parseSongKey(formula)
+  const formula = parseDiceRef(text)
+  if (formula) return { kind: 'dice', formula }
+  const trimmed = text.trim()
+  const song = parseSongKey(trimmed)
   if (song) return { kind: 'song', ...song }
-  const doc = parseDocRef(formula)
+  const doc = parseDocRef(trimmed)
   if (doc) return { kind: 'doc', ...doc }
   return null
 }

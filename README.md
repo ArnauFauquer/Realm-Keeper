@@ -27,6 +27,9 @@ repository; images and audio live in S3-compatible object storage.
 | Write in a note                          | You get                                  |
 | ---------------------------------------- | ---------------------------------------- |
 | `` `2d20+5` ``                            | A button that rolls those dice           |
+| `` `hf+1d6-1` ``                          | A Hope & Fear roll (plus a d6, minus 1)  |
+| `` `adv+5` `` / `` `dis+5` ``             | A d20 with advantage / disadvantage      |
+| `` `roll:hf` ``                           | Any formula, made explicit with `roll:` — needed when it's only `hf` / `adv` / `dis` |
 | `` `Action/01 Beyond Distant Lands.mp3` `` | A button that plays that track           |
 | `` `chart:regions/tavern-map` ``           | The chart embedded in the note           |
 | `` `vista:tavern/night` ``                 | The vista embedded in the note           |
@@ -39,7 +42,14 @@ repository; images and audio live in S3-compatible object storage.
   adjustments.
 - **Asset library** — a reusable, folder-organized image library shared by
   charts and vistas.
-- **Dice roller** — physics-based 3D dice (d2 to d100) with standard notation.
+- **Dice roller** — physics-based 3D dice (d2 to d100) with standard notation,
+  including subtracted dice (`1d20-1d4`) and Hope & Fear (`hf`): two coloured
+  d12s whose sum is a critical on a tie, otherwise "with Hope" or "with Fear"
+  depending on which one is higher.
+  A natural 20 on a d20 is a critical and a natural 1 a fumble. Advantage /
+  disadvantage (`adv` / `dis`) roll two d20 and keep the higher / lower,
+  and any group can keep its best or worst dice with `kh` / `kl` (`4d6kh3`).
+  A roll throws at most 50 dice.
 - **Music player** — albums and tracks stored in object storage, with a
   sidebar mini-player (shuffle, previous, volume).
 - **Player screen** — open `/screen` on a TV or projector; images, charts,
