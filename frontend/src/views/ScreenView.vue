@@ -64,20 +64,24 @@
     <!-- Dice roll overlay - sits on top of whatever is showing above (waiting
          state or an image) without touching its state, so that content is
          still there, untouched, once the roll's display timer clears it. -->
-    <div v-if="diceRoll" class="screen-dice-result" :key="diceRoll.id">
+    <div v-if="diceRoll" class="screen-dice-result" :class="diceRoll.duality && `duality--${diceRoll.duality.outcome}`" :key="diceRoll.id">
       <canvas ref="diceCanvas" class="dice-canvas"></canvas>
       <div class="dice-caption">
         <div class="dice-formula">{{ diceRoll.formula }}</div>
         <div class="dice-breakdown">
           <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
-            <span v-if="i > 0" class="dice-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
-            <span class="dice-rolls">[{{ g.rolls.join(', ') }}]</span>
+            <span v-if="i > 0 || g.sign < 0" class="dice-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
+            <span v-if="g.kind" class="dice-rolls" :class="`kind--${g.kind}`">{{ g.kind === 'hope' ? 'Hope' : 'Fear' }} {{ g.rolls[0] }}</span>
+            <span v-else class="dice-rolls">[<template v-for="(v, j) in g.rolls" :key="j"><template v-if="j">, </template><span :class="rollClass(g, j, diceRoll.natural) && `nat--${rollClass(g, j, diceRoll.natural)}`">{{ v }}</span></template>]</span>
           </span>
           <span v-if="diceRoll.flatModifier" class="dice-flat">
             {{ diceRoll.flatModifier > 0 ? '+' : '' }}{{ diceRoll.flatModifier }}
           </span>
         </div>
         <div class="dice-total">{{ diceRoll.total }}</div>
+        <div v-if="diceRoll.duality" class="dice-outcome">{{ dualityLabels[diceRoll.duality.outcome] }}</div>
+        <div v-if="diceRoll.natural?.critical" class="dice-outcome outcome--crit">{{ naturalLabels.critical }}</div>
+        <div v-if="diceRoll.natural?.fumble" class="dice-outcome outcome--fumble">{{ naturalLabels.fumble }}</div>
       </div>
     </div>
 
@@ -98,6 +102,7 @@ import VistaCanvas from '@/components/VistaCanvas.vue'
 import { fetchChart } from '@/api/charts'
 import { fetchVista } from '@/api/vistas'
 import { pairScreen } from '@/api/screen'
+import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS } from '@/utils/diceNotation'
 
 export default {
   name: 'ScreenView',
@@ -113,6 +118,8 @@ export default {
       ws: null,
       dominantColor: null,
       diceRoll: null,
+      dualityLabels: DUALITY_OUTCOME_LABELS,
+      naturalLabels: NATURAL_OUTCOME_LABELS,
       diceClearTimer: null,
       diceSeq: 0,
       diceWorld: null,
@@ -137,6 +144,7 @@ export default {
     }
   },
   methods: {
+    rollClass,
     drawStarfield() {
       const canvas = this.$refs.starCanvas
       if (!canvas) return
@@ -364,7 +372,9 @@ export default {
         formula: data.formula || '',
         groups: data.groups || [],
         flatModifier: data.flatModifier || 0,
-        total: data.total
+        total: data.total,
+        duality: resolveDuality(data.groups || []),
+        natural: resolveNatural(data.groups || [])
       }
       this.diceClearTimer = setTimeout(() => {
         this.diceRoll = null
@@ -678,6 +688,41 @@ export default {
 .dice-sign {
   margin-right: 0.4rem;
   color: rgba(255, 255, 255, 0.4);
+}
+
+.kind--hope { color: #f2c75c; }
+.kind--fear { color: #f0759b; }
+
+.dice-outcome {
+  font-family: var(--font-display);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.duality--hope .dice-outcome { color: #f2c75c; }
+.duality--fear .dice-outcome { color: #f0759b; }
+.duality--critical .dice-outcome {
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #f2c75c 0%, #f0759b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 30px rgba(242, 199, 92, 0.55));
+}
+
+.nat--dropped { text-decoration: line-through; opacity: 0.45; }
+.nat--crit { color: #f2c75c; font-weight: 700; }
+.nat--fumble { color: #f87171; font-weight: 700; }
+.outcome--crit {
+  color: #f2c75c;
+  text-transform: uppercase;
+  filter: drop-shadow(0 0 30px rgba(242, 199, 92, 0.55));
+}
+.outcome--fumble {
+  color: #f87171;
+  text-transform: uppercase;
+  filter: drop-shadow(0 0 30px rgba(248, 113, 113, 0.5));
 }
 
 .dice-total {

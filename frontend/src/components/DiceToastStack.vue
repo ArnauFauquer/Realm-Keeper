@@ -1,7 +1,7 @@
 <template>
   <div class="dice-toast-stack">
     <transition-group name="dice-toast" tag="div" class="dice-toast-list">
-      <div v-for="t in state.toasts" :key="t.id" class="dice-toast">
+      <div v-for="t in state.toasts" :key="t.id" class="dice-toast" :class="toastClasses(t)">
         <button class="toast-close rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss roll" @click="dismissToast(t.id)">
           <span class="mdi mdi-close"></span>
         </button>
@@ -11,14 +11,20 @@
         </div>
         <div class="toast-breakdown">
           <span v-for="(g, i) in t.groups" :key="i" class="toast-group">
-            <span v-if="i > 0" class="toast-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
-            <span class="toast-rolls">[{{ g.rolls.join(', ') }}]</span>
+            <span v-if="i > 0 || g.sign < 0" class="toast-sign">{{ g.sign > 0 ? '+' : '-' }}</span>
+            <span v-if="g.kind" class="toast-rolls" :class="`kind--${g.kind}`">{{ KIND_LABELS[g.kind] }} {{ g.rolls[0] }}</span>
+            <span v-else class="toast-rolls">[<template v-for="(v, j) in g.rolls" :key="j"><template v-if="j">, </template><span :class="rollClass(g, j, t.natural) && `nat--${rollClass(g, j, t.natural)}`">{{ v }}</span></template>]</span>
           </span>
           <span v-if="t.flatModifier" class="toast-flat">
             {{ t.flatModifier > 0 ? '+' : '' }}{{ t.flatModifier }}
           </span>
         </div>
-        <div class="toast-total">{{ t.total }}</div>
+        <div class="toast-result">
+          <span class="toast-total">{{ t.total }}</span>
+          <span v-if="t.duality" class="toast-outcome">{{ DUALITY_OUTCOME_LABELS[t.duality.outcome] }}</span>
+          <span v-if="t.natural?.critical" class="toast-outcome outcome--crit">{{ NATURAL_OUTCOME_LABELS.critical }}</span>
+          <span v-if="t.natural?.fumble" class="toast-outcome outcome--fumble">{{ NATURAL_OUTCOME_LABELS.fumble }}</span>
+        </div>
       </div>
     </transition-group>
   </div>
@@ -26,6 +32,17 @@
 
 <script setup>
 import { useDiceRoller } from '@/composables/useDiceRoller'
+import { DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS, rollClass } from '@/utils/diceNotation'
+
+const KIND_LABELS = { hope: 'Hope', fear: 'Fear' }
+
+function toastClasses(t) {
+  return [
+    t.duality && `duality--${t.duality.outcome}`,
+    t.natural?.critical && 'natural--crit',
+    t.natural?.fumble && !t.natural?.critical && 'natural--fumble'
+  ]
+}
 
 const { state, dismissToast } = useDiceRoller()
 </script>
@@ -89,6 +106,12 @@ const { state, dismissToast } = useDiceRoller()
   color: var(--text-muted);
 }
 
+.toast-result {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
 .toast-total {
   font-family: var(--font-display);
   font-size: 1.4rem;
@@ -100,6 +123,38 @@ const { state, dismissToast } = useDiceRoller()
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Hope & Fear colours match the dice themselves (dice/diceTheme.js). */
+.kind--hope { color: #f2c75c; font-weight: 600; }
+.kind--fear { color: #f0759b; font-weight: 600; }
+
+.toast-outcome {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.duality--hope { border-color: rgba(227, 179, 65, 0.6); }
+.duality--hope .toast-outcome { color: #f2c75c; }
+.duality--fear { border-color: rgba(224, 90, 133, 0.6); }
+.duality--fear .toast-outcome { color: #f0759b; }
+.duality--critical { border-color: #f2c75c; box-shadow: 0 0 0 1px #f2c75c, 0 0 24px rgba(242, 199, 92, 0.45), var(--shadow-lg); }
+.duality--critical .toast-outcome {
+  text-transform: uppercase;
+  background: linear-gradient(90deg, #f2c75c 0%, #f0759b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Natural 20 / natural 1 on a d20. */
+.nat--dropped { text-decoration: line-through; opacity: 0.45; }
+.nat--crit { color: #f2c75c; font-weight: 700; }
+.nat--fumble { color: var(--status-error); font-weight: 700; }
+.outcome--crit { color: #f2c75c; text-transform: uppercase; }
+.outcome--fumble { color: var(--status-error); text-transform: uppercase; }
+.natural--crit { border-color: #f2c75c; box-shadow: 0 0 0 1px #f2c75c, 0 0 24px rgba(242, 199, 92, 0.45), var(--shadow-lg); }
+.natural--fumble { border-color: var(--status-error); box-shadow: 0 0 0 1px var(--status-error), 0 0 24px rgba(248, 113, 113, 0.35), var(--shadow-lg); }
 
 .dice-toast-enter-active,
 .dice-toast-leave-active {

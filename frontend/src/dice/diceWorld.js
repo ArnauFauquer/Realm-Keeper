@@ -3,6 +3,21 @@ import * as CANNON from 'cannon-es'
 
 const TRAY_HALF_SIZE = 3.8
 const WALL_HEIGHT = 6
+const CAMERA_FOV = 36
+// Nearly top-down, so the face each die lands on is read straight-on; the
+// small tilt keeps a hint of depth on the dice.
+const CAMERA_TILT = THREE.MathUtils.degToRad(8)
+// Tray plus a little margin - what the camera keeps in frame.
+const FRAME_HALF_SIZE = TRAY_HALF_SIZE + 0.6
+
+/** Places the camera far enough back that the whole tray fits the viewport
+ * along its narrower side (a portrait phone is the tight case). */
+function frameTray(camera) {
+  const tanHalfFov = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV / 2))
+  const distance = FRAME_HALF_SIZE / (tanHalfFov * Math.min(1, camera.aspect))
+  camera.position.set(0, distance * Math.cos(CAMERA_TILT), distance * Math.sin(CAMERA_TILT))
+  camera.lookAt(0, 0, 0)
+}
 
 /**
  * Owns the three.js scene/camera/renderer and the cannon-es physics world
@@ -13,9 +28,8 @@ const WALL_HEIGHT = 6
  */
 export function createDiceWorld(canvas) {
   const scene = new THREE.Scene()
-  const camera = new THREE.PerspectiveCamera(48, 1, 0.1, 100)
-  camera.position.set(0, 8, 8)
-  camera.lookAt(0, 0.5, 0)
+  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 100)
+  frameTray(camera)
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -132,6 +146,7 @@ export function createDiceWorld(canvas) {
   function resize(width, height) {
     if (!width || !height) return
     camera.aspect = width / height
+    frameTray(camera)
     camera.updateProjectionMatrix()
     renderer.setSize(width, height, false)
   }

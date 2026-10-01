@@ -125,13 +125,57 @@ function buildClusteredDie(geometry, values, labels) {
   return { geometry, faceTable, materialLabels }
 }
 
-export function buildD4(radius = 1) {
-  const geo = new THREE.TetrahedronGeometry(radius)
-  // A tetrahedron always rests face-down/vertex-up, so the "up" reading
-  // (see diceRoller.js) is inverted for this die only; the value assigned
-  // to each face here is the number that should be reported when that
-  // face is the one touching the floor.
-  return buildClusteredDie(geo, [1, 2, 3, 4])
+// Where each corner of a d4 face lands in its texture: an equilateral
+// triangle filling the 0-1 square, in the same [apex, bottom-left,
+// bottom-right] order diceTextures.js prints the three corner numbers.
+export const D4_FACE_UVS = [[0.5, 0.933], [0, 0.067], [1, 0.067]]
+
+/**
+ * Hand-built tetrahedron laid out like a real d4: a tetrahedron rests on a
+ * face with a vertex pointing up, so there is no top face to read. Instead
+ * every vertex carries a value, each face prints the values of its three
+ * corners next to them, and the die reads the number at its top vertex.
+ *
+ * The faceTable therefore holds vertex directions rather than face normals:
+ * "the vertex pointing most up" is the same argmax diceRoller.js already
+ * runs for faces, and aligning a vertex with +y leaves the die resting on
+ * the opposite face, so replays need no special case either.
+ */
+export function buildD4(radius = 1.2) {
+  const dirs = [[1, 1, 1], [-1, -1, 1], [-1, 1, -1], [1, -1, -1]]
+    .map(v => new THREE.Vector3(...v).normalize())
+  const verts = dirs.map(d => d.clone().multiplyScalar(radius))
+  const values = [1, 2, 3, 4]
+
+  const positions = []
+  const uvs = []
+  const materialLabels = []
+  const ab = new THREE.Vector3()
+  const ac = new THREE.Vector3()
+
+  // Face k is the one opposite vertex k (made of the other three).
+  for (let k = 0; k < 4; k++) {
+    let corners = [0, 1, 2, 3].filter(i => i !== k)
+    ab.subVectors(verts[corners[1]], verts[corners[0]])
+    ac.subVectors(verts[corners[2]], verts[corners[0]])
+    // Wind counter-clockwise seen from outside (outward normal = -dirs[k]).
+    if (ab.cross(ac).dot(dirs[k]) > 0) corners = [corners[0], corners[2], corners[1]]
+
+    corners.forEach((vi, c) => {
+      positions.push(verts[vi].x, verts[vi].y, verts[vi].z)
+      uvs.push(...D4_FACE_UVS[c])
+    })
+    materialLabels.push(corners.map(vi => String(values[vi])))
+  }
+
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+  geometry.computeVertexNormals()
+  for (let k = 0; k < 4; k++) geometry.addGroup(k * 3, 3, k)
+
+  const faceTable = dirs.map((d, i) => ({ localNormal: d, value: values[i] }))
+  return { geometry, faceTable, materialLabels }
 }
 
 export function buildD8(radius = 1) {

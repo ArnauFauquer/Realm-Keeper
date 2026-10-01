@@ -1,5 +1,5 @@
 import { reactive, readonly } from 'vue'
-import { parseDiceFormula, formatDiceFormula } from '@/utils/diceNotation'
+import { parseDiceFormula, formatDiceFormula, resolveDuality, resolveNatural } from '@/utils/diceNotation'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { DEFAULT_DICE_THEME } from '@/dice/diceTheme'
@@ -52,7 +52,9 @@ function pushToast(formula, result) {
     formula,
     groups: result.groups,
     flatModifier: result.flatModifier,
-    total: result.total
+    total: result.total,
+    duality: resolveDuality(result.groups),
+    natural: resolveNatural(result.groups)
   })
   setTimeout(() => dismissToast(id), 7000)
 }
