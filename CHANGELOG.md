@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.78](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.77...v0.1.78) (2026-10-02)
+
+
+### Bug Fixes
+
+* **ci:** build frontend on the native platform to avoid QEMU arm64 hang ([c9e0633](https://github.com/ArnauFauquer/Realm-Keeper/commit/c9e0633bc90a7b0e30d299984fbbc2ba47a0b670))
+
 ## [0.1.77](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.76...v0.1.77) (2026-10-01)
 
 
