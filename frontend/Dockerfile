@@ -1,5 +1,8 @@
-# Build stage
-FROM node:20-alpine AS build
+# Build stage. Always runs on the builder's native platform: the output is
+# static JS/CSS (identical for every arch), and running npm under QEMU for the
+# arm64 image crashes with SIGILL and hangs the job. Only the nginx stage below
+# is per-target-platform.
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
