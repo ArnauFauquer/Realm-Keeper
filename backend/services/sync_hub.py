@@ -117,6 +117,21 @@ class DocHub:
         # The event loop keeps only weak references to tasks: hold the ones
         # started by a timer until they finish.
         self._tasks: set = set()
+        # Told of every event once it has been sent (the screens' view of a
+        # battlemap is kept current this way).
+        self._listeners: List[Callable[[Dict[str, Any]], Any]] = []
+
+    def add_listener(self, listener: Callable[[Dict[str, Any]], Any]) -> None:
+        """`listener(event)`, a coroutine function, is awaited after every
+        event, outside the document's lock: it must be quick."""
+        self._listeners.append(listener)
+
+    async def _notify(self, event: Dict[str, Any]) -> None:
+        for listener in self._listeners:
+            try:
+                await listener(event)
+            except Exception:
+                logger.exception("A sync listener failed")
 
     def _spawn(self, coro) -> None:
         task = asyncio.ensure_future(coro)
@@ -213,6 +228,7 @@ class DocHub:
             event = {"type": "doc", "doc": room.ref, "rev": validated["rev"], **event}
             # Sent before the lock is released, so events leave in `rev` order.
             await self._broadcast(event)
+        await self._notify(event)
         return event
 
     # ── persistence ─────────────────────────────────────────────────────
@@ -270,7 +286,9 @@ class DocHub:
         await self._flush(room)
         self._rooms.pop((kind, doc_id), None)
         if announce:
-            await self._broadcast({"type": "gone", "doc": room.ref})
+            event = {"type": "gone", "doc": room.ref}
+            await self._broadcast(event)
+            await self._notify(event)
 
     async def unload_idle(self) -> None:
         now = time.monotonic()

@@ -59,3 +59,4 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
 
 export const encountersApi = createDocApi('encounters')
 export const charactersApi = createDocApi('characters', { singleton: true })
+export const battlemapsApi = createDocApi('battlemaps')

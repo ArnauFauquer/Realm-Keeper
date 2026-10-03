@@ -1,4 +1,4 @@
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, computed, shallowRef, watch, onBeforeUnmount } from 'vue'
 import { applyEvent } from '@/utils/applyEvent'
 import { listenToSync } from './syncSocket'
 
@@ -98,6 +98,12 @@ function createEntry(key, fetchDoc) {
  * The returned `doc` is null until `status` is 'ready'.
  */
 export function useSyncedDoc(kind, id, fetchDoc) {
+  const entry = acquireEntry(kind, id, fetchDoc)
+  onBeforeUnmount(() => entry.release())
+  return { doc: entry.doc, status: entry.status, error: entry.error, reload: entry.load, commit: entry.commit }
+}
+
+function acquireEntry(kind, id, fetchDoc) {
   const key = `${kind}:${id}`
   let entry = entries.get(key)
   if (!entry) {
@@ -105,6 +111,33 @@ export function useSyncedDoc(kind, id, fetchDoc) {
     entries.set(key, entry)
   }
   entry.acquire()
-  onBeforeUnmount(() => entry.release())
-  return { doc: entry.doc, status: entry.status, error: entry.error, reload: entry.load, commit: entry.commit }
+  return entry
+}
+
+/**
+ * The same, for a document that may change or not exist: `id` is a function
+ * (it can read a prop or another document) returning the id to follow, or
+ * nothing. When it changes, the old document is let go of and the new one
+ * followed. `doc` is null while there is nothing to follow, or it is loading.
+ * `fetchFor(id)` loads a document.
+ */
+export function useSyncedDocFollowing(kind, id, fetchFor) {
+  const entry = shallowRef(null)
+  let held = null
+
+  watch(id, (wanted) => {
+    // The new one first: letting go of the old one first could close the
+    // connection only to open it again.
+    const next = wanted ? acquireEntry(kind, wanted, () => fetchFor(wanted)) : null
+    held?.release()
+    held = next
+    entry.value = next
+  }, { immediate: true })
+
+  onBeforeUnmount(() => held?.release())
+
+  return {
+    doc: computed(() => entry.value?.doc.value ?? null),
+    status: computed(() => entry.value?.status.value ?? 'idle')
+  }
 }

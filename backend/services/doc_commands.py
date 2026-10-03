@@ -36,10 +36,12 @@ def deep_merge(target: Dict[str, Any], patch: Dict[str, Any]) -> None:
 
 
 def patch_doc(doc: Dict[str, Any], doctype: DocType, fields: Dict[str, Any]) -> None:
+    """Sets top-level fields; a mapping (a map's grid) is merged into the
+    current one, so changing one setting leaves the others as they are."""
     for name in fields:
         if name not in doctype.patchable:
             raise ValueError(f"'{name}' can't be set this way")
-    doc.update(copy.deepcopy(fields))
+    deep_merge(doc, fields)
 
 
 def add_items(

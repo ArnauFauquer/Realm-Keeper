@@ -15,6 +15,11 @@
       <VistaCanvas :vista="activeVista" :editable="false" />
     </div>
 
+    <!-- Battlemap area -->
+    <div v-else-if="activeBattlemap" class="screen-battlemap-area">
+      <BattlemapScreen :state="activeBattlemap" />
+    </div>
+
     <!-- Constellation area -->
     <div v-else-if="activeConstellation" class="screen-constellation-area">
       <ConstellationScreen :key="constellationKey" :state="activeConstellation" />
@@ -106,6 +111,7 @@ import { socketUrl } from '@/utils/socketUrl'
 import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
 import ConstellationScreen from '@/components/ConstellationScreen.vue'
+import BattlemapScreen from '@/components/BattlemapScreen.vue'
 import { fetchChart } from '@/api/charts'
 import { fetchVista } from '@/api/vistas'
 import { pairScreen } from '@/api/screen'
@@ -113,7 +119,7 @@ import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATU
 
 export default {
   name: 'ScreenView',
-  components: { ChartCanvas, VistaCanvas, ConstellationScreen },
+  components: { ChartCanvas, VistaCanvas, ConstellationScreen, BattlemapScreen },
   data() {
     return {
       loading: true,
@@ -136,6 +142,10 @@ export default {
       // restarts the view whenever the GM sends it again.
       activeConstellation: null,
       constellationKey: 0,
+      // The battlemap on show, as the server projected it for a screen: the id
+      // is set by `display_battlemap`, the map by the `update_battlemap`s after it.
+      activeBattlemap: null,
+      battlemapId: null,
       // Live edit that arrived while the chart/vista it belongs to was still
       // being fetched (a screen connecting mid-edit gets both back to back).
       pendingLiveEdit: null,
@@ -263,6 +273,7 @@ export default {
             this.activeChart = null
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
             this.showDiceRoll(data)
@@ -272,6 +283,7 @@ export default {
             this.loading = false
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.showChart(data.chart_id)
           } else if (data.type === 'display_vista') {
@@ -280,6 +292,7 @@ export default {
             this.loading = false
             this.activeChart = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.showVista(data.vista_id)
           } else if (data.type === 'display_constellation') {
@@ -288,9 +301,26 @@ export default {
             this.loading = false
             this.activeChart = null
             this.activeVista = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.constellationKey++
             this.activeConstellation = this.constellationState(data)
+          } else if (data.type === 'display_battlemap') {
+            this.clearDiceRoll()
+            this.displayUrl = ''
+            this.loading = false
+            this.activeChart = null
+            this.activeVista = null
+            this.activeConstellation = null
+            this.pendingLiveEdit = null
+            this.activeBattlemap = null
+            this.battlemapId = data.battlemap_id
+          } else if (data.type === 'update_battlemap') {
+            // The whole map as it is now: sent after the pointer, and after every change.
+            if (data.battlemap_id === this.battlemapId) {
+              const { type, ...projection } = data
+              this.activeBattlemap = projection
+            }
           } else if (data.type === 'update_constellation') {
             // Only patches the constellation that is already showing.
             if (this.activeConstellation) this.activeConstellation = this.constellationState(data)
@@ -305,6 +335,7 @@ export default {
             this.activeChart = null
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.clearDiceRoll()
           }
@@ -331,6 +362,10 @@ export default {
         console.error('WebSocket error:', err)
         // onclose will handle retry
       }
+    },
+    clearBattlemap() {
+      this.activeBattlemap = null
+      this.battlemapId = null
     },
     updateMedia(url, title) {
       if (!url) return
@@ -538,6 +573,14 @@ export default {
 
 /* ─── Chart area ─── */
 .screen-chart-area {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100dvh;
+}
+
+/* ─── Battlemap area ─── */
+.screen-battlemap-area {
   position: relative;
   z-index: 1;
   width: 100vw;

@@ -323,6 +323,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
 import { resolveUrl } from '@/utils/resolveUrl'
 import AssetLibraryModal from './AssetLibraryModal.vue'
+import { useMapViewport } from '@/composables/useMapViewport'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -381,8 +382,6 @@ let libraryTargetPin = null
 const svgRef = ref(null)
 const zoomGroupRef = ref(null)
 const viewportRef = ref(null)
-const naturalWidth = ref(0)
-const naturalHeight = ref(0)
 const mode = ref('select')
 const selectedId = ref(null)
 const hoveredPin = ref(null)
@@ -393,25 +392,18 @@ const pinPickerOpen = ref(false)
 
 let dragState = null
 let dragMoved = false
-let zoomBehavior = null
 
 const resolvedImageUrl = computed(() => resolveUrl(props.chart.image_url))
 
-function loadImageSize(url) {
-  if (!url) {
-    naturalWidth.value = 0
-    naturalHeight.value = 0
-    return
-  }
-  const img = new Image()
-  img.onload = () => {
-    naturalWidth.value = img.naturalWidth
-    naturalHeight.value = img.naturalHeight
-  }
-  img.src = resolveUrl(url)
-}
-
-watch(() => props.chart.image_url, loadImageSize, { immediate: true })
+// The image's size, zoom and pan, and pointer -> map point, shared with the battlemap.
+const { naturalWidth, naturalHeight, pointer: clientToViewBoxPoint } = useMapViewport({
+  svgRef,
+  groupRef: zoomGroupRef,
+  imageUrl: () => props.chart.image_url,
+  zoomable: () => props.zoomable,
+  canPan: () => mode.value === 'select',
+  resetKey: () => props.chart.id
+})
 
 watch(editingAnnotationId, (id) => {
   if (!id) return
@@ -448,43 +440,14 @@ function pathData(path) {
   return gen(pts)
 }
 
-function setupZoom() {
-  if (!props.zoomable || !svgRef.value || !zoomGroupRef.value) return
-  const svgSel = d3.select(svgRef.value)
-  const g = d3.select(zoomGroupRef.value)
-  zoomBehavior = d3.zoom()
-    .scaleExtent([0.5, 12])
-    .filter((event) => event.type === 'wheel' || (mode.value === 'select' && !event.button))
-    .on('zoom', (event) => { g.attr('transform', event.transform) })
-  svgSel.call(zoomBehavior).on('dblclick.zoom', null)
-}
-
-watch(naturalWidth, async (w) => {
-  if (w > 0) {
-    await nextTick()
-    setupZoom()
-  }
-})
-
-watch(() => props.chart.id, () => {
-  if (zoomBehavior && svgRef.value) {
-    d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity)
-  }
-})
-
 function clientToPercent(evt) {
-  if (!zoomGroupRef.value || !naturalWidth.value) return null
-  const [x, y] = d3.pointer(evt, zoomGroupRef.value)
+  if (!naturalWidth.value) return null
+  const point = clientToViewBoxPoint(evt)
+  if (!point) return null
   return {
-    x: Math.min(100, Math.max(0, (x / naturalWidth.value) * 100)),
-    y: Math.min(100, Math.max(0, (y / naturalHeight.value) * 100))
+    x: Math.min(100, Math.max(0, (point.x / naturalWidth.value) * 100)),
+    y: Math.min(100, Math.max(0, (point.y / naturalHeight.value) * 100))
   }
-}
-
-function clientToViewBoxPoint(evt) {
-  if (!zoomGroupRef.value) return null
-  const [x, y] = d3.pointer(evt, zoomGroupRef.value)
-  return { x, y }
 }
 
 function uuid() {

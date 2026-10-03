@@ -7,7 +7,7 @@ a 3D dice roller, a music player, and a second screen to show things to your
 players.
 
 There is no database. Notes, charts and vistas live as files in a Git
-repository; encounters, characters' saved values, images and audio live in
+repository; encounters, battlemaps, characters' saved values, images and audio live in
 S3-compatible object storage.
 
 ## Features
@@ -89,6 +89,22 @@ you want them, and nothing assumes a rules system.
   connection and it reloads from the server on reconnecting.
 - A sheet's **Add to encounter** button puts it into one without leaving the note.
 
+**Battlemaps** — a tactical map to play a fight out on, shared live like an
+encounter. Pick a map image from the asset library and lay a grid over it
+(cell size and offset in pixels of the image, snapping on or off). Tokens are
+placed in cells, so changing the grid never moves anyone; drag them, resize
+them, give them an image or a colour. A **ruler** measures between cells: you
+say what one cell is worth (5 ft, 1.5 m, 1 square…) and whether a diagonal
+costs one cell or its length.
+- Attach an **encounter** and *Place combatants* puts a token for each one. A
+  token can show some of its combatant's counters as bars (an adversary's own,
+  or a character's saved ones), and they follow the encounter as it changes.
+- **Hidden** tokens are dimmed for everyone signed in and **never sent to the
+  screen**: *Show on the screen* sends the server's view of the map, made
+  without them (and without which sheet or combatant a token stands for). The
+  screen follows every change — moves, new tokens, counters — a moment later.
+- Everyone signed in can move any token and change any setting.
+
 **Game-master tools**
 - **Charts** — maps with pins (icon, color, size, linked note), hand-drawn
   paths with direction arrows, and text annotations.
@@ -115,6 +131,7 @@ you want them, and nothing assumes a rules system.
   turning it off with unsaved changes puts the saved version back.
   The Constellation works the same way: **Send to screen** shows it frozen as it
   is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
+  A battlemap shown on the screen is always live, without its hidden tokens.
 
 Charts, vistas, folders, assets and tracks can all be created, renamed, moved
 and deleted from the UI.
@@ -132,6 +149,7 @@ and deleted from the UI.
 | Notes                     | `.md` files in the vault (a Git repository)                |
 | Charts / vistas           | `_charts/<id>/chart.json`, `_vistas/<id>/vista.json` in the vault |
 | Encounters                | `docs/encounters/<folders>/<id>/encounter.json` in the bucket |
+| Battlemaps                | `docs/battlemaps/<folders>/<id>/battlemap.json` in the bucket |
 | Characters' saved values  | `docs/characters/all/characters.json` in the bucket        |
 | Images, audio, map icons  | S3-compatible bucket (MinIO, Ceph RGW, AWS S3, …)          |
 
@@ -139,7 +157,7 @@ The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
 seconds, and commits and pushes every edit made in the app. You can keep
 editing the same vault in Obsidian — both sides stay in sync through Git.
 
-Encounters and characters are not in Git: they change while people play, and the
+Encounters, battlemaps and characters are not in Git: they change while people play, and the
 vault is a throwaway clone that a redeploy replaces. They are JSON objects in the
 bucket, held in memory while someone is using them and written a couple of
 seconds after the last change (and when the app shuts down). Without an S3
@@ -190,7 +208,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
 | `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
-| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where encounters and characters are kept when there is no `S3_ENDPOINT_URL` |
+| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where encounters, battlemaps and characters are kept when there is no `S3_ENDPOINT_URL` |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
 | `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
@@ -254,7 +272,7 @@ Realm-Keeper/
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
 │   ├── models/         Pydantic models (notes, charts, vistas)
-│   ├── routes/         notes, sheets, encounters, characters, sync, charts, vistas, asset-library, player, screen, auth
+│   ├── routes/         notes, sheets, encounters, battlemaps, characters, sync, charts, vistas, asset-library, player, screen, auth
 │   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production

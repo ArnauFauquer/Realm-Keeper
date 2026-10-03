@@ -74,6 +74,10 @@ def _live_draft_urls() -> list:
         return [draft.get("image_url"), *(p.get("icon_url") for p in draft.get("pins", []))]
     if draft.get("type") == "update_vista" and displayed_item("vista") == draft.get("vista_id", "").strip("/"):
         return [draft.get("background_url"), *(a.get("image_url") for a in draft.get("assets", []))]
+    # What a battlemap's draft carries is already what a screen may see: hidden
+    # tokens aren't in it, so neither are their images.
+    if draft.get("type") == "update_battlemap" and displayed_item("battlemap") == draft.get("battlemap_id", "").strip("/"):
+        return [draft.get("image_url"), *(t.get("image_url") for t in draft.get("tokens", []))]
     return []
 
 

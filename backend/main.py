@@ -11,6 +11,7 @@ from routes.auth import router as auth_router
 from routes.notes import md_service_instance, router as notes_router
 from routes.sheets import router as sheets_router
 from routes.encounters import router as encounters_router
+from routes.battlemaps import router as battlemaps_router
 from routes.characters import router as characters_router
 from routes.sync import router as sync_router
 from routes.screen import router as screen_router
@@ -173,6 +174,7 @@ app.include_router(notes_router)  # reading/searching notes stays public; writes
 app.include_router(sheets_router)  # the sheets written in notes: as public as the notes themselves
 app.include_router(encounters_router)  # live documents: login required throughout
 app.include_router(characters_router)
+app.include_router(battlemaps_router)
 app.include_router(sync_router)  # the socket that announces their changes: login required
 app.include_router(screen_router)  # the socket needs login or a paired screen; posting to it needs login
 app.include_router(player_router, dependencies=[Depends(require_auth)])

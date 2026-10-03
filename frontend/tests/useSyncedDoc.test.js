@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApp, defineComponent, h, nextTick } from 'vue'
+import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
@@ -27,7 +27,7 @@ class FakeSocket {
   }
 }
 
-const { useSyncedDoc } = await import('@/composables/useSyncedDoc')
+const { useSyncedDoc, useSyncedDocFollowing } = await import('@/composables/useSyncedDoc')
 const { syncStatus } = await import('@/composables/syncSocket')
 
 const flush = async () => {
@@ -193,5 +193,72 @@ describe('useSyncedDoc', () => {
     expect(syncStatus.value).toBe('denied')
     vi.advanceTimersByTime(60000)
     expect(FakeSocket.instances).toHaveLength(3)
+  })
+})
+
+describe('useSyncedDocFollowing', () => {
+  /** Runs the composable inside a component, following whatever `id` holds. */
+  function follow(id, fetchFor) {
+    let result
+    const app = createApp(
+      defineComponent({
+        setup() {
+          result = useSyncedDocFollowing('encounter', () => id.value, fetchFor)
+          return () => h('div')
+        }
+      })
+    )
+    app.mount(document.createElement('div'))
+    mounted.push(app)
+    return { ...result, unmount: () => app.unmount() }
+  }
+
+  it('has nothing while there is nothing to follow, and opens no connection for it', async () => {
+    const { doc, status } = follow(ref(null), vi.fn())
+    await flush()
+    expect(doc.value).toBeNull()
+    expect(status.value).toBe('idle')
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+
+  it('follows the document it is given, live', async () => {
+    const fetchFor = vi.fn(async (id) => ({ id, rev: 1, round: 0 }))
+    const { doc, status } = follow(ref('fight'), fetchFor)
+    await flush()
+    expect(fetchFor).toHaveBeenCalledWith('fight')
+    expect(status.value).toBe('ready')
+    FakeSocket.instances[0].say(event(2, { set: { round: 5 } }))
+    expect(doc.value.round).toBe(5)
+  })
+
+  it('switches to another document when the id changes, letting go of the first', async () => {
+    const id = ref('fight')
+    const fetchFor = vi.fn(async (wanted) => ({ id: wanted, rev: 1, round: wanted === 'fight' ? 1 : 2 }))
+    const { doc } = follow(id, fetchFor)
+    await flush()
+    expect(doc.value.round).toBe(1)
+
+    id.value = 'ambush'
+    await flush()
+    expect(doc.value).toMatchObject({ id: 'ambush', round: 2 })
+    FakeSocket.instances[0].say(event(2, { set: { round: 9 } })) // the old one's: not this one's
+    expect(doc.value.round).toBe(2)
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:ambush', rev: 2, set: { round: 7 } })
+    expect(doc.value.round).toBe(7)
+    expect(FakeSocket.instances).toHaveLength(1) // one connection throughout
+
+    id.value = null
+    await flush()
+    expect(doc.value).toBeNull()
+    expect(syncStatus.value).toBe('idle')
+  })
+
+  it('lets go when the component goes', async () => {
+    const view = follow(ref('fight'), async (id) => ({ id, rev: 1 }))
+    await flush()
+    FakeSocket.instances[0].open()
+    expect(syncStatus.value).toBe('open')
+    view.unmount()
+    expect(syncStatus.value).toBe('idle')
   })
 })

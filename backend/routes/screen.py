@@ -12,6 +12,9 @@ from routes.screen_access import displayed_item, websocket_allowed
 from services.auth_service import (
     SCREEN_COOKIE_NAME, SCREEN_KEY_MAX_AGE, create_screen_key, dice_slot, verify_screen_key,
 )
+from services.battlemap_screen import BattlemapScreen
+from services.doc_collection import DocNotFound
+from services.doc_registry import hub
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["screen"])
@@ -36,7 +39,7 @@ async def reject(websocket: WebSocket, code: int) -> None:
 
 # Messages that patch the chart/vista/constellation already on screen with the GM's unsaved
 # edits. They're kept apart from current_state (see ConnectionManager).
-LIVE_UPDATE_TYPES = {"update_chart", "update_vista", "update_constellation"}
+LIVE_UPDATE_TYPES = {"update_chart", "update_vista", "update_constellation", "update_battlemap"}
 
 
 class ConnectionManager:
@@ -105,6 +108,11 @@ class ConnectionManager:
                 self.disconnect(connection)
 
 manager = ConnectionManager()
+
+# What the screens show of a battlemap follows it as it changes: the hub tells
+# this about every change to any live document.
+battlemap_screen = BattlemapScreen(hub, manager)
+hub.add_listener(battlemap_screen.on_event)
 
 @router.websocket("/ws/screen")
 async def websocket_endpoint(websocket: WebSocket):
@@ -290,6 +298,25 @@ async def update_chart_live(body: ChartLiveRequest, user: dict = Depends(require
         return {"status": "ignored"}
     _require_library_urls(body.image_url, *(p.icon_url for p in body.pins))
     await manager.broadcast({"type": "update_chart", **body.model_dump()})
+    return {"status": "success"}
+
+
+class BattlemapShowRequest(BaseModel):
+    battlemap_id: str
+
+
+@router.post("/api/screen/battlemap")
+async def display_battlemap(body: BattlemapShowRequest, user: dict = Depends(require_auth)):
+    """
+    Shows a battlemap on all screens, and keeps it current as it changes (see
+    services/battlemap_screen.py). Screens are sent a projection of the map,
+    not the map: hidden tokens never reach them, and they fetch nothing but the
+    images it draws, which they may read for as long as it is on screen.
+    """
+    try:
+        await battlemap_screen.show(body.battlemap_id.strip("/"))
+    except DocNotFound as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return {"status": "success"}
 
 
