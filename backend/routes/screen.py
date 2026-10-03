@@ -22,6 +22,9 @@ router = APIRouter(tags=["screen"])
 # stopping anyone from opening sockets until the process runs out of memory.
 MAX_SCREEN_CONNECTIONS = 50
 
+# A roll's label ("Bugboar · Gore") is drawn big on the screen: keep it short.
+MAX_DICE_LABEL_LENGTH = 80
+
 
 async def reject(websocket: WebSocket, code: int) -> None:
     """Accept, then close with `code`. Closing before accept makes uvicorn
@@ -165,12 +168,14 @@ async def display_dice(data: dict, user: dict = Depends(require_auth)):
     """
     Broadcasts a dice roll result to all connected screens.
     Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
+    plus an optional "label" saying what the roll is for ("Bugboar · Gore").
     The roller's dice colour comes from the session, not the payload, so one
     player can't have their roll shown in another's colour.
     """
     await manager.broadcast({
         "type": "dice_roll",
         "formula": data.get("formula", ""),
+        "label": str(data.get("label") or "")[:MAX_DICE_LABEL_LENGTH],
         "groups": data.get("groups", []),
         "flatModifier": data.get("flatModifier", 0),
         "total": data.get("total", 0),

@@ -74,6 +74,10 @@ class CacheControlMiddleware:
                 # browser: it's behind login (or a paired screen), so shared
                 # caches must not keep it, and the service worker skips it.
                 return "private, max-age=31536000, immutable"
+            if path.startswith("/api/sheets"):
+                # Derived from the notes: a note saved with a new sheet must
+                # show up in the next picker, not 60s later.
+                return "no-store, must-revalidate"
             if (
                 path.startswith("/api/vistas")
                 or path.startswith("/api/charts")

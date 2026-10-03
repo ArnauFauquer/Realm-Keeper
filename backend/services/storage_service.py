@@ -33,6 +33,9 @@ ALLOWED_IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPES)
 RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library"}
 
 ASSET_LIBRARY_PREFIX = "asset-library/"
+# Where the app serves a library asset from; documents (charts, vistas, sheets...)
+# refer to library images by URLs starting with this.
+ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
 _UNIQUE_PREFIX_RE = re.compile(r"^[0-9a-f]{8}-")
 
 

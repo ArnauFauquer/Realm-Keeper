@@ -72,6 +72,7 @@
     <div v-if="diceRoll" class="screen-dice-result" :class="diceRoll.duality && `duality--${diceRoll.duality.outcome}`" :key="diceRoll.id">
       <canvas ref="diceCanvas" class="dice-canvas"></canvas>
       <div class="dice-caption">
+        <div v-if="diceRoll.label" class="dice-label">{{ diceRoll.label }}</div>
         <div class="dice-formula">{{ diceRoll.formula }}</div>
         <div class="dice-breakdown">
           <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
@@ -440,6 +441,7 @@ export default {
       this.diceRoll = {
         id: ++this.diceSeq,
         formula: data.formula || '',
+        label: data.label || '',
         groups: data.groups || [],
         flatModifier: data.flatModifier || 0,
         total: data.total,
@@ -742,6 +744,13 @@ export default {
   padding: var(--space-10) var(--space-8) var(--space-12);
   background: linear-gradient(to top, rgba(2, 2, 10, 0.85) 0%, transparent 100%);
   pointer-events: none;
+}
+
+.dice-label {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .dice-formula {

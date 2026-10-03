@@ -9,6 +9,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from routes.auth import require_auth
 from routes.auth import router as auth_router
 from routes.notes import md_service_instance, router as notes_router
+from routes.sheets import router as sheets_router
 from routes.screen import router as screen_router
 from routes.player import router as player_router
 from routes.charts import router as charts_router
@@ -161,6 +162,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route
+app.include_router(sheets_router)  # the sheets written in notes: as public as the notes themselves
 app.include_router(screen_router)  # the socket needs login or a paired screen; posting to it needs login
 app.include_router(player_router, dependencies=[Depends(require_auth)])
 app.include_router(charts_router)  # login, or a paired screen for what it shows (routes/screen_access.py)

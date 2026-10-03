@@ -1,0 +1,3 @@
+name: Imp
+resources:
+  HP: { max: 2, min: 3 }

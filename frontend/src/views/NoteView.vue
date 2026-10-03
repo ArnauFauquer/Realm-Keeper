@@ -37,8 +37,19 @@
           >Preview</button>
         </div>
 
+        <div v-if="editorTab === 'write'" class="editor-toolbar">
+          <span class="editor-toolbar-label">Insert</span>
+          <button type="button" class="rk-btn rk-btn--sm" @click="insertSheetTemplate('adversary')">
+            <span class="mdi mdi-skull-outline"></span> Adversary sheet
+          </button>
+          <button type="button" class="rk-btn rk-btn--sm" @click="insertSheetTemplate('character')">
+            <span class="mdi mdi-account-outline"></span> Character sheet
+          </button>
+        </div>
+
         <textarea
           v-if="editorTab === 'write'"
+          ref="editorTextarea"
           v-model="draftContent"
           class="editor-textarea"
           placeholder="# Title
@@ -138,20 +149,23 @@ Write your note in Markdown..."
 </template>
 
 <script>
-import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import { getCached, post, put, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
 import { renderCallouts } from '@/utils/callouts'
-import { h, render } from 'vue'
-import { parseInlineRef, renderInlineRef } from '@/utils/inlineRefs'
+import { defineAsyncComponent, h, render } from 'vue'
+import { createMarkdown } from '@/utils/markdown'
+import { SHEET_TEMPLATES } from '@/utils/sheet'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { usePlayer } from '@/composables/usePlayer'
 import { useAuth } from '@/composables/useAuth'
 import RightSidebar from '@/components/RightSidebar.vue'
 import DocumentEmbed from '@/components/DocumentEmbed.vue'
+
+// A sheet (and the YAML parser it needs) is only fetched for a note that has one.
+const SheetBlock = defineAsyncComponent(() => import('@/components/SheetBlock.vue'))
 
 mermaid.initialize({
   startOnLoad: false,
@@ -200,12 +214,7 @@ export default {
     return { user }
   },
   data() {
-    const md = new MarkdownIt({
-      html: true,
-      linkify: true,
-      typographer: true,
-      breaks: true
-    })
+    const md = createMarkdown()
 
     const defaultFence = md.renderer.rules.fence || function (tokens, idx, options, env, self) {
       return self.renderToken(tokens, idx, options)
@@ -216,16 +225,15 @@ export default {
       if (lang === 'mermaid') {
         return `<pre class="mermaid">${md.utils.escapeHtml(token.content)}</pre>`
       }
+      // A sheet is drawn by a component mounted into this placeholder (see
+      // mountDocEmbeds). The YAML travels in an attribute, on one line and
+      // without headings: callouts render their body twice, and a raw HTML
+      // block ends at the first blank line, which the YAML may well contain.
+      if (lang === 'sheet') {
+        const src = md.utils.escapeHtml(encodeURIComponent(token.content))
+        return `<div class="sheet-block" data-sheet-src="${src}"></div>\n`
+      }
       return defaultFence(tokens, idx, options, env, self)
-    }
-
-    const defaultCodeInline = md.renderer.rules.code_inline || function (tokens, idx, options, env, self) {
-      return self.renderToken(tokens, idx, options)
-    }
-    md.renderer.rules.code_inline = (tokens, idx, options, env, self) => {
-      const ref = parseInlineRef(tokens[idx].content)
-      if (ref) return renderInlineRef(ref, md.utils.escapeHtml)
-      return defaultCodeInline(tokens, idx, options, env, self)
     }
 
     return {
@@ -350,6 +358,19 @@ export default {
       this.saveError = null
       this.isCreating = true
       this.isEditing = true
+    },
+    // Drops a sheet template into the draft where the cursor is.
+    insertSheetTemplate(type) {
+      const textarea = this.$refs.editorTextarea
+      const snippet = `\n${SHEET_TEMPLATES[type]}\n`
+      const start = textarea ? textarea.selectionStart : this.draftContent.length
+      const end = textarea ? textarea.selectionEnd : start
+      this.draftContent = this.draftContent.slice(0, start) + snippet + this.draftContent.slice(end)
+      this.$nextTick(() => {
+        if (!textarea) return
+        textarea.focus()
+        textarea.setSelectionRange(start + snippet.length, start + snippet.length)
+      })
     },
     cancelEditing() {
       this.isEditing = false
@@ -482,9 +503,10 @@ export default {
       })
     },
     // Chart/vista placeholders from the inline-code rule get a real
-    // DocumentEmbed rendered into them. v-html knows nothing about those
-    // component trees, so hosts whose DOM a later render replaced are
-    // unmounted here (and every remaining one in beforeUnmount).
+    // DocumentEmbed rendered into them, and ```sheet placeholders a
+    // SheetBlock. v-html knows nothing about those component trees, so hosts
+    // whose DOM a later render replaced are unmounted here (and every
+    // remaining one in beforeUnmount).
     mountDocEmbeds(root) {
       this.mountedEmbeds = this.mountedEmbeds.filter(el => {
         if (el.isConnected) return true
@@ -502,6 +524,18 @@ export default {
           canInteract: !!this.user
         })
         // Share the app's router/plugins with this detached render tree.
+        vnode.appContext = this.$.appContext
+        el.textContent = ''
+        render(vnode, el)
+        this.mountedEmbeds.push(el)
+      })
+
+      root.querySelectorAll('[data-sheet-src]:not([data-embed-mounted])').forEach(el => {
+        el.setAttribute('data-embed-mounted', '1')
+        const vnode = h(SheetBlock, {
+          source: decodeURIComponent(el.getAttribute('data-sheet-src')),
+          canInteract: !!this.user
+        })
         vnode.appContext = this.$.appContext
         el.textContent = ''
         render(vnode, el)
@@ -781,6 +815,18 @@ export default {
   border-bottom-color: var(--accent);
 }
 
+.editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.editor-toolbar-label {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
 .editor-textarea {
   width: 100%;
   min-height: 50dvh;
@@ -1055,7 +1101,8 @@ export default {
   transform: translateY(1px);
 }
 
-.markdown-content :deep(.doc-embed) {
+.markdown-content :deep(.doc-embed),
+.markdown-content :deep(.sheet-block) {
   display: block;
 }
 

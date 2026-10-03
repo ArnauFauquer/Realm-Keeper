@@ -34,6 +34,45 @@ repository; images and audio live in S3-compatible object storage.
 | `` `chart:regions/tavern-map` ``           | The chart embedded in the note           |
 | `` `vista:tavern/night` ``                 | The vista embedded in the note           |
 
+**Sheets** — a ` ```sheet ` block in a note (YAML) becomes a character or
+adversary sheet: counters, stats, actions with dice buttons. It knows nothing
+about any rules system: counters, stats and tags are named by you.
+
+````markdown
+```sheet
+name: Bugboar
+type: adversary            # character | adversary (default: adversary)
+subtitle: Tier 1 · Bruiser
+image:                     # URL of an asset library image, as copied from the library
+tags: [goblinoid]
+resources:                 # counters: HP: 6, or { max, min, start, color, style }
+  HP: 6
+  Stress: { max: 3, start: 0 }   # `start` = where it begins (default: the max)
+stats:                     # label: value, or { value, roll } for a dice button
+  Difficulty: 14
+  Attack: { value: "+2", roll: "hf+2" }
+sections:
+  - title: Actions
+    items:
+      - name: Gore
+        roll: 1d20+3
+        text: "Hits for `1d10+2` damage near [[Goblin Cave]]."
+text: |                    # free markdown
+  A tusked brute.
+```
+````
+
+- **`character`** is one individual (a player character, a recurring NPC):
+  give it a stable `id` — whatever it saves is kept under that id, so renaming
+  or moving its note loses nothing. **`adversary`** is a template: each copy
+  in an encounter will have its own values.
+- Texts are markdown; an inline dice formula (`` `1d8+2` ``) is a button. Quote
+  a text that starts with a `[[link]]`, or YAML reads it as a list.
+- A sheet with a mistake shows what is wrong, in the note, instead of the sheet.
+  The editor's **Insert** buttons drop a ready-made template at the cursor.
+- Sheets work inside callouts too. `GET /api/sheets` lists every sheet in the
+  vault (hidden notes excluded).
+
 **Game-master tools**
 - **Charts** — maps with pins (icon, color, size, linked note), hand-drawn
   paths with direction arrows, and text annotations.
@@ -49,7 +88,8 @@ repository; images and audio live in S3-compatible object storage.
   A natural 20 on a d20 is a critical and a natural 1 a fumble. Advantage /
   disadvantage (`adv` / `dis`) roll two d20 and keep the higher / lower,
   and any group can keep its best or worst dice with `kh` / `kl` (`4d6kh3`).
-  A roll throws at most 50 dice.
+  A roll throws at most 50 dice. A roll made from a sheet says what it is for
+  ("Bugboar · Gore") in the toast and on the screen.
 - **Music player** — albums and tracks stored in object storage, with a
   sidebar mini-player (shuffle, previous, volume).
 - **Player screen** — open `/screen` on a TV or projector; images, charts,
@@ -188,8 +228,8 @@ Realm-Keeper/
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
 │   ├── models/         Pydantic models (notes, charts, vistas)
-│   ├── routes/         notes, charts, vistas, asset-library, player, screen, auth
-│   ├── services/       Markdown parsing, Git commits, S3 storage, JSON document store
+│   ├── routes/         notes, sheets, charts, vistas, asset-library, player, screen, auth
+│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON document store
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/

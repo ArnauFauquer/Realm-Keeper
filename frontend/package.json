@@ -20,7 +20,8 @@
     "mermaid": "^11.17.2",
     "three": "^0.185.1",
     "vue": "^3.3.8",
-    "vue-router": "^4.2.5"
+    "vue-router": "^4.2.5",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^4.5.0",

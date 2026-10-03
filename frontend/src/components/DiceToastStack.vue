@@ -5,6 +5,7 @@
         <button class="toast-close rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss roll" @click="dismissToast(t.id)">
           <span class="mdi mdi-close"></span>
         </button>
+        <div v-if="t.label" class="toast-label">{{ t.label }}</div>
         <div class="toast-formula">
           <span class="mdi mdi-dice-multiple"></span>
           {{ t.formula }}
@@ -79,6 +80,13 @@ const { state, dismissToast } = useDiceRoller()
   position: absolute;
   top: var(--space-1);
   right: var(--space-1);
+}
+
+.toast-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
 }
 
 .toast-formula {
