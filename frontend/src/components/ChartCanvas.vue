@@ -19,6 +19,7 @@
         @click="onCanvasClick"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
         @pointerleave="onPointerUp"
       >
         <defs>
@@ -748,6 +749,10 @@ function onLibrarySelect(item) {
   width: 100%;
   height: 100%;
   display: block;
+  /* Stop the browser turning a finger drag into a native pan/scroll
+     (pointercancel), which kills dragging pins, notes and path points on
+     touch screens. Pinch/pan zoom is handled by d3-zoom. */
+  touch-action: none;
 }
 
 .canvas-svg.mode-select {
