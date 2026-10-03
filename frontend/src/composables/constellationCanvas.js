@@ -11,7 +11,7 @@
  * Vue's reactivity proxies.
  */
 import * as d3 from 'd3'
-import { getLinkEndpointId } from '@/composables/useConstellationGraph'
+import { computeDegrees, getLinkEndpointId } from '@/composables/useConstellationGraph'
 
 const LINK_COLOR = 'rgba(160, 190, 255, 0.3)'
 const LINK_WIDTH = 0.8
@@ -56,6 +56,69 @@ export function buildAdjacency(links) {
 /** Types are matched on `type || ''` so notes without a type can be selected too. */
 export function nodeTypeKey(node) {
   return node.type || ''
+}
+
+/**
+ * Derives what the renderer draws from a node's links: degree, radius (hubs are
+ * slightly bigger) and whether it is a hub. Shared by the GM's modal and the
+ * read-only screen so both look identical.
+ */
+export function decorateNodes(nodes, links) {
+  const { degrees, maxDegree } = computeDegrees(nodes, links)
+  nodes.forEach(node => {
+    node.degree = degrees[node.id] || 0
+    // Star constellation: smaller, more subtle sizes. Hubs slightly bigger.
+    node.radius = 2.5 + Math.sqrt(node.degree) * 1.8
+    node.isHub = node.degree >= maxDegree * 0.4
+    node.size = node.radius
+  })
+}
+
+/**
+ * A graph a screen can draw without running any physics: the notes the GM's
+ * layout has a position for, each placed where the GM has it, with links that
+ * point at those node objects.
+ */
+export function buildMirrorGraph(rawNodes, rawLinks, positions) {
+  const nodes = rawNodes
+    .filter(node => positions[node.id])
+    .map(node => ({ ...node, x: positions[node.id][0], y: positions[node.id][1] }))
+  const byId = new Map(nodes.map(node => [node.id, node]))
+  const links = rawLinks
+    .map(link => ({ source: byId.get(getLinkEndpointId(link.source)), target: byId.get(getLinkEndpointId(link.target)) }))
+    .filter(link => link.source && link.target)
+  decorateNodes(nodes, links)
+  return { nodes, links }
+}
+
+/** Moves every node of a mirror graph to the GM's latest position. */
+export function applyPositions(nodes, positions) {
+  nodes.forEach(node => {
+    const position = positions[node.id]
+    if (position) {
+      node.x = position[0]
+      node.y = position[1]
+    }
+  })
+}
+
+/**
+ * The zoom transform that makes a screen show the region the GM is looking at.
+ * `view` is the GM's transform plus the size of the canvas it was made on; the
+ * whole GM viewport is fitted (and centred) inside the screen, so a screen of
+ * a different aspect ratio shows a little more rather than cutting anything off.
+ */
+export function fitMirrorTransform(view, width, height) {
+  const fit = Math.min(width / view.width, height / view.height)
+  const k = view.k * fit
+  const centerX = (view.width / 2 - view.x) / view.k
+  const centerY = (view.height / 2 - view.y) / view.k
+  return { x: width / 2 - centerX * k, y: height / 2 - centerY * k, k }
+}
+
+const round = (value, decimals) => {
+  const factor = 10 ** decimals
+  return Math.round(value * factor) / factor
 }
 
 /**
@@ -113,7 +176,16 @@ export function isLinkLit(link, state) {
   return null
 }
 
-export function createConstellationCanvas({ canvas, simulation, nodes, links, getColor, onNodeClick }) {
+/**
+ * `interactive: false` makes a read-only mirror (the table screen): no pointer
+ * handling and no simulation, positions and view are pushed in from outside.
+ * `onChange` fires whenever something visible changed (a tick, zoom, hover,
+ * highlight), which is what live mirroring to the screen listens to.
+ */
+export function createConstellationCanvas({
+  canvas, simulation = null, nodes, links, getColor,
+  onNodeClick = () => {}, interactive = true, onChange = null, onResize = null
+}) {
   const ctx = canvas.getContext('2d')
   const adjacency = buildAdjacency(links)
   const colors = nodes.map(getColor)
@@ -139,7 +211,9 @@ export function createConstellationCanvas({ canvas, simulation, nodes, links, ge
   const textAlphas = new Float32Array(nodes.length)
 
   function requestDraw() {
-    if (frame || destroyed) return
+    if (destroyed) return
+    onChange?.()
+    if (frame) return
     frame = requestAnimationFrame(draw)
   }
 
@@ -149,6 +223,7 @@ export function createConstellationCanvas({ canvas, simulation, nodes, links, ge
     dpr = Math.min(window.devicePixelRatio || 1, MAX_DPR)
     canvas.width = Math.round(width * dpr)
     canvas.height = Math.round(height * dpr)
+    onResize?.(width, height)
     requestDraw()
   }
 
@@ -236,7 +311,7 @@ export function createConstellationCanvas({ canvas, simulation, nodes, links, ge
     frame = 0
     if (destroyed || !width || !height) return
 
-    if (pointer && state.highlightedType === null) applyHoverNode(nodeAt(pointer[0], pointer[1]))
+    if (pointer && state.highlightedType === null && applyHoverNode(nodeAt(pointer[0], pointer[1]))) onChange?.()
 
     for (let i = 0; i < nodes.length; i++) {
       resolveNodeStyle(nodes[i], state, style)
@@ -319,44 +394,49 @@ export function createConstellationCanvas({ canvas, simulation, nodes, links, ge
     if (node) onNodeClick(node)
   }
 
-  const drag = d3.drag()
-    .container(canvas)
-    .subject(event => {
-      const node = nodeAt(event.x, event.y)
-      return node && { node, x: transform.applyX(node.x), y: transform.applyY(node.y) }
-    })
-    .on('start', event => {
-      if (!event.active) simulation.alphaTarget(0.3).restart()
-      event.subject.node.fx = event.subject.node.x
-      event.subject.node.fy = event.subject.node.y
-    })
-    .on('drag', event => {
-      event.subject.node.fx = transform.invertX(event.x)
-      event.subject.node.fy = transform.invertY(event.y)
-    })
-    .on('end', event => {
-      if (!event.active) simulation.alphaTarget(0)
-      event.subject.node.fx = null
-      event.subject.node.fy = null
-    })
+  const nodesById = new Map(nodes.map(node => [node.id, node]))
 
-  const zoom = d3.zoom()
-    .scaleExtent([0.05, 10])
-    .on('zoom', event => {
-      transform = event.transform
-      requestDraw()
-    })
+  let zoom = null
+  if (interactive) {
+    const drag = d3.drag()
+      .container(canvas)
+      .subject(event => {
+        const node = nodeAt(event.x, event.y)
+        return node && { node, x: transform.applyX(node.x), y: transform.applyY(node.y) }
+      })
+      .on('start', event => {
+        if (!event.active) simulation.alphaTarget(0.3).restart()
+        event.subject.node.fx = event.subject.node.x
+        event.subject.node.fy = event.subject.node.y
+      })
+      .on('drag', event => {
+        event.subject.node.fx = transform.invertX(event.x)
+        event.subject.node.fy = transform.invertY(event.y)
+      })
+      .on('end', event => {
+        if (!event.active) simulation.alphaTarget(0)
+        event.subject.node.fx = null
+        event.subject.node.fy = null
+      })
 
-  // The drag behaviour must be registered first: when it grabs a node it stops
-  // the event, so the zoom behaviour only pans when the pointer is on empty space.
-  d3.select(canvas).call(drag).call(zoom)
-  canvas.addEventListener('pointermove', onPointerMove)
-  canvas.addEventListener('pointerleave', onPointerLeave)
-  canvas.addEventListener('click', onClick)
+    zoom = d3.zoom()
+      .scaleExtent([0.05, 10])
+      .on('zoom', event => {
+        transform = event.transform
+        requestDraw()
+      })
+
+    // The drag behaviour must be registered first: when it grabs a node it stops
+    // the event, so the zoom behaviour only pans when the pointer is on empty space.
+    d3.select(canvas).call(drag).call(zoom)
+    canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointerleave', onPointerLeave)
+    canvas.addEventListener('click', onClick)
+  }
 
   const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
   resizeObserver?.observe(canvas)
-  simulation.on('tick', requestDraw)
+  simulation?.on('tick', requestDraw)
   resize()
 
   return {
@@ -369,12 +449,40 @@ export function createConstellationCanvas({ canvas, simulation, nodes, links, ge
       if (type !== null) setHoverNode(null)
       requestDraw()
     },
+    /** Hover a node by id (mirrors the GM's cursor on the screen). */
+    setHoverId(id) {
+      setHoverNode(id == null ? null : nodesById.get(id) || null)
+    },
+    /** Jumps to a zoom transform `{ x, y, k }`. */
+    setView({ x, y, k }) {
+      const next = d3.zoomIdentity.translate(x, y).scale(k)
+      if (zoom) d3.select(canvas).call(zoom.transform, next)
+      else {
+        transform = next
+        requestDraw()
+      }
+    },
+    /**
+     * Everything a screen needs to reproduce this view: pan/zoom plus the size of
+     * the canvas it was made on, where every node sits (the layout is only
+     * computed here), and what is highlighted.
+     */
+    getSnapshot() {
+      const positions = {}
+      nodes.forEach(node => { positions[node.id] = [round(node.x, 1), round(node.y, 1)] })
+      return {
+        view: { x: round(transform.x, 1), y: round(transform.y, 1), k: round(transform.k, 4), width, height },
+        positions,
+        highlighted_type: state.highlightedType,
+        hover_id: state.hoverNode ? state.hoverNode.id : null
+      }
+    },
     destroy() {
       destroyed = true
       if (frame) cancelAnimationFrame(frame)
       frame = 0
       resizeObserver?.disconnect()
-      simulation.on('tick', null)
+      simulation?.on('tick', null)
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerleave', onPointerLeave)
       canvas.removeEventListener('click', onClick)

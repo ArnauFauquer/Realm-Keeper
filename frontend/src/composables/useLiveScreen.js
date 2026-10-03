@@ -14,8 +14,13 @@ const PUSH_INTERVAL_MS = 80
  * @param kind        'chart' | 'vista' (selects /api/screen/<kind>[/live])
  * @param source      ref to the document being edited (watched deeply)
  * @param buildPayload  document -> body of the live update (must carry `<kind>_id`)
+ * @param options.buildShowPayload  document -> body of the request that puts it
+ *        on screen. Defaults to `{ <kind>_id }`, which is all a chart/vista
+ *        needs; the constellation has no id and sends its whole current state.
  */
-export function useLiveScreen(kind, source, buildPayload) {
+export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } = {}) {
+  const showPayload = (doc) => (buildShowPayload ? buildShowPayload(doc) : { [`${kind}_id`]: doc.id })
+
   const live = ref(false)
   const sending = ref(false)
 
@@ -49,7 +54,7 @@ export function useLiveScreen(kind, source, buildPayload) {
 
   async function show() {
     if (!source.value) return
-    await post(`${apiUrl}/api/screen/${kind}`, { [`${kind}_id`]: source.value.id })
+    await post(`${apiUrl}/api/screen/${kind}`, showPayload(source.value))
     // Showing replaces whatever draft the screen had: put the current edits
     // back so a live screen never falls back to the saved version.
     if (live.value) schedule()
@@ -90,7 +95,7 @@ export function useLiveScreen(kind, source, buildPayload) {
     try {
       // A draft already on its way must land before the revert, not after.
       await inflight
-      if (revert && doc) await post(`${apiUrl}/api/screen/${kind}`, { [`${kind}_id`]: doc.id })
+      if (revert && doc) await post(`${apiUrl}/api/screen/${kind}`, showPayload(doc))
     } catch (err) {
       console.error(`Failed to stop live ${kind}:`, err)
     }

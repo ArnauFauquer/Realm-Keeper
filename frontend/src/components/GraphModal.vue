@@ -3,9 +3,32 @@
     <div class="rk-dialog graph-modal-content" role="dialog" aria-modal="true" aria-labelledby="graph-modal-title">
       <div class="rk-dialog__header">
         <h2 id="graph-modal-title" class="rk-dialog__title"><span class="mdi mdi-graph-outline"></span> Constellation</h2>
-        <button class="rk-icon-btn" aria-label="Close constellation" @click="closeModal">
-          <span class="mdi mdi-close"></span>
-        </button>
+        <div class="graph-header-actions">
+          <template v-if="user && canShowOnScreen">
+            <button
+              class="rk-btn header-btn"
+              :class="{ 'rk-btn--primary': live }"
+              :aria-pressed="live"
+              :title="live ? 'Stop mirroring the constellation on the screen' : 'Mirror your zoom, pan and highlights on the screen as you make them'"
+              @click="toggleLive()"
+            >
+              <span class="mdi mdi-broadcast"></span>
+              <span>{{ live ? 'Live' : 'Go live' }}</span>
+            </button>
+            <button
+              class="rk-btn header-btn"
+              :disabled="sendingToScreen"
+              title="Show the constellation on the screen exactly as it is now"
+              @click="sendToScreen"
+            >
+              <span class="mdi mdi-monitor-share"></span>
+              <span>{{ sendingToScreen ? 'Sent!' : 'Send to screen' }}</span>
+            </button>
+          </template>
+          <button class="rk-icon-btn" aria-label="Close constellation" @click="closeModal">
+            <span class="mdi mdi-close"></span>
+          </button>
+        </div>
       </div>
       <div class="graph-body">
         <div class="graph-view">
@@ -107,12 +130,14 @@
 
 <script>
 import * as d3 from 'd3'
-import { markRaw } from 'vue'
+import { markRaw, shallowRef, computed } from 'vue'
 import { getCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
-import { drawStarfield, computeDegrees } from '@/composables/useConstellationGraph'
-import { createConstellationCanvas } from '@/composables/constellationCanvas'
+import { drawStarfield } from '@/composables/useConstellationGraph'
+import { createConstellationCanvas, decorateNodes } from '@/composables/constellationCanvas'
+import { useLiveScreen } from '@/composables/useLiveScreen'
+import { useAuth } from '@/composables/useAuth'
 
 // Ticks run synchronously before the first paint so the graph appears almost
 // settled instead of visibly exploding outwards.
@@ -127,6 +152,33 @@ export default {
     }
   },
   emits: ['close'],
+  setup() {
+    const { user } = useAuth()
+
+    // The renderer owns the layout and view, so the screen's payload is read
+    // from it at push time. `source` only exists so the live composable has
+    // something to watch: it's replaced whenever the renderer reports a change.
+    const liveBridge = { getSnapshot: null, changes: 0 }
+    const source = shallowRef(null)
+    const canShowOnScreen = computed(() => !!source.value)
+    const snapshot = () => liveBridge.getSnapshot()
+    const { live, sending: sendingToScreen, sendToScreen, toggle: toggleLive, stop: stopLive } = useLiveScreen(
+      'constellation', source, snapshot, { buildShowPayload: snapshot }
+    )
+
+    function markChanged() {
+      // Nothing to do while not mirroring; a send-to-screen reads fresh state.
+      if (live.value && source.value) source.value = { id: 'constellation', changes: ++liveBridge.changes }
+    }
+    function setSource(isShown) {
+      source.value = isShown ? { id: 'constellation', changes: 0 } : null
+    }
+
+    return {
+      user, live, sendingToScreen, sendToScreen, toggleLive, stopLive,
+      canShowOnScreen, liveBridge, markChanged, setSource
+    }
+  },
   data() {
     return {
       nodes: [],
@@ -228,16 +280,7 @@ export default {
         opacityRange: [0.15, 0.55]
       })
 
-      // ── Degree calculation ─────────────────────────────────────────────
-      const { degrees, maxDegree } = computeDegrees(this.nodes, this.links)
-
-      this.nodes.forEach(node => {
-        node.degree = degrees[node.id] || 0
-        // Star constellation: smaller, more subtle sizes. Hubs slightly bigger.
-        node.radius = 2.5 + Math.sqrt(node.degree) * 1.8
-        node.isHub = node.degree >= maxDegree * 0.4
-        node.size = node.radius
-      })
+      decorateNodes(this.nodes, this.links)
 
       const isFirstLayout = this.nodes.some(node => node.x === undefined)
 
@@ -266,15 +309,22 @@ export default {
         nodes: this.nodes,
         links: this.links,
         getColor: node => this.getNodeColor(node),
-        onNodeClick: node => this.onNodeClick(node)
+        onNodeClick: node => this.onNodeClick(node),
+        onChange: () => this.markChanged()
       })
       renderer.setHighlightedType(this.highlightedType)
 
       this.graph = { simulation, renderer }
+      this.liveBridge.getSnapshot = renderer.getSnapshot
+      this.setSource(true)
       simulation.restart()
     },
 
     teardownGraph() {
+      // Leaving the modal ends mirroring; what the screen shows stays as it was.
+      this.stopLive()
+      this.setSource(false)
+      this.liveBridge.getSnapshot = null
       if (!this.graph) return
       this.graph.simulation.stop()
       this.graph.renderer.destroy()
@@ -324,6 +374,24 @@ export default {
 
 <style scoped>
 /* Shell comes from .rk-scrim / .rk-dialog; only the canvas size lives here. */
+.graph-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+@media (max-width: 640px) {
+  /* Icon-only actions on phones so the title keeps its room. */
+  .graph-header-actions .header-btn span:not(.mdi) {
+    display: none;
+  }
+
+  .graph-header-actions .header-btn {
+    padding: 0 var(--space-3);
+  }
+}
+
 .graph-modal-content {
   width: min(100%, 1400px);
   height: 90dvh;

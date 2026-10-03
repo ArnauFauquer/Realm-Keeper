@@ -57,6 +57,8 @@ repository; images and audio live in S3-compatible object storage.
   WebSocket. In the chart and vista editors, **Go live** mirrors your edits on
   the screen as you make them (drag a pin, move an asset), saved or not;
   turning it off with unsaved changes puts the saved version back.
+  The Constellation works the same way: **Send to screen** shows it frozen as it
+  is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
 
 Charts, vistas, folders, assets and tracks can all be created, renamed, moved
 and deleted from the UI.

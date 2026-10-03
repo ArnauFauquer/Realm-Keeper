@@ -432,3 +432,83 @@ def test_screen_socket_rejects_foreign_origin(client):
             pass
     finally:
         client.cookies.clear()
+
+
+# ── constellation on the screen ──────────────────────────────────────────
+
+CONSTELLATION = {
+    "view": {"x": -120.5, "y": 40, "k": 1.8, "width": 1200, "height": 700},
+    "positions": {"World/Wei": [10.5, -3], "Calendario": [200, 80]},
+    "highlighted_type": "npc",
+    "hover_id": "Calendario",
+}
+
+
+def test_constellation_needs_login(client, screen_state):
+    assert client.post("/api/screen/constellation", json=CONSTELLATION).status_code == 401
+    assert client.post("/api/screen/constellation/live", json=CONSTELLATION).status_code == 401
+    assert screen_state.current_state is None
+
+
+def test_constellation_is_shown_as_the_screen_content(client, screen_state):
+    _gm(client)
+    assert client.post("/api/screen/constellation", json=CONSTELLATION).json() == {"status": "success"}
+    state = screen_state.current_state
+    assert state["type"] == "display_constellation"
+    assert state["view"]["k"] == 1.8
+    assert state["positions"]["World/Wei"] == (10.5, -3.0)
+    assert state["highlighted_type"] == "npc"
+
+    # A screen that connects later gets the frozen constellation straight away.
+    with client.websocket_connect("/ws/screen") as ws:
+        message = ws.receive_json()
+        assert message["type"] == "display_constellation"
+        assert message["positions"]["Calendario"] == [200.0, 80.0]
+
+
+def test_constellation_live_is_ignored_unless_it_is_on_screen(client, screen_state):
+    _gm(client)
+    assert client.post("/api/screen/constellation/live", json=CONSTELLATION).json() == {"status": "ignored"}
+    assert screen_state.live_draft is None
+
+    client.post("/api/screen/chart", json={"chart_id": "tavern"})
+    assert client.post("/api/screen/constellation/live", json=CONSTELLATION).json() == {"status": "ignored"}
+    assert screen_state.live_draft is None
+
+
+def test_constellation_live_rides_beside_the_shown_constellation(client, screen_state):
+    _gm(client)
+    client.post("/api/screen/constellation", json=CONSTELLATION)
+    moved = {**CONSTELLATION, "view": {**CONSTELLATION["view"], "k": 3}, "hover_id": None}
+    assert client.post("/api/screen/constellation/live", json=moved).json() == {"status": "success"}
+
+    assert screen_state.current_state["type"] == "display_constellation"
+    assert screen_state.live_draft["type"] == "update_constellation"
+    assert screen_state.live_draft["view"]["k"] == 3
+
+    # A screen connecting mid-session gets the base, then the latest live state.
+    with client.websocket_connect("/ws/screen") as ws:
+        assert ws.receive_json()["type"] == "display_constellation"
+        assert ws.receive_json()["view"]["k"] == 3
+
+    # Showing anything else drops the draft with it.
+    client.post("/api/screen/clear")
+    assert screen_state.live_draft is None
+
+
+def test_constellation_rejects_nonsense(client, screen_state):
+    _gm(client)
+    bad_zoom = {**CONSTELLATION, "view": {**CONSTELLATION["view"], "k": 0}}
+    assert client.post("/api/screen/constellation", json=bad_zoom).status_code == 422
+    no_positions = {key: value for key, value in CONSTELLATION.items() if key != "positions"}
+    assert client.post("/api/screen/constellation", json=no_positions).status_code == 422
+    assert screen_state.current_state is None
+
+
+def test_constellation_does_not_change_what_a_paired_screen_may_read(client, screen_state):
+    _gm(client)
+    client.post("/api/screen/constellation", json=CONSTELLATION)
+    client.cookies.clear()
+    client.cookies.set(SCREEN_COOKIE_NAME, create_screen_key("gm@example.com"))
+    assert _asset(client, MAP_KEY) == 401
+    assert client.get("/api/charts/tavern").status_code == 401
