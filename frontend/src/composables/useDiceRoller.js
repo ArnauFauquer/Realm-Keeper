@@ -2,7 +2,8 @@ import { reactive, readonly } from 'vue'
 import { parseDiceFormula, formatDiceFormula, resolveDuality, resolveNatural } from '@/utils/diceNotation'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
-import { DEFAULT_DICE_THEME } from '@/dice/diceTheme'
+import { themeForSlot } from '@/dice/diceTheme'
+import { useAuth } from '@/composables/useAuth'
 
 // Module-scoped singleton (no Pinia in this app) shared by DiceFab,
 // DicePanel, DiceOverlay, DiceToastStack and the note-rendering click hook
@@ -15,7 +16,7 @@ const state = reactive({
   toasts: []
 })
 
-const theme = DEFAULT_DICE_THEME
+const { user } = useAuth()
 
 let worldInstance = null
 let canvasEl = null
@@ -90,7 +91,7 @@ async function roll(formulaText) {
     const world = await ensureWorld()
     world.clearDice()
     const { rollParsedFormula } = await import('@/dice/diceRoller')
-    const result = await rollParsedFormula(world, parsed, theme)
+    const result = await rollParsedFormula(world, parsed, themeForSlot(user.value?.diceSlot))
     const formula = formatDiceFormula(parsed)
     pushToast(formula, result)
     broadcastToScreen(formula, result)

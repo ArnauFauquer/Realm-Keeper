@@ -257,6 +257,30 @@ def test_dice_roll_keeps_what_is_on_screen(client, screen_state):
     assert screen_state.current_state == {"type": "display_chart", "chart_id": "tavern"}
 
 
+def test_dice_slot_follows_allowlist_order(client, monkeypatch):
+    monkeypatch.setattr(settings, "ALLOWED_EMAILS", ["gm@example.com", "ana@example.com"])
+    for email, slot in [("gm@example.com", 0), ("ana@example.com", 1)]:
+        client.cookies.set(SESSION_COOKIE_NAME, create_session_token(email))
+        try:
+            assert client.get("/api/auth/me").json()["diceSlot"] == slot
+        finally:
+            client.cookies.clear()
+
+
+def test_dice_roll_carries_the_rollers_slot(client, screen_state, monkeypatch):
+    monkeypatch.setattr(settings, "ALLOWED_EMAILS", ["gm@example.com", "ana@example.com"])
+    sent = []
+
+    async def capture(message):
+        sent.append(message)
+
+    monkeypatch.setattr(screen_state, "broadcast", capture)
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("ana@example.com"))
+    # The colour comes from the session: a client can't claim someone else's.
+    client.post("/api/screen/dice", json={"formula": "1d20", "total": 7, "diceSlot": 0})
+    assert sent[0]["diceSlot"] == 1
+
+
 def test_screen_key_rules(client, screen_state):
     screen_state.current_state = {"type": "display_chart", "chart_id": "tavern"}
     # Only a GM can mint one, and it dies with its issuer's access.
