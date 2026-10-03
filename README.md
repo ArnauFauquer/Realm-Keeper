@@ -77,9 +77,10 @@ text: |                    # free markdown
 **Encounters** — who is in a fight, live for everyone at the table. Add
 adversaries and characters from their sheets; each one gets counters (HP,
 Stress... whatever the sheet defines) with ± buttons, free-text conditions,
-notes, an optional initiative, defeated, and its sheet's actions with dice
-buttons. A round counter and *Next turn* (it skips the defeated) are there if
-you want them, and nothing assumes a rules system.
+notes, defeated, and its sheet's actions with dice buttons. There are no
+rounds, turns or initiative, since how a fight is ordered is a rule of the
+system being played: drag the combatants (or use the arrows) into whatever
+order suits your table.
 - Add **3 Bugboars** and each has its own copy of the sheet's counters, starting
   alike and then diverging. A **character** is added once and has no counters of
   its own: its saved values are the same on its note and in every encounter, and

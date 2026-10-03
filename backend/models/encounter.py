@@ -4,6 +4,18 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_COMBATANTS = 200
 
+# Fields encounters saved earlier may still carry, from when they had rounds,
+# turns and initiative. They are dropped when such a document is read, so they
+# don't linger as unexplained extras.
+RETIRED_ENCOUNTER_FIELDS = {"round", "turn"}
+RETIRED_COMBATANT_FIELDS = {"initiative"}
+
+
+def _without(data, retired):
+    if isinstance(data, dict) and retired & data.keys():
+        return {key: value for key, value in data.items() if key not in retired}
+    return data
+
 
 class ResourceState(BaseModel):
     """A live counter: HP, Stress, Sanity... named by whoever wrote the sheet.
@@ -43,12 +55,16 @@ class Combatant(BaseModel):
     name: str = Field(max_length=120)
     type: Literal["character", "adversary"] = "adversary"
     sheet: Optional[str] = Field(None, max_length=300)
-    initiative: Optional[float] = None
     resources: Dict[str, ResourceState] = Field(default_factory=dict, max_length=24)
     conditions: List[Condition] = Field(default_factory=list, max_length=24)
     notes: str = Field("", max_length=4000)
     defeated: bool = False
     image_url: Optional[str] = Field(None, max_length=1000)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_fields(cls, data):
+        return _without(data, RETIRED_COMBATANT_FIELDS)
 
     @model_validator(mode="after")
     def _character_has_a_sheet_and_no_counters(self):
@@ -72,9 +88,14 @@ class Encounter(EncounterMetadata):
 
     schema_version: int = 1
     rev: int = 0
-    round: int = Field(0, ge=0)
-    turn: Optional[str] = None
+    # The order is the table's own: there are no rounds, turns or initiative
+    # here, since how a fight is ordered is a rule of the system being played.
     combatants: List[Combatant] = Field(default_factory=list, max_length=MAX_COMBATANTS)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired_fields(cls, data):
+        return _without(data, RETIRED_ENCOUNTER_FIELDS)
 
     @model_validator(mode="after")
     def _consistent(self):
@@ -84,6 +105,4 @@ class Encounter(EncounterMetadata):
         sheets = [c.sheet for c in self.combatants if c.type == "character"]
         if len(set(sheets)) != len(sheets):
             raise ValueError("a character can be in an encounter only once")
-        if self.turn not in ids:
-            self.turn = None
         return self

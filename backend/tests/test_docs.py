@@ -26,7 +26,7 @@ ENCOUNTER = DocType(
     kind="encounter", prefix="encounters", item_filename="encounter.json",
     model=Encounter, metadata_model=EncounterMetadata, items_key="encounters",
     image_fields=("combatants[].image_url",),
-    live=True, collections=("combatants",), patchable=("name", "description", "round", "turn"),
+    live=True, collections=("combatants",), patchable=("name", "description"),
 )
 CHARACTERS = DocType(
     kind="characters", prefix="characters", item_filename="characters.json",
@@ -254,10 +254,10 @@ def test_diff_reports_nothing_when_nothing_changed():
 
 
 def test_diff_reports_fields_and_entities():
-    old = {"name": "A", "round": 0, "combatants": [{"id": "1", "n": 1}, {"id": "2", "n": 2}, {"id": "3", "n": 3}]}
-    new = {"name": "A", "round": 1, "combatants": [{"id": "3", "n": 3}, {"id": "1", "n": 10}, {"id": "4", "n": 4}]}
+    old = {"name": "A", "count": 0, "combatants": [{"id": "1", "n": 1}, {"id": "2", "n": 2}, {"id": "3", "n": 3}]}
+    new = {"name": "A", "count": 1, "combatants": [{"id": "3", "n": 3}, {"id": "1", "n": 10}, {"id": "4", "n": 4}]}
     assert diff_docs(old, new) == {
-        "set": {"round": 1},
+        "set": {"count": 1},
         "upsert": {"combatants": [{"id": "1", "n": 10}, {"id": "4", "n": 4}]},
         "remove": {"combatants": ["2"]},
         "order": {"combatants": ["3", "1", "4"]},
@@ -330,10 +330,11 @@ def test_adjust_stops_at_the_limits():
 
 def test_only_declared_fields_can_be_patched():
     doc = {"name": "A"}
-    doc_commands.patch_doc(doc, ENCOUNTER, {"round": 2})
-    assert doc["round"] == 2
-    with pytest.raises(ValueError):
-        doc_commands.patch_doc(doc, ENCOUNTER, {"rev": 99})
+    doc_commands.patch_doc(doc, ENCOUNTER, {"description": "Ambush"})
+    assert doc["description"] == "Ambush"
+    for field in ("rev", "round", "turn"):
+        with pytest.raises(ValueError):
+            doc_commands.patch_doc(doc, ENCOUNTER, {field: 1})
 
 
 # ── the hub ─────────────────────────────────────────────────────────────────
@@ -368,13 +369,13 @@ def test_a_change_bumps_the_rev_and_reaches_every_client(hub_and_collections):
     async def scenario():
         one, two = FakeSocket(), FakeSocket()
         assert hub.connect(one) and hub.connect(two)
-        event = await hub.mutate("encounter", "fight", lambda d: doc_commands.patch_doc(d, ENCOUNTER, {"round": 1}))
-        assert event == {"type": "doc", "doc": "encounter:fight", "rev": 1, "set": {"round": 1}}
+        event = await hub.mutate("encounter", "fight", lambda d: doc_commands.patch_doc(d, ENCOUNTER, {"description": "one"}))
+        assert event == {"type": "doc", "doc": "encounter:fight", "rev": 1, "set": {"description": "one"}}
         assert one.sent == two.sent == [event]
-        again = await hub.mutate("encounter", "fight", lambda d: doc_commands.patch_doc(d, ENCOUNTER, {"round": 2}))
+        again = await hub.mutate("encounter", "fight", lambda d: doc_commands.patch_doc(d, ENCOUNTER, {"description": "two"}))
         assert again["rev"] == 2
         snap = await hub.snapshot("encounter", "fight")
-        assert (snap["rev"], snap["round"]) == (2, 2)
+        assert (snap["rev"], snap["description"]) == (2, "two")
 
     run(scenario())
 
@@ -397,7 +398,7 @@ def test_an_invalid_edit_changes_nothing(hub_and_collections):
 
     async def scenario():
         with pytest.raises(ValueError):
-            await hub.mutate("encounter", "fight", lambda d: d.update(round=-3))
+            await hub.mutate("encounter", "fight", lambda d: d.update(description="x" * 3000))
         with pytest.raises(ValueError, match="asset library"):
             await hub.mutate("encounter", "fight", lambda d: doc_commands.add_items(
                 d, ENCOUNTER, "combatants", [{"name": "x", "image_url": "https://evil.example/x.png"}]))
@@ -410,14 +411,21 @@ def test_an_invalid_edit_changes_nothing(hub_and_collections):
     run(scenario())
 
 
-def test_removing_whose_turn_it_is_clears_the_turn(hub_and_collections):
-    hub, _, _ = hub_and_collections
+def test_an_encounter_saved_with_rounds_turns_and_initiative_loses_them(hub_and_collections):
+    hub, encounters, _ = hub_and_collections
+    legacy = encounters.read_raw("fight")
+    legacy.update(round=3, turn="a", combatants=[{"id": "a", "name": "A", "initiative": 12, "notes": "keep"}])
+    encounters.write_raw("fight", legacy)
 
     async def scenario():
-        await hub.mutate("encounter", "fight", lambda d: doc_commands.add_items(d, ENCOUNTER, "combatants", [{"id": "a", "name": "A"}]))
-        await hub.mutate("encounter", "fight", lambda d: doc_commands.patch_doc(d, ENCOUNTER, {"turn": "a"}))
-        event = await hub.mutate("encounter", "fight", lambda d: doc_commands.remove_item(d, ENCOUNTER, "combatants", "a"))
-        assert event["set"] == {"turn": None} and event["remove"] == {"combatants": ["a"]}
+        snapshot = await hub.snapshot("encounter", "fight")
+        assert "round" not in snapshot and "turn" not in snapshot
+        assert snapshot["combatants"][0] == {
+            **snapshot["combatants"][0], "id": "a", "notes": "keep",
+        } and "initiative" not in snapshot["combatants"][0]
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="changed"))
+        await hub.flush_all()
+        assert not {"round", "turn"} & encounters.read_raw("fight").keys()
 
     run(scenario())
 
@@ -429,7 +437,7 @@ def test_a_socket_that_fails_is_dropped_and_the_others_still_hear(hub_and_collec
         broken, fine = FakeSocket(fail=True), FakeSocket()
         hub.connect(broken)
         hub.connect(fine)
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=1))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
         assert len(fine.sent) == 1 and broken not in hub._sockets
 
     run(scenario())
@@ -446,11 +454,11 @@ def test_a_changed_document_is_saved_after_a_quiet_moment(hub_and_collections):
     hub, encounters, _ = hub_and_collections
 
     async def scenario():
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=4))
-        assert encounters.read_raw("fight")["round"] == 0   # not yet
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="4"))
+        assert encounters.read_raw("fight")["description"] is None   # not yet
         await asyncio.sleep(0.4)
         saved = encounters.read_raw("fight")
-        assert (saved["round"], saved["rev"]) == (4, 1)
+        assert (saved["description"], saved["rev"]) == ("4", 1)
 
     run(scenario())
 
@@ -460,9 +468,9 @@ def test_flush_all_saves_what_is_pending(hub_and_collections, monkeypatch):
     monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 60)
 
     async def scenario():
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=7))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="7"))
         await hub.flush_all()
-        assert encounters.read_raw("fight")["round"] == 7
+        assert encounters.read_raw("fight")["description"] == "7"
 
     run(scenario())
 
@@ -474,13 +482,13 @@ def test_a_document_saved_by_someone_else_wins(hub_and_collections, monkeypatch)
     async def scenario():
         socket = FakeSocket()
         hub.connect(socket)
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=1))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
         elsewhere = encounters.read_raw("fight")
-        elsewhere.update(rev=40, round=99)
+        elsewhere.update(rev=40, description="99")
         encounters.write_raw("fight", elsewhere)
         await hub.flush_all()
-        assert encounters.read_raw("fight")["round"] == 99          # not overwritten
-        assert (await hub.snapshot("encounter", "fight"))["round"] == 99
+        assert encounters.read_raw("fight")["description"] == "99"          # not overwritten
+        assert (await hub.snapshot("encounter", "fight"))["description"] == "99"
         assert socket.sent[-1] == {"type": "doc", "doc": "encounter:fight", "reset": True}
 
     run(scenario())
@@ -501,9 +509,9 @@ def test_a_failed_save_is_retried_not_lost(hub_and_collections, monkeypatch):
     monkeypatch.setattr(encounters.backend, "put", flaky)
 
     async def scenario():
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=3))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="3"))
         await asyncio.sleep(0.5)
-        assert failures and encounters.read_raw("fight")["round"] == 3
+        assert failures and encounters.read_raw("fight")["description"] == "3"
 
     run(scenario())
 
@@ -515,9 +523,9 @@ def test_forgetting_a_document_saves_it_and_tells_clients(hub_and_collections, m
     async def scenario():
         socket = FakeSocket()
         hub.connect(socket)
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=2))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="2"))
         await hub.forget("encounter", "fight")
-        assert encounters.read_raw("fight")["round"] == 2
+        assert encounters.read_raw("fight")["description"] == "2"
         assert socket.sent[-1] == {"type": "gone", "doc": "encounter:fight"}
         assert ("encounter", "fight") not in hub._rooms
 
@@ -532,7 +540,7 @@ def test_an_idle_saved_document_leaves_memory(hub_and_collections, monkeypatch):
         await hub.snapshot("encounter", "fight")
         await hub.unload_idle()
         assert not hub._rooms
-        await hub.mutate("encounter", "fight", lambda d: d.update(round=1))
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
         await hub.unload_idle()
         assert hub._rooms                      # unsaved: it stays
 
@@ -598,16 +606,17 @@ def test_the_commands_over_http(api):
     assert [c["resources"]["HP"]["current"] for c in snapshot["combatants"]] == [2, 6]   # the copies are independent
     api.patch("/api/encounters/fight/combatants/orc", json={"conditions": [{"id": "c1", "name": "Prone"}]})
     api.post("/api/encounters/fight/combatants/order", json={"ids": ["orc2"]})
-    api.patch("/api/encounters/fight", json={"round": 1, "turn": "orc2"})
+    api.patch("/api/encounters/fight", json={"description": "Cave"})
     snapshot = api.get("/api/encounters/fight").json()
     assert [c["id"] for c in snapshot["combatants"]] == ["orc2", "orc"]
-    assert (snapshot["round"], snapshot["turn"], snapshot["rev"]) == (1, "orc2", 5)
+    assert (snapshot["description"], snapshot["rev"]) == ("Cave", 5)
     assert api.delete("/api/encounters/fight/combatants/orc").status_code == 200
 
 
 def test_mistakes_get_the_right_status(api):
     assert api.post("/api/encounters/fight/combatants/ghost/adjust", json={"resource": "HP", "by": 1}).status_code == 400
     assert api.patch("/api/encounters/fight", json={"rev": 5}).status_code == 400
+    assert api.patch("/api/encounters/fight", json={"round": 2}).status_code == 400   # no rounds in an encounter
     assert api.post("/api/encounters/nothing/combatants", json={"items": [{"name": "x"}]}).status_code == 404
     assert api.post("/api/encounters/fight/combatants", json={"items": [{"name": "x", "type": "monster"}]}).status_code == 400
     assert api.post("/api/encounters/fight/combatants/orc/adjust", json={"resource": "HP", "by": 99999}).status_code == 422

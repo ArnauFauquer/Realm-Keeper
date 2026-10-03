@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  characterStateFromSheet, combatantsFromSheet, counterFromSpec, customCombatant, idsByInitiative, nextTurn
+  characterStateFromSheet, combatantsFromSheet, counterFromSpec, customCombatant, moveBefore
 } from '@/utils/encounter'
 
 const BUGBOAR = {
@@ -61,33 +61,27 @@ describe('customCombatant', () => {
   })
 })
 
-describe('nextTurn', () => {
-  const list = [{ id: 'a' }, { id: 'b', defeated: true }, { id: 'c' }]
+describe('moveBefore', () => {
+  const ids = ['a', 'b', 'c', 'd']
 
-  it('starts the first round at the first combatant', () => {
-    expect(nextTurn(list, null, 0)).toEqual({ turn: 'a', round: 1 })
+  it('puts one before another, from either side', () => {
+    expect(moveBefore(ids, 'd', 1)).toEqual(['a', 'd', 'b', 'c'])
+    expect(moveBefore(ids, 'a', 3)).toEqual(['b', 'c', 'a', 'd'])
   })
 
-  it('skips the defeated', () => {
-    expect(nextTurn(list, 'a', 1)).toEqual({ turn: 'c', round: 1 })
+  it('puts one first, or last (the index past the end)', () => {
+    expect(moveBefore(ids, 'c', 0)).toEqual(['c', 'a', 'b', 'd'])
+    expect(moveBefore(ids, 'a', 4)).toEqual(['b', 'c', 'd', 'a'])
   })
 
-  it('starts a new round when the order comes back round', () => {
-    expect(nextTurn(list, 'c', 1)).toEqual({ turn: 'a', round: 2 })
+  it('leaves the order as it is when the place is its own, or just after it', () => {
+    expect(moveBefore(ids, 'b', 1)).toEqual(ids)
+    expect(moveBefore(ids, 'b', 2)).toEqual(ids)
   })
 
-  it('has nobody to give the turn to when everyone is down', () => {
-    expect(nextTurn([{ id: 'a', defeated: true }], 'a', 3)).toEqual({ turn: null, round: 3 })
-  })
-
-  it('starts over if the one whose turn it was is gone', () => {
-    expect(nextTurn(list, 'zzz', 2)).toEqual({ turn: 'a', round: 2 })
-  })
-})
-
-describe('idsByInitiative', () => {
-  it('puts the highest first and keeps the order of those without one', () => {
-    const list = [{ id: 'a' }, { id: 'b', initiative: 3 }, { id: 'c', initiative: 12 }, { id: 'd' }, { id: 'e', initiative: 3 }]
-    expect(idsByInitiative(list)).toEqual(['c', 'b', 'e', 'a', 'd'])
+  it('does not touch the list it is given, and ignores an id that is not there', () => {
+    moveBefore(ids, 'd', 0)
+    expect(ids).toEqual(['a', 'b', 'c', 'd'])
+    expect(moveBefore(ids, 'zzz', 0)).toBe(ids)
   })
 })

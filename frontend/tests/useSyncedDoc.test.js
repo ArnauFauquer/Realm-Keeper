@@ -52,7 +52,7 @@ function use(kind, id, fetchDoc) {
   return { ...result, unmount: () => app.unmount() }
 }
 
-const snapshot = (overrides = {}) => ({ id: 'fight', rev: 1, round: 0, combatants: [{ id: 'a', n: 1 }], ...overrides })
+const snapshot = (overrides = {}) => ({ id: 'fight', rev: 1, count: 0, combatants: [{ id: 'a', n: 1 }], ...overrides })
 const event = (rev, extra = {}) => ({ type: 'doc', doc: 'encounter:fight', rev, ...extra })
 
 beforeEach(() => {
@@ -72,23 +72,23 @@ describe('useSyncedDoc', () => {
     const { doc, status } = use('encounter', 'fight', fetchDoc)
     await flush()
     expect(status.value).toBe('ready')
-    expect(doc.value.round).toBe(0)
+    expect(doc.value.count).toBe(0)
 
     const socket = FakeSocket.instances[0]
     expect(socket.url).toMatch(/\/ws\/sync$/)
     socket.open()
     await flush() // opening reloads the document: a change could have been missed meanwhile
-    socket.say(event(2, { set: { round: 1 } }))
-    expect(doc.value).toMatchObject({ rev: 2, round: 1 })
+    socket.say(event(2, { set: { count: 1 } }))
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
   })
 
   it('ignores a change it has already seen, and the other documents\'', async () => {
     const { doc } = use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
     await flush()
     const socket = FakeSocket.instances[0]
-    socket.say(event(1, { set: { round: 9 } }))
-    socket.say({ ...event(2, { set: { round: 9 } }), doc: 'encounter:another' })
-    expect(doc.value.round).toBe(0)
+    socket.say(event(1, { set: { count: 9 } }))
+    socket.say({ ...event(2, { set: { count: 9 } }), doc: 'encounter:another' })
+    expect(doc.value.count).toBe(0)
   })
 
   it('applies the reply of its own command once, however it arrives', async () => {
@@ -104,13 +104,13 @@ describe('useSyncedDoc', () => {
   })
 
   it('reloads when it misses a change', async () => {
-    const fetchDoc = vi.fn().mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ rev: 5, round: 4 }))
+    const fetchDoc = vi.fn().mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ rev: 5, count: 4 }))
     const { doc } = use('encounter', 'fight', fetchDoc)
     await flush()
-    FakeSocket.instances[0].say(event(4, { set: { round: 3 } })) // 2 and 3 never came
+    FakeSocket.instances[0].say(event(4, { set: { count: 3 } })) // 2 and 3 never came
     await flush()
     expect(fetchDoc).toHaveBeenCalledTimes(2)
-    expect(doc.value).toMatchObject({ rev: 5, round: 4 })
+    expect(doc.value).toMatchObject({ rev: 5, count: 4 })
   })
 
   it('keeps the changes that arrive while it is still loading', async () => {
@@ -118,12 +118,12 @@ describe('useSyncedDoc', () => {
     const fetchDoc = vi.fn(() => new Promise((resolve) => { finish = resolve }))
     const { doc, status } = use('encounter', 'fight', fetchDoc)
     const socket = FakeSocket.instances[0]
-    socket.say(event(2, { set: { round: 1 } }))
-    socket.say(event(1, { set: { round: 7 } })) // older than the snapshot: dropped
+    socket.say(event(2, { set: { count: 1 } }))
+    socket.say(event(1, { set: { count: 7 } })) // older than the snapshot: dropped
     expect(status.value).toBe('loading')
     finish(snapshot())
     await flush()
-    expect(doc.value).toMatchObject({ rev: 2, round: 1 })
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
   })
 
   it('reloads on a reset, and when the connection comes back', async () => {
@@ -222,29 +222,29 @@ describe('useSyncedDocFollowing', () => {
   })
 
   it('follows the document it is given, live', async () => {
-    const fetchFor = vi.fn(async (id) => ({ id, rev: 1, round: 0 }))
+    const fetchFor = vi.fn(async (id) => ({ id, rev: 1, count: 0 }))
     const { doc, status } = follow(ref('fight'), fetchFor)
     await flush()
     expect(fetchFor).toHaveBeenCalledWith('fight')
     expect(status.value).toBe('ready')
-    FakeSocket.instances[0].say(event(2, { set: { round: 5 } }))
-    expect(doc.value.round).toBe(5)
+    FakeSocket.instances[0].say(event(2, { set: { count: 5 } }))
+    expect(doc.value.count).toBe(5)
   })
 
   it('switches to another document when the id changes, letting go of the first', async () => {
     const id = ref('fight')
-    const fetchFor = vi.fn(async (wanted) => ({ id: wanted, rev: 1, round: wanted === 'fight' ? 1 : 2 }))
+    const fetchFor = vi.fn(async (wanted) => ({ id: wanted, rev: 1, count: wanted === 'fight' ? 1 : 2 }))
     const { doc } = follow(id, fetchFor)
     await flush()
-    expect(doc.value.round).toBe(1)
+    expect(doc.value.count).toBe(1)
 
     id.value = 'ambush'
     await flush()
-    expect(doc.value).toMatchObject({ id: 'ambush', round: 2 })
-    FakeSocket.instances[0].say(event(2, { set: { round: 9 } })) // the old one's: not this one's
-    expect(doc.value.round).toBe(2)
-    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:ambush', rev: 2, set: { round: 7 } })
-    expect(doc.value.round).toBe(7)
+    expect(doc.value).toMatchObject({ id: 'ambush', count: 2 })
+    FakeSocket.instances[0].say(event(2, { set: { count: 9 } })) // the old one's: not this one's
+    expect(doc.value.count).toBe(2)
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:ambush', rev: 2, set: { count: 7 } })
+    expect(doc.value.count).toBe(7)
     expect(FakeSocket.instances).toHaveLength(1) // one connection throughout
 
     id.value = null

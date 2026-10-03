@@ -13,7 +13,7 @@ ENCOUNTER = DocType(
     kind="encounter", prefix="encounters", item_filename="encounter.json",
     model=Encounter, metadata_model=EncounterMetadata, items_key="encounters",
     image_fields=("combatants[].image_url",),
-    live=True, collections=("combatants",), patchable=("name", "description", "round", "turn"),
+    live=True, collections=("combatants",), patchable=("name", "description"),
 )
 
 BATTLEMAP = DocType(

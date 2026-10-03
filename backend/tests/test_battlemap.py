@@ -231,7 +231,7 @@ def test_changes_to_other_things_do_not_wake_the_screens(world, tmp_path):
     async def scenario():
         await shown.show("cave")                       # no encounter attached
         manager.sent.clear()
-        await world.mutate("encounter", "elsewhere", lambda d: d.update(round=3))
+        await world.mutate("encounter", "elsewhere", lambda d: d.update(description="elsewhere"))
         await asyncio.sleep(0.1)
         assert manager.sent == []
         manager.current_state = {"type": "display_media", "url": "x"}   # something else is on screen now

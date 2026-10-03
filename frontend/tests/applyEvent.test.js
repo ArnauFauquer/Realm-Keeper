@@ -19,8 +19,8 @@ describe('applyEvent', () => {
   })
 
   it('records the rev the change brought the document to', () => {
-    const doc = applyEvent({ rev: 3, round: 0 }, { rev: 4, set: { round: 1 } })
-    expect(doc).toEqual({ rev: 4, round: 1 })
+    const doc = applyEvent({ rev: 3, count: 0 }, { rev: 4, set: { count: 1 } })
+    expect(doc).toEqual({ rev: 4, count: 1 })
   })
 
   it('creates a list that was not there yet', () => {

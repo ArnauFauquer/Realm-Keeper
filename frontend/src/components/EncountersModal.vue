@@ -19,7 +19,7 @@ const ENCOUNTER_KIND = {
   label: 'encounter',
   icon: 'mdi-sword-cross',
   emptyIcon: 'mdi-sword-cross',
-  emptyText: 'No encounters yet. Create one to track who is in a fight, their counters and whose turn it is.'
+  emptyText: 'No encounters yet. Create one to track who is in a fight, their counters and conditions.'
 }
 
 const { user } = useAuth()

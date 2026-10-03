@@ -33,7 +33,7 @@ const EncounterTracker = (await import('@/components/EncounterTracker.vue')).def
 
 const HP = (current) => ({ current, max: 6, min: 0, color: null, style: null })
 const encounter = (overrides = {}) => ({
-  id: 'fight', name: 'Fight', rev: 1, round: 0, turn: null,
+  id: 'fight', name: 'Fight', rev: 1,
   combatants: [
     { id: 'a', name: 'Bugboar 1', type: 'adversary', sheet: 'n#bugboar', resources: { HP: HP(4) }, conditions: [], notes: '', defeated: false },
     { id: 'b', name: 'Bugboar 2', type: 'adversary', sheet: 'n#bugboar', resources: { HP: HP(6) }, conditions: [{ id: 'c1', name: 'Prone' }], notes: 'hi', defeated: false },
@@ -80,48 +80,13 @@ describe('EncounterTracker', () => {
     expect(commands.adjust).toHaveBeenCalledTimes(1)
   })
 
-  it('passes the turn on, skipping the defeated, and starts a new round', async () => {
-    fake.reset(encounter({
-      round: 1, turn: 'a',
-      combatants: [
-        { id: 'a', name: 'A', type: 'adversary', resources: {}, conditions: [], notes: '' },
-        { id: 'b', name: 'B', type: 'adversary', resources: {}, conditions: [], notes: '', defeated: true },
-        { id: 'c', name: 'C', type: 'adversary', resources: {}, conditions: [], notes: '' }
-      ]
-    }))
-    const wrapper = mountTracker()
-    await wrapper.find('.tracker-bar .rk-btn--primary').trigger('click')
-    expect(commands.patch).toHaveBeenLastCalledWith('fight', { turn: 'c', round: 1 })
-    fake.doc.value.turn = 'c'
-    await wrapper.find('.tracker-bar .rk-btn--primary').trigger('click')
-    expect(commands.patch).toHaveBeenLastCalledWith('fight', { turn: 'a', round: 2 })
-  })
-
-  it('gives the turn to whoever is picked, and moves the round on its own', async () => {
-    const wrapper = mountTracker()
-    await cards(wrapper)[1].find('.turn-marker').trigger('click')
-    expect(commands.patch).toHaveBeenCalledWith('fight', { turn: 'b', round: 1 })
-    const buttons = wrapper.findAll('.round .rk-icon-btn')
-    await buttons[1].trigger('click')
-    expect(commands.patch).toHaveBeenLastCalledWith('fight', { round: 1 })
-    expect(buttons[0].attributes('disabled')).toBeDefined() // round 0 can't go lower
-  })
-
-  it('edits a combatant: name, initiative, defeated, notes and conditions', async () => {
+  it('edits a combatant: name, defeated, notes and conditions', async () => {
     const wrapper = mountTracker()
     const card = cards(wrapper)[0]
     const name = card.find('.name-input')
     name.element.value = '  Big one '
     await name.trigger('change')
     expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'a', { name: 'Big one' })
-
-    const initiative = card.find('.initiative input')
-    initiative.element.value = '12'
-    await initiative.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'a', { initiative: 12 })
-    initiative.element.value = ''
-    await initiative.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'a', { initiative: null })
 
     await card.find('.head-actions button:nth-child(3)').trigger('click')
     expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'a', { defeated: true })
@@ -142,23 +107,102 @@ describe('EncounterTracker', () => {
     expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'b', { conditions: [] })
   })
 
-  it('reorders, sorts by initiative, and removes after asking', async () => {
-    fake.doc.value.combatants[0].initiative = 2
-    fake.doc.value.combatants[1].initiative = 15
+  it("has no rounds, turns or initiative: the order is the table's own", () => {
     const wrapper = mountTracker()
+    expect(wrapper.text().toLowerCase()).not.toMatch(/round|turn|initiative/)
+    expect(wrapper.find('.turn-marker').exists()).toBe(false)
+    expect(wrapper.find('.initiative').exists()).toBe(false)
+  })
+
+  it('moves one place with the arrows, and not past either end', async () => {
+    const wrapper = mountTracker()
+    expect(cards(wrapper)[0].find('.head-actions button:nth-child(1)').attributes('disabled')).toBeDefined()
+    expect(cards(wrapper)[2].find('.head-actions button:nth-child(2)').attributes('disabled')).toBeDefined()
     await cards(wrapper)[0].find('.head-actions button:nth-child(2)').trigger('click') // down
     expect(commands.orderItems).toHaveBeenLastCalledWith('fight', 'combatants', ['b', 'a', 'c'])
-    await cards(wrapper)[1].find('.head-actions button:nth-child(1)').trigger('click') // up
-    expect(commands.orderItems).toHaveBeenLastCalledWith('fight', 'combatants', ['b', 'a', 'c'])
-    await wrapper.findAll('.tracker-bar .rk-btn')[1].trigger('click')
-    expect(commands.orderItems).toHaveBeenLastCalledWith('fight', 'combatants', ['b', 'a', 'c'])
+    await cards(wrapper)[2].find('.head-actions button:nth-child(1)').trigger('click') // up
+    expect(commands.orderItems).toHaveBeenLastCalledWith('fight', 'combatants', ['a', 'c', 'b'])
+  })
 
+  it('removes after asking', async () => {
+    const wrapper = mountTracker()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     await cards(wrapper)[0].find('.head-actions .danger').trigger('click')
     expect(commands.removeItem).not.toHaveBeenCalled()
     confirm.mockReturnValue(true)
     await cards(wrapper)[0].find('.head-actions .danger').trigger('click')
     expect(commands.removeItem).toHaveBeenCalledWith('fight', 'combatants', 'a')
+  })
+
+  describe('dragging', () => {
+    // jsdom has no layout: every card is 100px tall, stacked from the top.
+    const layout = (wrapper) =>
+      cards(wrapper).forEach((card, index) => {
+        card.element.getBoundingClientRect = () => ({ top: index * 100, height: 100, bottom: index * 100 + 100 })
+      })
+    const dataTransfer = () => ({ setData: vi.fn(), setDragImage: vi.fn(), effectAllowed: '', dropEffect: '' })
+    const handle = (wrapper, index) => cards(wrapper)[index].find('.drag-handle')
+    const dragOver = (wrapper, index, clientY) => cards(wrapper)[index].trigger('dragover', { clientY, dataTransfer: dataTransfer() })
+
+    it('puts the dragged one where it is dropped', async () => {
+      const wrapper = mountTracker()
+      layout(wrapper)
+      const transfer = dataTransfer()
+      await handle(wrapper, 0).trigger('dragstart', { dataTransfer: transfer })
+      expect(transfer.setData).toHaveBeenCalled() // Firefox won't drag without data
+      expect(transfer.setDragImage).toHaveBeenCalledWith(cards(wrapper)[0].element, expect.any(Number), expect.any(Number))
+      expect(cards(wrapper)[0].classes()).toContain('is-dragged')
+
+      await dragOver(wrapper, 2, 280) // the lower half of the last card: after it
+      expect(cards(wrapper)[2].classes()).toContain('drop-after')
+      await cards(wrapper)[2].trigger('drop', { dataTransfer: dataTransfer() })
+      expect(commands.orderItems).toHaveBeenCalledWith('fight', 'combatants', ['b', 'c', 'a'])
+      expect(cards(wrapper).some((card) => card.classes().includes('is-dragged'))).toBe(false)
+    })
+
+    it('can drop before a card too, on its upper half', async () => {
+      const wrapper = mountTracker()
+      layout(wrapper)
+      await handle(wrapper, 2).trigger('dragstart', { dataTransfer: dataTransfer() })
+      await dragOver(wrapper, 0, 10)
+      expect(cards(wrapper)[0].classes()).toContain('drop-before')
+      await cards(wrapper)[0].trigger('drop', { dataTransfer: dataTransfer() })
+      expect(commands.orderItems).toHaveBeenCalledWith('fight', 'combatants', ['c', 'a', 'b'])
+    })
+
+    it('shows no mark, and sends nothing, where nothing would move', async () => {
+      const wrapper = mountTracker()
+      layout(wrapper)
+      await handle(wrapper, 1).trigger('dragstart', { dataTransfer: dataTransfer() })
+      await dragOver(wrapper, 1, 120) // on itself
+      await dragOver(wrapper, 2, 210) // just before the one after it: the same place
+      expect(wrapper.findAll('.drop-before, .drop-after')).toHaveLength(0)
+      await cards(wrapper)[2].trigger('drop', { dataTransfer: dataTransfer() })
+      expect(commands.orderItems).not.toHaveBeenCalled()
+    })
+
+    it('forgets a drag that was let go outside the list', async () => {
+      const wrapper = mountTracker()
+      layout(wrapper)
+      await handle(wrapper, 0).trigger('dragstart', { dataTransfer: dataTransfer() })
+      await dragOver(wrapper, 1, 120)
+      await handle(wrapper, 0).trigger('dragend')
+      expect(wrapper.findAll('.is-dragged, .drop-before, .drop-after')).toHaveLength(0)
+      expect(commands.orderItems).not.toHaveBeenCalled()
+    })
+
+    it('ignores what is dragged over it that is not one of its own', async () => {
+      const wrapper = mountTracker()
+      layout(wrapper)
+      await dragOver(wrapper, 1, 120)
+      await cards(wrapper)[1].trigger('drop', { dataTransfer: dataTransfer() })
+      expect(wrapper.findAll('.drop-before, .drop-after')).toHaveLength(0)
+      expect(commands.orderItems).not.toHaveBeenCalled()
+    })
+
+    it('has no handle for someone who may not change anything', () => {
+      expect(mountTracker({ canInteract: false }).find('.drag-handle').exists()).toBe(false)
+    })
   })
 
   it("shows a combatant's sheet when its details are opened, once", async () => {
@@ -240,7 +284,7 @@ describe('EncounterTracker', () => {
     expect(wrapper.find('.rc-step').exists()).toBe(false)
     expect(wrapper.find('.name-input').attributes('disabled')).toBeDefined()
     expect(wrapper.findAll('.tracker-bar .rk-btn').map((b) => b.text()).join(' ')).not.toContain('Add')
-    expect(wrapper.find('.tracker-bar .rk-btn--primary').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.head-actions button').attributes('disabled')).toBeDefined()
   })
 
   it('has its own words for loading, a missing encounter and a failure', () => {

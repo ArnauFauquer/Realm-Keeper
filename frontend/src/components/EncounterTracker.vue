@@ -15,25 +15,6 @@
 
     <template v-else-if="doc">
       <div class="tracker-bar">
-        <div class="round">
-          <span class="round-label">Round</span>
-          <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Previous round" :disabled="!canInteract || doc.round <= 0" @click="setRound(doc.round - 1)">
-            <span class="mdi mdi-minus"></span>
-          </button>
-          <span class="round-value">{{ doc.round }}</span>
-          <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Next round" :disabled="!canInteract" @click="setRound(doc.round + 1)">
-            <span class="mdi mdi-plus"></span>
-          </button>
-        </div>
-        <button type="button" class="rk-btn rk-btn--primary rk-btn--sm" :disabled="!canInteract || !doc.combatants.length" @click="advanceTurn">
-          <span class="mdi mdi-skip-next"></span> Next turn
-        </button>
-        <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract || doc.combatants.length < 2" title="Highest initiative first" @click="sortByInitiative">
-          <span class="mdi mdi-sort-numeric-descending"></span> Sort by initiative
-        </button>
-        <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract || (!doc.round && !doc.turn)" @click="resetRounds">
-          <span class="mdi mdi-restart"></span> Reset rounds
-        </button>
         <span class="bar-spacer"></span>
         <span class="live-badge" :class="`live-badge--${syncStatus}`" :title="liveTitle">
           <span class="mdi mdi-circle-medium"></span>{{ liveLabel }}
@@ -64,21 +45,28 @@
           v-for="(c, index) in doc.combatants"
           :key="c.id"
           class="combatant"
-          :class="{ 'is-turn': doc.turn === c.id, 'is-defeated': c.defeated }"
+          :class="{
+            'is-defeated': c.defeated,
+            'is-dragged': dragId === c.id,
+            'drop-before': dropIndex === index,
+            'drop-after': dropIndex === doc.combatants.length && index === doc.combatants.length - 1
+          }"
+          @dragover="(e) => overCombatant(e, index)"
+          @drop="dropCombatant"
         >
           <div class="combatant-head">
-            <button
-              type="button"
-              class="turn-marker rk-icon-btn rk-icon-btn--sm"
-              :class="{ active: doc.turn === c.id }"
-              :disabled="!canInteract"
-              :aria-pressed="doc.turn === c.id"
-              :aria-label="`It is ${c.name}'s turn`"
-              title="Give the turn to this one"
-              @click="giveTurn(c)"
+            <span
+              v-if="canInteract"
+              class="drag-handle"
+              draggable="true"
+              role="img"
+              :aria-label="`Drag ${c.name} to move it`"
+              title="Drag to reorder"
+              @dragstart="(e) => startDrag(e, c)"
+              @dragend="endDrag"
             >
-              <span class="mdi" :class="doc.turn === c.id ? 'mdi-play-circle' : 'mdi-play-circle-outline'"></span>
-            </button>
+              <span class="mdi mdi-drag-vertical"></span>
+            </span>
             <input
               class="name-input"
               :value="c.name"
@@ -87,16 +75,6 @@
               @change="patchCombatant(c, { name: $event.target.value.trim() || c.name })"
             />
             <span class="kind" :class="`kind--${c.type}`">{{ c.type }}</span>
-            <label class="initiative">
-              <span>Init</span>
-              <input
-                type="number"
-                :value="c.initiative ?? ''"
-                :disabled="!canInteract"
-                :aria-label="`Initiative of ${c.name}`"
-                @change="setInitiative(c, $event.target.value)"
-              />
-            </label>
             <span class="head-actions">
               <button type="button" class="rk-icon-btn rk-icon-btn--sm" :disabled="!canInteract || index === 0" :aria-label="`Move ${c.name} up`" @click="move(index, -1)">
                 <span class="mdi mdi-arrow-up"></span>
@@ -182,7 +160,7 @@ import { fetchSheet } from '@/api/sheets'
 import { useSyncedDoc } from '@/composables/useSyncedDoc'
 import { useCharacters } from '@/composables/useCharacters'
 import { syncStatus } from '@/composables/syncSocket'
-import { combatantsFromSheet, customCombatant, idsByInitiative, nextTurn } from '@/utils/encounter'
+import { combatantsFromSheet, customCombatant, moveBefore } from '@/utils/encounter'
 
 // One encounter, live: everyone who has it open sees every change as it is
 // made. Nothing here saves; each action is a command (api/docs.js) and the
@@ -228,24 +206,60 @@ async function attempt(work) {
 /** Runs a command on this encounter: the event it returns is applied at once. */
 const send = (command) => attempt(commit(command))
 
-const setRound = (round) => send(commands.patch(id, { round: Math.max(0, round) }))
-const resetRounds = () => send(commands.patch(id, { round: 0, turn: null }))
-const giveTurn = (c) => send(commands.patch(id, { turn: c.id, round: doc.value.round || 1 }))
-const advanceTurn = () => send(commands.patch(id, nextTurn(doc.value.combatants, doc.value.turn, doc.value.round)))
-const sortByInitiative = () => send(commands.orderItems(id, 'combatants', idsByInitiative(doc.value.combatants)))
-
 const patchCombatant = (c, patch) => send(commands.patchItem(id, 'combatants', c.id, patch))
 
-function setInitiative(c, text) {
-  const value = text === '' ? null : Number(text)
-  if (value !== null && !Number.isFinite(value)) return
-  patchCombatant(c, { initiative: value })
+// The order is the table's own: the arrows move one place, dragging by the
+// handle moves anywhere (a screen without a mouse has only the arrows).
+const ids = () => doc.value.combatants.map((c) => c.id)
+
+/** Puts `combatantId` before the entry at `index` (the end is ids.length). */
+function placeBefore(combatantId, index) {
+  const current = ids()
+  const next = moveBefore(current, combatantId, index)
+  if (next.every((other, at) => other === current[at])) return
+  return send(commands.orderItems(id, 'combatants', next))
 }
 
 function move(index, by) {
-  const ids = doc.value.combatants.map((c) => c.id)
-  ;[ids[index], ids[index + by]] = [ids[index + by], ids[index]]
-  send(commands.orderItems(id, 'combatants', ids))
+  placeBefore(doc.value.combatants[index].id, by < 0 ? index - 1 : index + 2)
+}
+
+const dragId = ref(null)
+const dropIndex = ref(null) // where the dragged one would land: 0 to the number of combatants
+
+function startDrag(event, c) {
+  dragId.value = c.id
+  event.dataTransfer.effectAllowed = 'move'
+  // The text is only there because Firefox won't start a drag without data.
+  event.dataTransfer.setData('text/plain', c.name)
+  // The whole card follows the pointer, not just the handle.
+  const card = event.target.closest?.('.combatant')
+  if (card && event.dataTransfer.setDragImage) event.dataTransfer.setDragImage(card, 16, 16)
+}
+
+function overCombatant(event, index) {
+  if (dragId.value === null) return
+  event.preventDefault() // allows the drop
+  event.dataTransfer.dropEffect = 'move'
+  const box = event.currentTarget.getBoundingClientRect()
+  const after = event.clientY > box.top + box.height / 2
+  const at = after ? index + 1 : index
+  const current = ids()
+  const unmoved = moveBefore(current, dragId.value, at).every((other, i) => other === current[i])
+  dropIndex.value = unmoved ? null : at
+}
+
+function dropCombatant(event) {
+  if (dragId.value === null) return
+  event.preventDefault()
+  const [moved, at] = [dragId.value, dropIndex.value]
+  endDrag()
+  if (at !== null) placeBefore(moved, at)
+}
+
+function endDrag() {
+  dragId.value = null
+  dropIndex.value = null
 }
 
 function removeCombatant(c) {
@@ -337,27 +351,6 @@ async function loadSheet(c) {
   -webkit-backdrop-filter: blur(8px);
 }
 
-.round {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-}
-
-.round-label {
-  margin-right: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.round-value {
-  min-width: 2ch;
-  text-align: center;
-  font-family: var(--font-mono);
-  font-size: var(--text-lg);
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
 .bar-spacer {
   flex: 1;
 }
@@ -406,12 +399,6 @@ async function loadSheet(c) {
   transition: border-color var(--duration-fast) var(--ease-out), opacity var(--duration-fast) var(--ease-out);
 }
 
-.combatant.is-turn {
-  border-color: var(--accent);
-  border-left-color: var(--accent);
-  box-shadow: var(--shadow-accent);
-}
-
 .combatant.is-defeated {
   opacity: 0.55;
 }
@@ -427,8 +414,30 @@ async function loadSheet(c) {
   gap: var(--space-2);
 }
 
-.turn-marker.active {
-  color: var(--accent-hover);
+.drag-handle {
+  display: inline-flex;
+  align-items: center;
+  margin-left: calc(-1 * var(--space-1));
+  color: var(--text-muted);
+  cursor: grab;
+  touch-action: none;
+}
+
+.drag-handle:hover {
+  color: var(--text-primary);
+}
+
+.combatant.is-dragged {
+  opacity: 0.4;
+}
+
+/* Where the dragged one would land. */
+.combatant.drop-before {
+  box-shadow: 0 -4px 0 -1px var(--accent);
+}
+
+.combatant.drop-after {
+  box-shadow: 0 4px 0 -1px var(--accent);
 }
 
 .name-input {
@@ -460,25 +469,6 @@ async function loadSheet(c) {
 
 .kind--character {
   color: var(--status-success);
-}
-
-.initiative {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.initiative input {
-  width: 4rem;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--text-primary);
-  font: inherit;
-  font-family: var(--font-mono);
 }
 
 .head-actions {

@@ -3,15 +3,15 @@
     "name": "set-a-field",
     "old": {
       "name": "A",
-      "round": 0
+      "count": 0
     },
     "new": {
       "name": "A",
-      "round": 2
+      "count": 2
     },
     "event": {
       "set": {
-        "round": 2
+        "count": 2
       }
     }
   },
@@ -172,7 +172,7 @@
   {
     "name": "list-appears-and-empties",
     "old": {
-      "turn": "a",
+      "pointer": "a",
       "combatants": [
         {
           "id": "a"
@@ -180,12 +180,12 @@
       ]
     },
     "new": {
-      "turn": null,
+      "pointer": null,
       "combatants": []
     },
     "event": {
       "set": {
-        "turn": null
+        "pointer": null
       },
       "remove": {
         "combatants": [
@@ -200,7 +200,7 @@
   {
     "name": "several-lists-and-fields",
     "old": {
-      "round": 1,
+      "count": 1,
       "combatants": [
         {
           "id": "a"
@@ -209,7 +209,7 @@
       "characters": []
     },
     "new": {
-      "round": 2,
+      "count": 2,
       "combatants": [
         {
           "id": "a"
@@ -226,7 +226,7 @@
     },
     "event": {
       "set": {
-        "round": 2
+        "count": 2
       },
       "upsert": {
         "characters": [

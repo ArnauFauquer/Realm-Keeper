@@ -56,22 +56,15 @@ export function customCombatant(name) {
   return { name, type: 'adversary', resources: {} }
 }
 
-/** Where the turn goes next: the combatant after `turnId` that isn't defeated,
- * and the round, which starts when the order comes back round to the first. */
-export function nextTurn(combatants, turnId, round) {
-  const active = combatants.filter((c) => !c.defeated)
-  if (!active.length) return { turn: null, round }
-  const at = active.findIndex((c) => c.id === turnId)
-  if (at === -1) return { turn: active[0].id, round: round || 1 }
-  if (at === active.length - 1) return { turn: active[0].id, round: round + 1 }
-  return { turn: active[at + 1].id, round }
-}
-
-/** The ids by initiative, highest first; those without one keep their order, after. */
-export function idsByInitiative(combatants) {
-  const rank = (c) => (typeof c.initiative === 'number' ? c.initiative : -Infinity)
-  return combatants
-    .map((c, index) => ({ c, index }))
-    .sort((a, b) => rank(b.c) - rank(a.c) || a.index - b.index)
-    .map(({ c }) => c.id)
+/**
+ * `ids` with `id` taken out and put back just before the entry that was at
+ * `index` (0 to ids.length: the one past the end is "last"). The order of an
+ * encounter is the table's own, so this is all the ordering there is.
+ */
+export function moveBefore(ids, id, index) {
+  const from = ids.indexOf(id)
+  if (from === -1) return ids
+  const rest = ids.filter((other) => other !== id)
+  rest.splice(from < index ? index - 1 : index, 0, id)
+  return rest
 }
