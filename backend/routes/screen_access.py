@@ -61,7 +61,20 @@ def displayed_asset_keys() -> Set[str]:
     elif (vista_id := displayed_item("vista")) and (vista := vista_service_instance.get_vista(vista_id)):
         urls.append(vista.background_url)
         urls.extend(asset.image_url for asset in vista.assets)
+    urls.extend(_live_draft_urls())
     return {key for key in map(asset_key_from_url, urls) if key}
+
+
+def _live_draft_urls() -> list:
+    """Images used by the GM's unsaved edits of what's on screen (routes/screen
+    live updates): they may not be in the saved chart/vista yet."""
+    from routes.screen import manager
+    draft = manager.live_draft or {}
+    if draft.get("type") == "update_chart" and displayed_item("chart") == draft.get("chart_id", "").strip("/"):
+        return [draft.get("image_url"), *(p.get("icon_url") for p in draft.get("pins", []))]
+    if draft.get("type") == "update_vista" and displayed_item("vista") == draft.get("vista_id", "").strip("/"):
+        return [draft.get("background_url"), *(a.get("image_url") for a in draft.get("assets", []))]
+    return []
 
 
 def require_viewer(request: Request, *, chart_id: str = None, vista_id: str = None, asset_key: str = None) -> None:

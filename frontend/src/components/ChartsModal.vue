@@ -11,10 +11,13 @@
         :saving="saving"
         :can-send-to-screen="!!activeChart?.image_url"
         :sending-to-screen="sendingToScreen"
+        live-supported
+        :live="live"
         :copy-text="activeChart && docRefMarkdown('chart', activeChart.id)"
         @back="backToGallery"
         @save="saveNow"
         @send-to-screen="sendToScreen"
+        @toggle-live="toggleLive(hasUnsavedChanges)"
         @close="closeModal"
       />
 
@@ -102,8 +105,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useChartsModal } from '@/composables/useChartsModal'
 import { useCharts } from '@/composables/useCharts'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { useLiveScreen } from '@/composables/useLiveScreen'
 import { resolveUrl } from '@/utils/resolveUrl'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import * as chartsApi from '@/api/charts'
@@ -129,7 +131,6 @@ const newChartInputRef = ref(null)
 
 const activeChart = ref(null)
 const loadingChart = ref(false)
-const sendingToScreen = ref(false)
 const hasUnsavedChanges = ref(false)
 const saving = ref(false)
 
@@ -162,12 +163,25 @@ async function onMove(dragItem, destPath) {
   }
 }
 
+// What the screen needs to draw the chart as it is right now, saved or not.
+const { live, sending: sendingToScreen, sendToScreen, toggle: toggleLive, stop: stopLive } = useLiveScreen(
+  'chart', activeChart,
+  (c) => ({
+    chart_id: c.id,
+    image_url: c.image_url,
+    pins: c.pins,
+    paths: c.paths,
+    annotations: c.annotations
+  })
+)
+
 const { confirmDiscard } = useUnsavedChangesGuard(
   hasUnsavedChanges, 'You have unsaved changes to this chart. Discard them?'
 )
 
 function closeModal() {
   if (!confirmDiscard()) return
+  stopLive({ revert: hasUnsavedChanges.value })
   close()
   view.value = 'gallery'
   activeChart.value = null
@@ -260,6 +274,7 @@ async function openChart(chartId) {
 
 function backToGallery() {
   if (!confirmDiscard()) return
+  stopLive({ revert: hasUnsavedChanges.value })
   view.value = 'gallery'
   activeChart.value = null
   hasUnsavedChanges.value = false
@@ -297,17 +312,6 @@ async function onSetMapImage(url) {
     activeChart.value.image_url = updated.image_url
   } catch (err) {
     console.error('Failed to set map image:', err)
-  }
-}
-
-async function sendToScreen() {
-  if (!activeChart.value) return
-  try {
-    await post(`${apiUrl}/api/screen/chart`, { chart_id: activeChart.value.id })
-    sendingToScreen.value = true
-    setTimeout(() => { sendingToScreen.value = false }, 2000)
-  } catch (err) {
-    console.error('Failed to send chart to screen:', err)
   }
 }
 
