@@ -51,14 +51,18 @@ docker compose up minio minio-init
 
 ### Reuse the shared modules
 
-Charts, Vistas, the asset library and the player are built on the same
-building blocks. Extend these instead of duplicating them:
+Charts, vistas, encounters and battlemaps are built on one document layer, and
+the asset library and the player share the folder UI. Extend these instead of
+duplicating them (see [ARCHITECTURE.md](ARCHITECTURE.md#adding-a-new-kind-of-document)
+for a new kind of document):
 
-- Backend: `services/folder_tree.py` (folders), `services/document_store.py`
-  (one JSON document per item, committed to Git), `services/storage_service.py`
-  (S3).
-- Frontend: `FolderGallery.vue`, `DocumentModalHeader.vue`, `DocumentEmbed.vue`
-  and the composables in `src/composables/`.
+- Backend: `services/doc_type.py` (what a kind of document is),
+  `services/doc_collection.py` (folders and documents over a store),
+  `routes/doc_router.py` (the routes of a kind), `services/sync_hub.py` (live
+  documents) and `services/storage_service.py` (S3).
+- Frontend: `utils/docTypes.js`, `api/docs.js`, `DocumentModal.vue`,
+  `FolderGallery.vue`, `DocumentModalHeader.vue`, `DocumentEmbed.vue` and the
+  composables in `src/composables/`.
 
 ### Use the design tokens
 
@@ -78,8 +82,8 @@ All frontend styling builds on `frontend/src/styles/`:
 
 ### Keep the architecture simple
 
-Realm Keeper deliberately has no database: notes and JSON documents live in
-the Git vault, binaries live in object storage, and the backend runs as a
+Realm Keeper deliberately has no database: notes live in the Git vault, JSON
+documents and binaries live in object storage, and the backend runs as a
 single replica. Proposals that add a database or require multiple replicas
 should be discussed in an issue first.
 
