@@ -15,11 +15,28 @@ from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatS
 from services.storage_service import ASSET_LIBRARY_PREFIX, ASSET_LIBRARY_URL_PREFIX
 
 SHEET_TYPES = ("character", "adversary")
+# A sheet is a few dozen lines. The limit keeps a block pasted by mistake (or a
+# hostile one) from being parsed, and from taking the whole catalog with it.
+MAX_SOURCE_LENGTH = 100_000
 KNOWN_FIELDS = {"id", "name", "type", "subtitle", "image", "tags", "resources", "stats", "sections", "text"}
 
 
 class SheetParseError(ValueError):
     """The block isn't a valid sheet; the message is meant for its author."""
+
+
+class _NoAliasLoader(yaml.SafeLoader):
+    """SafeLoader without aliases (`*name`). An alias is a reference, so a few
+    hundred bytes of nested ones parse to almost nothing and then expand to
+    gigabytes when the sheet is turned into JSON: a "billion laughs" that a
+    public note could use against the server. Sheets have no use for them. (The
+    frontend's parser refuses them too: maxAliasCount: 0 in utils/sheet.js.)"""
+
+    def compose_node(self, parent, index):
+        if self.check_event(yaml.AliasEvent):
+            event = self.peek_event()
+            raise yaml.YAMLError(f"aliases (*{event.anchor}) aren't supported in a sheet")
+        return super().compose_node(parent, index)
 
 
 def slugify(text: str) -> str:
@@ -134,8 +151,10 @@ def _sections(raw: Any) -> List[SheetSection]:
 def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
     """The sheet a block describes, plus warnings about things that parsed
     but are probably not what the author meant. Raises SheetParseError."""
+    if len(source) > MAX_SOURCE_LENGTH:
+        raise SheetParseError(f"A sheet can't be longer than {MAX_SOURCE_LENGTH // 1000} KB")
     try:
-        data = yaml.safe_load(source)
+        data = yaml.load(source, Loader=_NoAliasLoader)  # noqa: S506 (a SafeLoader)
     except yaml.YAMLError as e:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")

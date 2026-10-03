@@ -184,6 +184,22 @@ def test_showing_a_map_sends_a_pointer_and_what_a_screen_may_see(world):
     asyncio.run(scenario())
 
 
+def test_a_map_linked_to_an_encounter_that_is_gone_or_not_even_an_id_is_still_shown(world):
+    manager = FakeManager()
+    shown = BattlemapScreen(world, manager)
+
+    async def scenario():
+        for encounter in ("deleted-long-ago", "../../etc/passwd", "a//b"):
+            await world.mutate("battlemap", "cave", lambda d, e=encounter: d.update(encounter=e))
+            manager.sent.clear()
+            await shown.show("cave")
+            assert [m["type"] for m in manager.sent] == ["display_battlemap", "update_battlemap"], encounter
+        with pytest.raises(ValueError):
+            await shown.show("../x")
+
+    asyncio.run(scenario())
+
+
 def test_the_screens_follow_changes_to_the_map_a_moment_later_and_not_one_by_one(world):
     manager = FakeManager()
     shown = BattlemapScreen(world, manager)
@@ -308,6 +324,7 @@ def test_only_library_images_and_sane_tokens(gm):
 
 def test_showing_a_map_needs_a_login_and_an_existing_map(gm, client):
     assert gm.post("/api/screen/battlemap", json={"battlemap_id": "nothing"}).status_code == 404
+    assert gm.post("/api/screen/battlemap", json={"battlemap_id": "../x"}).status_code == 400
     client.cookies.clear()
     assert client.post("/api/screen/battlemap", json={"battlemap_id": "anything"}).status_code == 401
 

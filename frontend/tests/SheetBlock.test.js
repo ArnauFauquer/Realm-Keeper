@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { reactive } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const roll = vi.fn()
 const push = vi.fn()
@@ -170,6 +171,25 @@ describe('SheetBlock', () => {
       expect(characters.adjust).toHaveBeenCalledWith('aria', 'HP', -1)
       expect(characters.ensure).not.toHaveBeenCalled()
       expect(characters.reconcile).toHaveBeenCalled() // the sheet may have changed since
+    })
+
+    it('follows its sheet when the sheet changes, not every time the saved values do', async () => {
+      // Two blocks declaring the same id with different counters would otherwise
+      // keep undoing each other: each one's change wakes the other.
+      const doc = reactive({ characters: [saved] })
+      characters.stateOf.mockImplementation((id) => doc.characters.find((c) => c.id === id) || null)
+      const wrapper = mountSheet({ source: ARIA })
+      await flushPromises()
+      expect(characters.reconcile).toHaveBeenCalledTimes(1)
+
+      doc.characters.splice(0, 1, { ...saved, resources: { ...saved.resources, HP: { current: 3, max: 99, min: 0 } } })
+      await flushPromises()
+      expect(characters.reconcile).toHaveBeenCalledTimes(1)
+
+      await wrapper.setProps({ source: ARIA.replace('HP: 12', 'HP: 15') })
+      await flushPromises()
+      expect(characters.reconcile).toHaveBeenCalledTimes(2)
+      expect(characters.reconcile).toHaveBeenLastCalledWith(expect.objectContaining({ resources: expect.objectContaining({ HP: expect.objectContaining({ max: 15 }) }) }))
     })
 
     it('keeps the counters read only until the character has a saved state', () => {

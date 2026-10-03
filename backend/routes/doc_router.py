@@ -117,11 +117,20 @@ def make_doc_router(
         event = await hub.mutate(kind, doc_of(doc_id), fn, user=user, command=command)
         return event or {"type": "noop"}
 
-    async def forget_under(folder: str) -> None:
-        """Lets go of every live document inside a folder that is about to move or go."""
-        for meta in await blocking(collection.list_all):
-            if meta.id.startswith(f"{folder}/"):
-                await hub.forget(kind, meta.id)
+    async def forget_under(folder: str) -> List[str]:
+        """Lets go of every live document inside a folder that is about to move
+        or go, and returns their ids (see `discard`)."""
+        ids = [meta.id for meta in await blocking(collection.list_all) if meta.id.startswith(f"{folder}/")]
+        for doc_id in ids:
+            await hub.forget(kind, doc_id)
+        return ids
+
+    def discard(ids: List[str]) -> None:
+        """Once the documents are moved or deleted: a command that arrived in
+        between has loaded them again from where they were, and must not save
+        them back there."""
+        for doc_id in ids:
+            hub.discard(kind, doc_id)
 
     if not singleton:
         # Declared ahead of the "/{doc_id:path}" routes below: those would
@@ -151,40 +160,46 @@ def make_doc_router(
         @router.post("/folders/move")
         @guarded
         async def move_folder(body: FolderMoveBody, user: dict = Depends(require_auth)):
-            if doctype.live:
-                await forget_under(body.path)
+            gone = await forget_under(body.path) if doctype.live else []
             await blocking(collection.move_folder, body.path, body.dest_parent_path, None)
+            discard(gone)
             return {"status": "success"}
 
         @router.put("/folders/{path:path}")
         @guarded
         async def rename_folder(path: str, body: FolderRenameBody, user: dict = Depends(require_auth)):
-            if doctype.live:
-                await forget_under(path)
+            gone = await forget_under(path) if doctype.live else []
             await blocking(collection.move_folder, path, None, body.name)
+            discard(gone)
             return {"status": "success"}
 
         @router.delete("/folders/{path:path}")
         @guarded
         async def delete_folder(path: str, user: dict = Depends(require_auth)):
-            if doctype.live:
-                await forget_under(path)
+            gone = await forget_under(path) if doctype.live else []
             await blocking(collection.delete_folder, path)
+            discard(gone)
             return {"status": "success"}
 
         @router.post("/move")
         @guarded
         async def move_item(body: MoveBody, user: dict = Depends(require_auth)):
+            old_id = body.id.strip("/")
             if doctype.live:
-                await hub.forget(kind, body.id.strip("/"))
+                await hub.forget(kind, old_id)
             new_id = await blocking(collection.move_item, body.id, body.folder_path)
+            if doctype.live:
+                discard([old_id])
             return {"status": "success", "id": new_id}
 
         @router.post("/rename")
         @guarded
         async def rename(body: RenameBody, user: dict = Depends(require_auth)):
             if doctype.live:
-                return await change(body.id.strip("/"), user, "rename", lambda d: d.update(name=body.name.strip()))
+                name = body.name.strip()
+                if not name:
+                    raise ValueError("A name is required")
+                return await change(body.id.strip("/"), user, "rename", lambda d: d.update(name=name))
             return await blocking(collection.rename, body.id, body.name)
 
     def add_collection_routes(name: str) -> None:
@@ -255,9 +270,12 @@ def make_doc_router(
         @router.delete("/{doc_id:path}")
         @guarded
         async def delete(doc_id: str, user: dict = Depends(require_auth)):
+            doc_id = doc_id.strip("/")
             if doctype.live:
-                await hub.forget(kind, doc_id.strip("/"))
+                await hub.forget(kind, doc_id)
             await blocking(collection.delete, doc_id)
+            if doctype.live:
+                discard([doc_id])
             return {"status": "success"}
 
         def add_asset_route(route: str, field_name: str) -> None:

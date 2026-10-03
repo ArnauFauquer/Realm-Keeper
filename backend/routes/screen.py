@@ -317,6 +317,8 @@ async def display_battlemap(body: BattlemapShowRequest, user: dict = Depends(req
         await battlemap_screen.show(body.battlemap_id.strip("/"))
     except DocNotFound as e:
         raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"status": "success"}
 
 

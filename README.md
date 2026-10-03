@@ -71,6 +71,8 @@ text: |                    # free markdown
   a text that starts with a `[[link]]`, or YAML reads it as a list.
 - A sheet with a mistake shows what is wrong, in the note, instead of the sheet.
   The editor's **Insert** buttons drop a ready-made template at the cursor.
+  A sheet is plain YAML: no aliases (`*name`, which can expand to gigabytes) and
+  at most 100 KB.
 - Sheets work inside callouts too. `GET /api/sheets` lists every sheet in the
   vault (hidden notes excluded).
 

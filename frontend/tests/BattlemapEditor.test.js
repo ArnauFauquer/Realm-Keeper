@@ -243,14 +243,52 @@ describe('BattlemapEditor', () => {
       canvas(wrapper).vm.$emit('moving', 't1', { x: 3, y: 1 })
       canvas(wrapper).vm.$emit('moving', 't1', { x: 4, y: 1 })
       expect(commands.patchItem).not.toHaveBeenCalled()
-      vi.advanceTimersByTime(80)
+      await vi.advanceTimersByTimeAsync(80)
       expect(commands.patchItem).toHaveBeenCalledTimes(1)
       expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { x: 4, y: 1 }) // the latest
       canvas(wrapper).vm.$emit('moving', 't1', { x: 5, y: 1 })
       canvas(wrapper).vm.$emit('move', 't1', { x: 6, y: 2 })
-      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { x: 6, y: 2 })
-      vi.advanceTimersByTime(500)
-      expect(commands.patchItem).toHaveBeenCalledTimes(2) // the pending one was dropped
+      await vi.advanceTimersByTimeAsync(500)
+      expect(commands.patchItem).toHaveBeenCalledTimes(2)
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { x: 6, y: 2 }) // the pending one was dropped
+    })
+
+    it('sends one move at a time, so an older one cannot land after the drop', async () => {
+      const inFlight = []
+      let release
+      commands.patchItem.mockImplementation(() => {
+        inFlight.push(true)
+        return new Promise((resolve) => { release = () => { inFlight.pop(); resolve({}) } })
+      })
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('move', 't1', { x: 2, y: 1 })       // the first is on its way...
+      canvas(wrapper).vm.$emit('move', 't1', { x: 3, y: 1 })
+      canvas(wrapper).vm.$emit('move', 't1', { x: 4, y: 1 })       // ...and only the newest of these waits
+      canvas(wrapper).vm.$emit('move', 't2', { x: 9, y: 9 })       // another token's move is not lost
+      expect(commands.patchItem).toHaveBeenCalledTimes(1)
+      expect(inFlight).toHaveLength(1)
+
+      for (let sent = 1; sent < 3; sent++) {
+        release()
+        await flushPromises()
+        expect(commands.patchItem).toHaveBeenCalledTimes(sent + 1)
+        expect(inFlight).toHaveLength(1)                              // never two at once
+      }
+      release()
+      await flushPromises()
+      expect(commands.patchItem.mock.calls.map(([, , token, at]) => [token, at.x])).toEqual([
+        ['t1', 2], ['t1', 4], ['t2', 9]
+      ])
+    })
+
+    it('keeps sending after a move the server refused', async () => {
+      commands.patchItem.mockRejectedValueOnce({ response: { data: { detail: 'No such token' } } })
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('move', 't1', { x: 2, y: 1 })
+      canvas(wrapper).vm.$emit('move', 't2', { x: 3, y: 3 })
+      await flushPromises()
+      expect(commands.patchItem).toHaveBeenCalledTimes(2)   // the refusal did not stop the queue
+      expect(wrapper.find('.rk-alert').exists()).toBe(false) // (and the move after it went through)
     })
   })
 

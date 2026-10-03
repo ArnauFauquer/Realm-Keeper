@@ -37,13 +37,16 @@ class BattlemapScreen:
         if battlemap.get("encounter"):
             try:
                 encounter = await self.hub.snapshot("encounter", battlemap["encounter"])
-            except DocNotFound:
+            except ValueError:
+                # Gone (DocNotFound), or not a valid id at all: the map is
+                # still shown, just without anyone's counters.
                 pass
         characters = await self.hub.snapshot("characters", "all")
         return project_for_screen(battlemap, encounter, characters)
 
     async def show(self, battlemap_id: str) -> None:
-        """Raises DocNotFound if there is no such battlemap."""
+        """Raises ValueError if there is no such battlemap (DocNotFound), or no
+        such id could name one."""
         projection = await self.projection(battlemap_id)
         await self.manager.broadcast({"type": "display_battlemap", "battlemap_id": battlemap_id})
         await self.manager.broadcast({"type": "update_battlemap", **projection})

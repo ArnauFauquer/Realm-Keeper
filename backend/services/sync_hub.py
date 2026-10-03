@@ -150,15 +150,21 @@ class DocHub:
         if websocket in self._sockets:
             self._sockets.remove(websocket)
 
+    async def _send(self, websocket: WebSocket, event: Dict[str, Any]) -> None:
+        try:
+            await asyncio.wait_for(websocket.send_json(event), SEND_TIMEOUT)
+        except Exception as e:
+            # One that can't be written to is gone; dropping it keeps the
+            # rest in step and frees its place in the connection limit.
+            logger.info(f"Dropping a sync connection: {e!r}")
+            self.disconnect(websocket)
+
     async def _broadcast(self, event: Dict[str, Any]) -> None:
-        for websocket in list(self._sockets):
-            try:
-                await asyncio.wait_for(websocket.send_json(event), SEND_TIMEOUT)
-            except Exception as e:
-                # One that can't be written to is gone; dropping it keeps the
-                # rest in step and frees its place in the connection limit.
-                logger.info(f"Dropping a sync connection: {e!r}")
-                self.disconnect(websocket)
+        # All at once: a phone that went to sleep without closing its socket
+        # makes its send wait out SEND_TIMEOUT, and one after another each such
+        # client would hold up every change (the document's lock is held while
+        # this runs) by that long.
+        await asyncio.gather(*(self._send(websocket, event) for websocket in list(self._sockets)))
 
     # ── rooms ───────────────────────────────────────────────────────────
 
@@ -289,6 +295,18 @@ class DocHub:
             event = {"type": "gone", "doc": room.ref}
             await self._broadcast(event)
             await self._notify(event)
+
+    def discard(self, kind: str, doc_id: str) -> None:
+        """Lets go of a document's room *without* saving it. For after a
+        document was deleted or moved: a command that reached it between
+        `forget` and the move would have loaded it again from the old place,
+        and its pending save would put the document back there."""
+        room = self._rooms.pop((kind, doc_id), None)
+        if room is not None:
+            if room.flush_handle is not None:
+                room.flush_handle.cancel()
+                room.flush_handle = None
+            room.dirty = False
 
     async def unload_idle(self) -> None:
         now = time.monotonic()

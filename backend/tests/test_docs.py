@@ -3,6 +3,7 @@ its routes. Run from backend/:  python -m pytest tests/test_docs.py
 """
 import asyncio
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -391,6 +392,27 @@ def test_a_socket_that_fails_is_dropped_and_the_others_still_hear(hub_and_collec
     run(scenario())
 
 
+def test_clients_that_stopped_answering_hold_a_change_up_once_and_not_one_after_another(hub_and_collections, monkeypatch):
+    hub, _, _ = hub_and_collections
+    monkeypatch.setattr(sync_hub, "SEND_TIMEOUT", 0.2)
+
+    class Asleep:
+        async def send_json(self, event):
+            await asyncio.sleep(30)  # a phone that went to sleep without closing its socket
+
+    async def scenario():
+        asleep, fine = [Asleep() for _ in range(5)], FakeSocket()
+        for websocket in (*asleep, fine):
+            hub.connect(websocket)
+        started = time.monotonic()
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
+        took = time.monotonic() - started
+        assert took < 0.6, took            # five waits of 0.2s one after another would be 1s
+        assert len(fine.sent) == 1 and not any(websocket in hub._sockets for websocket in asleep)
+
+    run(scenario())
+
+
 def test_the_connection_limit(hub_and_collections, monkeypatch):
     hub, _, _ = hub_and_collections
     monkeypatch.setattr(sync_hub, "MAX_SYNC_CONNECTIONS", 1)
@@ -569,6 +591,8 @@ def test_mistakes_get_the_right_status(api):
     assert api.post("/api/encounters/fight/combatants", json={"items": [{"name": "x", "type": "monster"}]}).status_code == 400
     assert api.post("/api/encounters/fight/combatants/orc/adjust", json={"resource": "HP", "by": 99999}).status_code == 422
     assert api.post("/api/encounters", json={"name": "Assets"}).status_code == 400
+    assert api.post("/api/encounters/rename", json={"id": "fight", "name": "   "}).status_code == 400  # as for the saved kinds
+    assert api.get("/api/encounters/fight").json()["name"] == "Fight"
 
 
 def test_a_character_cannot_be_in_an_encounter_twice_nor_carry_counters(api):
@@ -612,6 +636,77 @@ def test_deleting_a_document_tells_the_clients_showing_it(api):
         socket.receive_json()
         api.delete("/api/encounters/temp")
         assert socket.receive_json() == {"type": "gone", "doc": "encounter:temp"}
+
+
+def _a_late_command_loads_the_document_again(hub, encounters, doc_id):
+    """What a command does that reaches the server after the document's room
+    was forgotten but before it is gone from storage: it loads the room again,
+    from where the document still is, and changes it (so it will be saved)."""
+    raw = encounters.read_raw(doc_id)
+    room = sync_hub.Room(ENCOUNTER, doc_id, Encounter.model_validate(raw).model_dump(mode="json"))
+    room.dirty = True
+    hub._rooms[("encounter", doc_id)] = room
+
+
+def test_a_command_that_slips_in_while_a_document_is_deleted_does_not_bring_it_back(api, hub_and_collections, monkeypatch):
+    hub, encounters, _ = hub_and_collections
+    api.post("/api/encounters", json={"name": "Temp"})
+    api.get("/api/encounters/temp")
+    real_delete = encounters.delete
+
+    def delete(doc_id):
+        _a_late_command_loads_the_document_again(hub, encounters, "temp")
+        real_delete(doc_id)
+
+    monkeypatch.setattr(encounters, "delete", delete)
+    assert api.delete("/api/encounters/temp").status_code == 200
+    assert ("encounter", "temp") not in hub._rooms
+    run(hub.flush_all())
+    assert encounters.read_raw("temp") is None
+
+
+def test_nor_while_it_is_moved_or_its_folder_is(api, hub_and_collections, monkeypatch):
+    hub, encounters, _ = hub_and_collections
+    api.post("/api/encounters", json={"name": "Moving", "folder_path": "old"})
+    api.get("/api/encounters/old/moving")
+    real_move = encounters.move_folder
+
+    def move_folder(path, new_parent_path=None, new_name=None):
+        _a_late_command_loads_the_document_again(hub, encounters, "old/moving")
+        real_move(path, new_parent_path, new_name)
+
+    monkeypatch.setattr(encounters, "move_folder", move_folder)
+    assert api.put("/api/encounters/folders/old", json={"name": "new"}).status_code == 200
+    run(hub.flush_all())
+    assert encounters.read_raw("old/moving") is None
+    assert encounters.read_raw("new/moving")["name"] == "Moving"
+
+    api.get("/api/encounters/new/moving")
+    real_move_item = encounters.move_item
+
+    def move_item(doc_id, dest):
+        _a_late_command_loads_the_document_again(hub, encounters, "new/moving")
+        return real_move_item(doc_id, dest)
+
+    monkeypatch.setattr(encounters, "move_item", move_item)
+    assert api.post("/api/encounters/move", json={"id": "new/moving", "folder_path": ""}).json()["id"] == "moving"
+    run(hub.flush_all())
+    assert encounters.read_raw("new/moving") is None
+
+
+def test_discarding_a_room_drops_its_pending_save(hub_and_collections, monkeypatch):
+    hub, encounters, _ = hub_and_collections
+    monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 60)
+
+    async def scenario():
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="unsaved"))
+        hub.discard("encounter", "fight")
+        hub.discard("encounter", "never-loaded")  # nothing to do, and no error
+        await hub.flush_all()
+        assert ("encounter", "fight") not in hub._rooms
+        assert encounters.read_raw("fight")["description"] is None
+
+    run(scenario())
 
 
 def test_everything_needs_a_signed_in_user(hub_and_collections):

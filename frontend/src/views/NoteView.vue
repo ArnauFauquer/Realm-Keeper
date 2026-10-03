@@ -532,8 +532,16 @@ export default {
 
       root.querySelectorAll('[data-sheet-src]:not([data-embed-mounted])').forEach(el => {
         el.setAttribute('data-embed-mounted', '1')
+        let source
+        try {
+          source = decodeURIComponent(el.getAttribute('data-sheet-src'))
+        } catch {
+          // Hand-written HTML with a broken attribute: leave it, and still
+          // mount the embeds after it.
+          return
+        }
         const vnode = h(SheetBlock, {
-          source: decodeURIComponent(el.getAttribute('data-sheet-src')),
+          source,
           // An adversary's reference is "<note id>#<sheet id>".
           noteId: this.note?.id || this.notePath,
           canInteract: !!this.user

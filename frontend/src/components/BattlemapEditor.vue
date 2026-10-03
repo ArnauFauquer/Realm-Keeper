@@ -338,12 +338,30 @@ function toggleBar(name, on) {
 
 // A token being dragged is sent as it moves, at most every MOVE_INTERVAL ms,
 // so everyone sees it travel; where it is dropped is sent at once.
+//
+// Moves go out one at a time, the newest position of each token: requests in
+// flight together can reach the server in any order, and an older one landing
+// after the drop would put the token back where it was a moment ago.
 const MOVE_INTERVAL = 80
 let pendingMove = null
 let moveTimer = null
+const queuedMoves = new Map() // token id -> position
+let sending = null
 
 function sendMove(tokenId, position) {
-  return send(commands.patchItem(id, 'tokens', tokenId, position))
+  queuedMoves.set(tokenId, position)
+  sending ||= (async () => {
+    try {
+      while (queuedMoves.size) {
+        const [token, at] = queuedMoves.entries().next().value
+        queuedMoves.delete(token)
+        await send(commands.patchItem(id, 'tokens', token, at))
+      }
+    } finally {
+      sending = null // in the same tick as the last look at the queue: nothing can slip in between
+    }
+  })()
+  return sending
 }
 
 function onMoving(tokenId, position) {

@@ -28,6 +28,20 @@ describe('sheet fixtures shared with the backend', () => {
   })
 })
 
+describe('limits', () => {
+  it('refuses aliases, which a few lines of can expand to gigabytes', () => {
+    expect(() => parseSheetSource('name: A\nresources: &r {HP: 6}\nstats: *r\n')).toThrow(/Invalid YAML/)
+  })
+
+  it('does not mind an anchor nothing refers to', () => {
+    expect(parseSheetSource('name: A\nresources:\n  HP: &hp 6\n').sheet.resources.HP.max).toBe(6)
+  })
+
+  it('does not parse a sheet that is far too long', () => {
+    expect(() => parseSheetSource(`name: A\ntext: ${'x'.repeat(200_000)}`)).toThrow(/longer/)
+  })
+})
+
 describe('slugify', () => {
   it('drops accents and punctuation', () => {
     expect(slugify('Jabalí Gigante')).toBe('jabali-gigante')

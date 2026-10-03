@@ -35,7 +35,7 @@
 </template>
 
 <script setup>
-import { computed, watchEffect } from 'vue'
+import { computed, watch } from 'vue'
 import SheetView from './SheetView.vue'
 import ResourceCounter from './ResourceCounter.vue'
 import AddToEncounter from './AddToEncounter.vue'
@@ -82,20 +82,23 @@ async function adjust(resource, by) {
 }
 
 // The first signed-in view of a character creates its saved counters; later
-// ones follow whatever the sheet changed since.
-let syncing = false
-watchEffect(async () => {
-  if (!characters || characters.status.value !== 'ready' || !sheet.value || syncing) return
-  syncing = true
-  try {
-    if (characters.stateOf(sheet.value.id)) await characters.reconcile(sheet.value)
-    else await characters.ensure(sheet.value)
-  } catch (err) {
-    console.error('Failed to save the character:', err)
-  } finally {
-    syncing = false
-  }
-})
+// ones follow what the sheet says since. That happens when the saved values
+// arrive and when this sheet's own counters change, not whenever the saved
+// values do: two blocks that declare the same id with different counters
+// would otherwise keep undoing each other, each change waking the other.
+const counterDefinitions = computed(() => JSON.stringify(sheet.value?.resources || {}))
+
+if (characters) {
+  watch([() => characters.status.value, counterDefinitions], async ([status]) => {
+    if (status !== 'ready' || !sheet.value) return
+    try {
+      if (characters.stateOf(sheet.value.id)) await characters.reconcile(sheet.value)
+      else await characters.ensure(sheet.value)
+    } catch (err) {
+      console.error('Failed to save the character:', err)
+    }
+  }, { immediate: true })
+}
 </script>
 
 <style scoped>

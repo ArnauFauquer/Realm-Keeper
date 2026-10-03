@@ -34,6 +34,24 @@ def test_invalid_sheet_is_rejected(case):
         parse_sheet_source((FIXTURES / f"{case}.yaml").read_text(encoding="utf-8"))
 
 
+def test_an_alias_bomb_is_refused_before_it_can_expand():
+    # 350 bytes that would be gigabytes as JSON: refused at the alias, not expanded.
+    with pytest.raises(SheetParseError, match="aliases"):
+        parse_sheet_source((FIXTURES / "error-alias-bomb.yaml").read_text(encoding="utf-8"))
+    with pytest.raises(SheetParseError, match="aliases"):
+        parse_sheet_source("name: A\nresources: &r {HP: 6}\nstats: *r\n")
+
+
+def test_a_sheet_that_is_far_too_long_is_not_parsed():
+    with pytest.raises(SheetParseError, match="longer"):
+        parse_sheet_source("name: A\ntext: " + "x" * 200_000)
+
+
+def test_anchors_that_nothing_refers_to_are_harmless():
+    sheet, _ = parse_sheet_source("name: A\nresources:\n  HP: &hp 6\n")
+    assert sheet.resources["HP"].max == 6
+
+
 def test_slugify_drops_accents_and_punctuation():
     assert slugify("Jabalí Gigante") == "jabali-gigante"
     assert slugify("  Aria's  Ghost!! ") == "aria-s-ghost"

@@ -6,6 +6,10 @@ import { parse } from 'yaml'
 
 export const SHEET_TYPES = ['character', 'adversary']
 
+// Same limit as the backend (services/sheet_parser.py), and no aliases for the
+// same reason: a few nested ones expand to gigabytes.
+const MAX_SOURCE_LENGTH = 100_000
+
 const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'resources', 'stats', 'sections', 'text'])
 const ASSET_URL_PREFIX = '/api/asset-library/assets/'
 const ASSET_KEY_PREFIX = 'asset-library/'
@@ -110,9 +114,10 @@ function sections(raw) {
 /** { sheet, warnings } for a block's YAML. Throws SheetParseError, whose
  * message is meant for the note's author. */
 export function parseSheetSource(source) {
+  if (source.length > MAX_SOURCE_LENGTH) throw new SheetParseError(`A sheet can't be longer than ${MAX_SOURCE_LENGTH / 1000} KB`)
   let data
   try {
-    data = parse(source)
+    data = parse(source, { maxAliasCount: 0 })
   } catch (e) {
     throw new SheetParseError(`Invalid YAML: ${e.message.split('\n')[0]}`)
   }
