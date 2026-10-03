@@ -6,3 +6,13 @@ README.md
 .env
 .env.local
 *.log
+
+# Local-only: virtualenvs, the dev vault, locally stored documents, logs and
+# test caches have no business in the image (the vault is cloned from
+# REPO_URL at startup; documents live in S3).
+.venv*
+venv
+vault
+docs-data
+logs
+.pytest_cache

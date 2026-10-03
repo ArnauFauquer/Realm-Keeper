@@ -1,0 +1,25 @@
+{
+  "sheet": {
+    "id": "bram",
+    "name": "Bram",
+    "type": "character",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {
+      "HP": {
+        "max": 8,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      }
+    },
+    "stats": [],
+    "sections": [],
+    "text": null
+  },
+  "warnings": [
+    "A character should declare a stable id: its saved values are kept under it"
+  ]
+}

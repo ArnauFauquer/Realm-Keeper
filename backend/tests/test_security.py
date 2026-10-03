@@ -3,34 +3,21 @@
 """
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-_tmp = Path(tempfile.mkdtemp())
-os.environ.update({
-    "VAULT_PATH": str(_tmp / "vault"),
-    "LOG_DIR": str(_tmp / "logs"),
-    "ENABLE_AUTH": "true",
-    "ALLOWED_EMAILS": "gm@example.com",
-    "SESSION_SECRET_KEY": "test-secret",
-    "NOTE_TAG_IGNORE": "draft",
-    "FRONTEND_URL": "https://app.example.com",
-    "CORS_ALLOWED_ORIGINS": "https://app.example.com",
-    "REPO_URL": "",
-})
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from config.settings import settings  # noqa: E402
-from main import app  # noqa: E402
-from services import storage_service  # noqa: E402
-from services.auth_service import (  # noqa: E402
+from config.settings import settings
+from main import app
+from services import storage_service
+from services.auth_service import (
     SCREEN_COOKIE_NAME, SESSION_COOKIE_NAME, create_screen_key, create_session_token,
 )
-from services.git_sync_utils import GitCommitError, redact_credentials  # noqa: E402
+from services.git_sync_utils import GitCommitError, redact_credentials
+
+# The throwaway folder tests/conftest.py pointed the vault, logs and documents into.
+_tmp = Path(settings.VAULT_PATH).parent
 
 
 @pytest.fixture(scope="module")
@@ -86,11 +73,17 @@ def test_asset_endpoint_cannot_read_other_prefixes(client):
         client.cookies.clear()
 
 
-def test_track_keys_cannot_reach_reserved_prefixes():
-    with pytest.raises(storage_service.StorageError):
-        storage_service.get_track_stream("asset-library/map.png")
-    with pytest.raises(storage_service.StorageError):
-        storage_service.delete_album("asset-library")
+def test_track_keys_cannot_reach_beyond_the_player(monkeypatch):
+    """Whatever a track key says, it names something under player/: not the
+    asset library, not a document."""
+    reached = []
+    monkeypatch.setattr(storage_service, "_get_object_stream", lambda key, range_header=None: reached.append(key))
+    storage_service.get_track_stream("asset-library/map.png")
+    storage_service.get_track_stream("charts/chart.json")
+    assert reached == ["player/asset-library/map.png", "player/charts/chart.json"]
+    for key in ("../x/y.mp3", "a/../y.mp3", "a/b/c.mp3", "chart.json", "/a.mp3"):
+        with pytest.raises(storage_service.StorageError):
+            storage_service.get_track_stream(key)
 
 
 def test_served_content_type_ignores_uploaded_metadata():
@@ -115,11 +108,14 @@ def test_cross_origin_write_blocked(client):
 def test_vista_assets_must_come_from_library(client):
     client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
     try:
-        r = client.put("/api/vistas/whatever", json={
-            "name": "x",
-            "assets": [{"id": "a", "name": "a", "image_url": "https://evil.example.org/x.svg"}],
+        vista = client.post("/api/vistas", json={"name": "Whatever"}).json()
+        evil = "https://evil.example.org/x.svg"
+        r = client.put(f"/api/vistas/{vista['id']}", json={
+            "name": "x", "assets": [{"id": "a", "name": "a", "image_url": evil}],
         })
         assert r.status_code == 400
+        assert client.post(f"/api/vistas/{vista['id']}/background", json={"url": evil}).status_code == 400
+        assert client.get(f"/api/vistas/{vista['id']}").json()["assets"] == []   # nothing was saved
     finally:
         client.cookies.clear()
 
@@ -184,19 +180,15 @@ OTHER_KEY = "asset-library/maps/dungeon.png"
 
 @pytest.fixture
 def screen_state(client, monkeypatch):
-    """A chart and a vista on disk, S3 stubbed out, and a clean screen."""
-    import json
+    """A chart and a vista in the document store, S3 stubbed out, and a clean screen."""
     from routes import screen
+    from services.doc_registry import chart_collection, vista_collection
 
-    charts = settings.VAULT_PATH / "_charts" / "tavern"
-    charts.mkdir(parents=True, exist_ok=True)
-    (charts / "chart.json").write_text(json.dumps({
+    chart_collection.write_raw("tavern", {
         "id": "tavern", "name": "Tavern", "image_url": f"/api/asset-library/assets/{MAP_KEY}",
         "pins": [{"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": f"/api/asset-library/assets/{ICON_KEY}"}],
-    }), encoding="utf-8")
-    vistas = settings.VAULT_PATH / "_vistas" / "night"
-    vistas.mkdir(parents=True, exist_ok=True)
-    (vistas / "vista.json").write_text(json.dumps({"id": "night", "name": "Night"}), encoding="utf-8")
+    })
+    vista_collection.write_raw("night", {"id": "night", "name": "Night"})
 
     class _Body:
         def iter_chunks(self, chunk_size):
@@ -249,6 +241,39 @@ def test_paired_screen_sees_only_what_is_on_screen(client, screen_state):
 
     screen_state.current_state = {"type": "clear_screen"}
     assert _asset(client, OTHER_KEY) == 401
+
+
+def test_what_a_screen_may_read_is_looked_up_once_per_thing_shown(client, screen_state, monkeypatch):
+    """A scene has dozens of images and a screen asks for each: the chart is
+    read from the store when it is sent, not again for every image."""
+    from routes import screen_access
+    from services.doc_registry import chart_collection
+
+    reads = []
+    real_get = chart_collection.get
+
+    def counting_get(doc_id):
+        reads.append(doc_id)
+        return real_get(doc_id)
+
+    monkeypatch.setattr(chart_collection, "get", counting_get)
+    client.cookies.set(SCREEN_COOKIE_NAME, create_screen_key("gm@example.com"))
+
+    screen_state.current_state = {"type": "display_chart", "chart_id": "tavern"}
+    assert [_asset(client, key) for key in (MAP_KEY, ICON_KEY, MAP_KEY)] == [200, 200, 200]
+    assert reads == ["tavern"]
+
+    # Sent again, it is read again: a GM who saved a new icon and sends it sees it.
+    screen_state.current_state = {"type": "display_chart", "chart_id": "tavern"}
+    assert _asset(client, MAP_KEY) == 200
+    assert len(reads) == 2
+
+    # Saved while it is shown: picked up once the answer has aged.
+    chart_collection.write_raw("tavern", {"id": "tavern", "name": "Tavern", "image_url": f"/api/asset-library/assets/{OTHER_KEY}"})
+    assert _asset(client, OTHER_KEY) == 401
+    screen_access._shown["until"] = 0
+    assert _asset(client, OTHER_KEY) == 200
+    assert _asset(client, MAP_KEY) == 401
 
 
 def test_dice_roll_keeps_what_is_on_screen(client, screen_state):

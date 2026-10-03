@@ -8,7 +8,8 @@ vista last sent, the images it's drawn from, or the single image sent with
 could read stops being readable the moment the GM sends something else or
 clears the screen.
 """
-from typing import Optional, Set
+import time
+from typing import List, Optional, Set
 from urllib.parse import unquote, urlsplit
 
 from fastapi import HTTPException, Request
@@ -16,6 +17,7 @@ from fastapi import HTTPException, Request
 from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from routes.auth import current_user
 from services.auth_service import SCREEN_COOKIE_NAME, verify_screen_key
+from services.doc_registry import chart_collection, vista_collection
 
 
 def has_screen_key(cookies) -> bool:
@@ -47,21 +49,30 @@ def displayed_item(kind: str) -> Optional[str]:
     return value.strip("/") if isinstance(value, str) else None
 
 
-def displayed_asset_keys() -> Set[str]:
-    from routes.charts import chart_service_instance
-    from routes.vistas import vista_service_instance
+# A screen asks for every image of a scene one by one, and each answer needs the
+# chart or vista as it was saved: a read from the store. It is kept for as long
+# as the same thing is on screen (every send makes a new state) and, when it is
+# saved while shown, a few seconds more at most.
+SHOWN_URLS_TTL = 5.0
+_shown = {"state": None, "until": 0.0, "urls": []}
 
-    state = _current_state()
-    urls = []
+
+def _shown_urls(state: dict) -> List[Optional[str]]:
+    """The images of what is on screen, as saved."""
     if state.get("type") == "display_media":
-        urls.append(state.get("url"))
-    elif (chart_id := displayed_item("chart")) and (chart := chart_service_instance.get_chart(chart_id)):
-        urls.append(chart.image_url)
-        urls.extend(pin.icon_url for pin in chart.pins)
-    elif (vista_id := displayed_item("vista")) and (vista := vista_service_instance.get_vista(vista_id)):
-        urls.append(vista.background_url)
-        urls.extend(asset.image_url for asset in vista.assets)
-    urls.extend(_live_draft_urls())
+        return [state.get("url")]
+    if (chart_id := displayed_item("chart")) and (chart := chart_collection.get(chart_id)):
+        return [chart.image_url, *(pin.icon_url for pin in chart.pins)]
+    if (vista_id := displayed_item("vista")) and (vista := vista_collection.get(vista_id)):
+        return [vista.background_url, *(asset.image_url for asset in vista.assets)]
+    return []
+
+
+def displayed_asset_keys() -> Set[str]:
+    state = _current_state()
+    if _shown["state"] is not state or time.monotonic() > _shown["until"]:
+        _shown.update(state=state, until=time.monotonic() + SHOWN_URLS_TTL, urls=_shown_urls(state))
+    urls = [*_shown["urls"], *_live_draft_urls()]
     return {key for key in map(asset_key_from_url, urls) if key}
 
 
@@ -74,6 +85,10 @@ def _live_draft_urls() -> list:
         return [draft.get("image_url"), *(p.get("icon_url") for p in draft.get("pins", []))]
     if draft.get("type") == "update_vista" and displayed_item("vista") == draft.get("vista_id", "").strip("/"):
         return [draft.get("background_url"), *(a.get("image_url") for a in draft.get("assets", []))]
+    # What a battlemap's draft carries is already what a screen may see: hidden
+    # tokens aren't in it, so neither are their images.
+    if draft.get("type") == "update_battlemap" and displayed_item("battlemap") == draft.get("battlemap_id", "").strip("/"):
+        return [draft.get("image_url"), *(t.get("image_url") for t in draft.get("tokens", []))]
     return []
 
 

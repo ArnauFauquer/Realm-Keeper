@@ -7,13 +7,11 @@ from config.logging import get_logger
 from routes.auth import require_auth
 from routes.errors import storage_unavailable
 from services import storage_service
-from services.storage_service import StorageError
+from services.storage_service import ASSET_LIBRARY_URL_PREFIX, StorageError
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/asset-library", tags=["asset-library"])
-
-ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
 
 # Sent with every user-uploaded file served from the app's own origin. SVGs
 # can carry <script>, and opened directly (not via <img>) they'd run with the

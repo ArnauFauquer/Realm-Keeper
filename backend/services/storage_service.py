@@ -1,6 +1,16 @@
 """S3-compatible object storage client (Ceph Rook RGW) for the audio player
 and the reusable asset library (which also holds chart maps/pin icons and
-vista backgrounds)."""
+vista backgrounds).
+
+How the bucket is laid out: one top-level prefix per kind of thing.
+
+    player/<album>/<track>             audio, one folder per album
+    asset-library/<folders>/<image>    images (maps, tokens, icons, backgrounds)
+    charts/ vistas/ encounters/ battlemaps/ characters/
+                                       JSON documents (services/doc_collection.py)
+
+A track's key, as the player and the notes see it, is "<album>/<track>"; the
+`player/` in front of it is where it is stored, nobody else's business."""
 import re
 import uuid
 from typing import BinaryIO, Optional
@@ -27,12 +37,11 @@ IMAGE_CONTENT_TYPES = {
 ALLOWED_AUDIO_EXTENSIONS = set(AUDIO_CONTENT_TYPES)
 ALLOWED_IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPES)
 
-# Top-level prefixes used by other features sharing this bucket — never
-# real albums, so list_albums() must skip them and create/rename must
-# refuse to collide with them.
-RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library"}
-
+PLAYER_PREFIX = "player/"
 ASSET_LIBRARY_PREFIX = "asset-library/"
+# Where the app serves a library asset from; documents (charts, vistas, sheets...)
+# refer to library images by URLs starting with this.
+ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
 _UNIQUE_PREFIX_RE = re.compile(r"^[0-9a-f]{8}-")
 
 
@@ -76,14 +85,17 @@ def content_type_for(key: str) -> str:
 
 
 def _split_key(key: str) -> tuple[str, str]:
+    """A track's key, "<album>/<file>", as its album and file name."""
     parts = key.split("/")
     if len(parts) != 2:
         raise StorageError(f"Invalid track key: {key!r}")
-    album, filename = _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
-    # Track keys must never reach into another feature's prefix (e.g.
-    # "asset-library/<file>" is also two segments deep).
-    _check_not_reserved(album)
-    return album, filename
+    return _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
+
+
+def _track_key(album: str, filename: str) -> str:
+    """Where a track is stored. Whatever a track's key says, it can only name
+    something under `player/`: nothing else in the bucket is reachable by it."""
+    return f"{PLAYER_PREFIX}{album}/{filename}"
 
 
 def _sanitize_path(path: str) -> str:
@@ -108,65 +120,34 @@ def list_albums() -> list[str]:
     client = _client()
     albums = []
     paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Delimiter="/"):
+    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=PLAYER_PREFIX, Delimiter="/"):
         for prefix in page.get("CommonPrefixes", []):
-            name = prefix["Prefix"].rstrip("/")
-            if name not in RESERVED_ALBUM_NAMES:
-                albums.append(name)
+            albums.append(prefix["Prefix"][len(PLAYER_PREFIX):].rstrip("/"))
     return sorted(albums, key=str.lower)
-
-
-def _check_not_reserved(name: str) -> None:
-    if name.lower() in RESERVED_ALBUM_NAMES:
-        raise StorageError(f"'{name}' is a reserved name and can't be used for an album")
 
 
 def create_album(name: str) -> None:
     name = _sanitize_segment(name)
-    _check_not_reserved(name)
     client = _client()
-    client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{name}/.keep", Body=b"")
+    client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{PLAYER_PREFIX}{name}/.keep", Body=b"")
 
 
 def rename_album(old_name: str, new_name: str) -> None:
     old_name = _sanitize_segment(old_name)
     new_name = _sanitize_segment(new_name)
-    _check_not_reserved(old_name)
-    _check_not_reserved(new_name)
     if old_name == new_name:
         return
-
-    client = _client()
-    old_prefix = f"{old_name}/"
-    new_prefix = f"{new_name}/"
-
-    if list(client.list_objects_v2(Bucket=settings.S3_BUCKET_NAME, Prefix=new_prefix, MaxKeys=1).get("Contents", [])):
-        raise StorageError(f"An album named '{new_name}' already exists")
-
-    keys = []
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=old_prefix):
-        keys.extend(obj["Key"] for obj in page.get("Contents", []))
-    if not keys:
-        raise StorageError(f"Album not found: {old_name}")
-
-    for key in keys:
-        client.copy_object(
-            Bucket=settings.S3_BUCKET_NAME,
-            CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": key},
-            Key=new_prefix + key[len(old_prefix):],
-        )
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
+    _move_prefix(
+        f"{PLAYER_PREFIX}{old_name}/", f"{PLAYER_PREFIX}{new_name}/",
+        not_found_label=f"Album not found: {old_name}",
+        exists_label=f"An album named '{new_name}' already exists",
+    )
 
 
 def delete_album(name: str) -> None:
     name = _sanitize_segment(name)
-    _check_not_reserved(name)
     client = _client()
-    prefix = f"{name}/"
+    prefix = f"{PLAYER_PREFIX}{name}/"
     paginator = client.get_paginator("list_objects_v2")
     keys = []
     for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
@@ -179,9 +160,8 @@ def delete_album(name: str) -> None:
 
 def list_tracks(album: str) -> list[dict]:
     album = _sanitize_segment(album)
-    _check_not_reserved(album)
     client = _client()
-    prefix = f"{album}/"
+    prefix = f"{PLAYER_PREFIX}{album}/"
     tracks = []
     paginator = client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
@@ -190,7 +170,7 @@ def list_tracks(album: str) -> list[dict]:
             if not filename or filename == ".keep":
                 continue
             tracks.append({
-                "key": obj["Key"],
+                "key": f"{album}/{filename}",
                 "name": filename,
                 "size": obj["Size"],
                 "last_modified": obj["LastModified"].isoformat(),
@@ -202,23 +182,21 @@ def list_tracks(album: str) -> list[dict]:
 def upload_track(album: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
     album = _sanitize_segment(album)
     filename = _sanitize_segment(filename)
-    _check_not_reserved(album)
     ext = _extension(filename)
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
         raise StorageError(f"Unsupported audio file type: {ext or filename}")
-    key = f"{album}/{filename}"
     client = _client()
     client.upload_fileobj(
-        file_obj, settings.S3_BUCKET_NAME, key,
+        file_obj, settings.S3_BUCKET_NAME, _track_key(album, filename),
         ExtraArgs={"ContentType": AUDIO_CONTENT_TYPES[ext]},
     )
-    return {"key": key, "name": filename}
+    return {"key": f"{album}/{filename}", "name": filename}
 
 
 def delete_track(key: str) -> None:
-    _split_key(key)
+    album, filename = _split_key(key)
     client = _client()
-    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=_track_key(album, filename))
 
 
 def rename_track(key: str, new_name: str) -> dict:
@@ -226,15 +204,14 @@ def rename_track(key: str, new_name: str) -> dict:
     has no rename, so this copies to a new key then deletes the original
     (via _move_object) — the same technique move_track uses to change an
     object's folder instead of its filename."""
-    album, _filename = _split_key(key)
+    album, filename = _split_key(key)
     new_name = _sanitize_segment(new_name)
     ext = new_name[new_name.rfind("."):].lower() if "." in new_name else ""
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
         raise StorageError(f"Unsupported audio file type: {ext or new_name}")
 
-    new_key = f"{album}/{new_name}"
-    _move_object(key, new_key)
-    return {"key": new_key, "name": new_name}
+    _move_object(_track_key(album, filename), _track_key(album, new_name))
+    return {"key": f"{album}/{new_name}", "name": new_name}
 
 
 def _unique_filename(filename: str) -> str:
@@ -404,14 +381,10 @@ def move_track(key: str, dest_album: str) -> dict:
     """Moves a single track (by its "album/filename" key) into
     `dest_album`, keeping its filename. Used for drag-and-drop between
     albums in the player."""
-    _split_key(key)
+    album, filename = _split_key(key)
     dest_album = _sanitize_segment(dest_album)
-    _check_not_reserved(dest_album)
-
-    filename = key.rsplit("/", 1)[-1]
-    new_key = f"{dest_album}/{filename}"
-    _move_object(key, new_key)
-    return {"key": new_key}
+    _move_object(_track_key(album, filename), _track_key(dest_album, filename))
+    return {"key": f"{dest_album}/{filename}"}
 
 
 def delete_asset_folder(path: str) -> None:
@@ -466,14 +439,14 @@ def rename_library_asset(key: str, new_name: str) -> dict:
 
 
 def get_track_stream(key: str, range_header: Optional[str] = None) -> dict:
-    _split_key(key)
-    return _get_object_stream(key, range_header)
+    album, filename = _split_key(key)
+    return _get_object_stream(_track_key(album, filename), range_header)
 
 
 def get_library_asset_stream(key: str) -> dict:
     """Public read of one asset library object. Scoped to that prefix so the
     unauthenticated endpoint can't be used to read the rest of the bucket
-    (audio tracks, which are behind login)."""
+    (audio tracks and documents, which are behind login)."""
     _validate_key(key)
     if not key.startswith(ASSET_LIBRARY_PREFIX):
         raise StorageError(f"Invalid asset key: {key!r}")

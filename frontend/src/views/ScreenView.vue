@@ -15,6 +15,11 @@
       <VistaCanvas :vista="activeVista" :editable="false" />
     </div>
 
+    <!-- Battlemap area -->
+    <div v-else-if="activeBattlemap" class="screen-battlemap-area">
+      <BattlemapScreen :state="activeBattlemap" />
+    </div>
+
     <!-- Constellation area -->
     <div v-else-if="activeConstellation" class="screen-constellation-area">
       <ConstellationScreen :key="constellationKey" :state="activeConstellation" />
@@ -72,6 +77,7 @@
     <div v-if="diceRoll" class="screen-dice-result" :class="diceRoll.duality && `duality--${diceRoll.duality.outcome}`" :key="diceRoll.id">
       <canvas ref="diceCanvas" class="dice-canvas"></canvas>
       <div class="dice-caption">
+        <div v-if="diceRoll.label" class="dice-label">{{ diceRoll.label }}</div>
         <div class="dice-formula">{{ diceRoll.formula }}</div>
         <div class="dice-breakdown">
           <span v-for="(g, i) in diceRoll.groups" :key="i" class="dice-group">
@@ -101,18 +107,18 @@
 </template>
 
 <script>
-import { apiUrl } from '@/config/env'
+import { socketUrl } from '@/utils/socketUrl'
 import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
 import ConstellationScreen from '@/components/ConstellationScreen.vue'
-import { fetchChart } from '@/api/charts'
-import { fetchVista } from '@/api/vistas'
+import BattlemapScreen from '@/components/BattlemapScreen.vue'
+import { chartsApi, vistasApi } from '@/api/docs'
 import { pairScreen } from '@/api/screen'
 import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS } from '@/utils/diceNotation'
 
 export default {
   name: 'ScreenView',
-  components: { ChartCanvas, VistaCanvas, ConstellationScreen },
+  components: { ChartCanvas, VistaCanvas, ConstellationScreen, BattlemapScreen },
   data() {
     return {
       loading: true,
@@ -135,6 +141,10 @@ export default {
       // restarts the view whenever the GM sends it again.
       activeConstellation: null,
       constellationKey: 0,
+      // The battlemap on show, as the server projected it for a screen: the id
+      // is set by `display_battlemap`, the map by the `update_battlemap`s after it.
+      activeBattlemap: null,
+      battlemapId: null,
       // Live edit that arrived while the chart/vista it belongs to was still
       // being fetched (a screen connecting mid-edit gets both back to back).
       pendingLiveEdit: null,
@@ -247,27 +257,7 @@ export default {
     connectWebSocket() {
       this.closeWebSocket()
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      
-      // Improve host detection:
-      // 1. Use the host from VITE_API_URL if it's set
-      // 2. Otherwise, use the current window host (assuming backend is on same host/port, or proxied)
-      let host = window.location.host
-      if (apiUrl) {
-        // Strip protocol
-        const apiHost = apiUrl.replace(/^http(s)?:\/\//, '')
-        
-        // If VITE_API_URL is just 'localhost:8000' but we are accessing via IP, 
-        // we should try to use the current hostname but with the same port.
-        if (apiHost.startsWith('localhost:') && window.location.hostname !== 'localhost') {
-          const port = apiHost.split(':')[1] || '8000'
-          host = `${window.location.hostname}:${port}`
-        } else {
-          host = apiHost
-        }
-      }
-      
-      const wsUrl = `${protocol}//${host}/ws/screen`
+      const wsUrl = socketUrl('/ws/screen')
 
       console.log('Connecting to screen WebSocket:', wsUrl)
       this.ws = new WebSocket(wsUrl)
@@ -282,6 +272,7 @@ export default {
             this.activeChart = null
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
             this.showDiceRoll(data)
@@ -291,6 +282,7 @@ export default {
             this.loading = false
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.showChart(data.chart_id)
           } else if (data.type === 'display_vista') {
@@ -299,6 +291,7 @@ export default {
             this.loading = false
             this.activeChart = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.showVista(data.vista_id)
           } else if (data.type === 'display_constellation') {
@@ -307,9 +300,26 @@ export default {
             this.loading = false
             this.activeChart = null
             this.activeVista = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.constellationKey++
             this.activeConstellation = this.constellationState(data)
+          } else if (data.type === 'display_battlemap') {
+            this.clearDiceRoll()
+            this.displayUrl = ''
+            this.loading = false
+            this.activeChart = null
+            this.activeVista = null
+            this.activeConstellation = null
+            this.pendingLiveEdit = null
+            this.activeBattlemap = null
+            this.battlemapId = data.battlemap_id
+          } else if (data.type === 'update_battlemap') {
+            // The whole map as it is now: sent after the pointer, and after every change.
+            if (data.battlemap_id === this.battlemapId) {
+              const { type, ...projection } = data
+              this.activeBattlemap = projection
+            }
           } else if (data.type === 'update_constellation') {
             // Only patches the constellation that is already showing.
             if (this.activeConstellation) this.activeConstellation = this.constellationState(data)
@@ -324,6 +334,7 @@ export default {
             this.activeChart = null
             this.activeVista = null
             this.activeConstellation = null
+            this.clearBattlemap()
             this.pendingLiveEdit = null
             this.clearDiceRoll()
           }
@@ -350,6 +361,10 @@ export default {
         console.error('WebSocket error:', err)
         // onclose will handle retry
       }
+    },
+    clearBattlemap() {
+      this.activeBattlemap = null
+      this.battlemapId = null
     },
     updateMedia(url, title) {
       if (!url) return
@@ -410,7 +425,7 @@ export default {
       }
       this.fetching.chart = chartId
       try {
-        const chart = await fetchChart(chartId)
+        const chart = await chartsApi.fetch(chartId)
         this.activeChart = { ...chart, ...this.takePendingLiveEdit('chart', chart.id) }
       } catch (e) {
         console.error('Failed to load chart for screen:', e)
@@ -426,7 +441,7 @@ export default {
       }
       this.fetching.vista = vistaId
       try {
-        const vista = await fetchVista(vistaId)
+        const vista = await vistasApi.fetch(vistaId)
         this.activeVista = { ...vista, ...this.takePendingLiveEdit('vista', vista.id) }
       } catch (e) {
         console.error('Failed to load vista for screen:', e)
@@ -440,6 +455,7 @@ export default {
       this.diceRoll = {
         id: ++this.diceSeq,
         formula: data.formula || '',
+        label: data.label || '',
         groups: data.groups || [],
         flatModifier: data.flatModifier || 0,
         total: data.total,
@@ -556,6 +572,14 @@ export default {
 
 /* ─── Chart area ─── */
 .screen-chart-area {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100dvh;
+}
+
+/* ─── Battlemap area ─── */
+.screen-battlemap-area {
   position: relative;
   z-index: 1;
   width: 100vw;
@@ -742,6 +766,13 @@ export default {
   padding: var(--space-10) var(--space-8) var(--space-12);
   background: linear-gradient(to top, rgba(2, 2, 10, 0.85) 0%, transparent 100%);
   pointer-events: none;
+}
+
+.dice-label {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .dice-formula {

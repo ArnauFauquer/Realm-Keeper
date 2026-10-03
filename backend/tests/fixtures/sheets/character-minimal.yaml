@@ -1,0 +1,6 @@
+name: Aria Stormwind
+id: aria
+type: character
+resources:
+  HP: 12
+  Hope: { max: 6, start: 2 }

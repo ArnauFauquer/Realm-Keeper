@@ -1,0 +1,18 @@
+{
+  "sheet": {
+    "id": "ghoul",
+    "name": "Ghoul",
+    "type": "adversary",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {},
+    "stats": [],
+    "sections": [],
+    "text": null
+  },
+  "warnings": [
+    "Unknown field 'resource'",
+    "image must be the URL of an asset library image, as copied from the library"
+  ]
+}

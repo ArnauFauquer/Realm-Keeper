@@ -46,11 +46,12 @@ function dismissToast(id) {
   if (idx !== -1) state.toasts.splice(idx, 1)
 }
 
-function pushToast(formula, result) {
+function pushToast(formula, result, label) {
   const id = ++toastSeq
   state.toasts.push({
     id,
     formula,
+    label,
     groups: result.groups,
     flatModifier: result.flatModifier,
     total: result.total,
@@ -63,9 +64,10 @@ function pushToast(formula, result) {
 /** Best-effort broadcast so the /screen display (a separate, player-facing
  * tab/device) shows the same roll - never lets a screen-broadcast failure
  * affect the local roll/toast. */
-function broadcastToScreen(formula, result) {
+function broadcastToScreen(formula, result, label) {
   post(`${apiUrl}/api/screen/dice`, {
     formula,
+    label,
     groups: result.groups,
     flatModifier: result.flatModifier,
     total: result.total
@@ -74,8 +76,9 @@ function broadcastToScreen(formula, result) {
 
 /** Parses and rolls a formula (e.g. "4d8+5"); silently no-ops on an invalid
  * formula or while another roll is still in flight. Returns the result, or
- * null if the roll didn't happen. */
-async function roll(formulaText) {
+ * null if the roll didn't happen. `label` says what the roll is for ("Bugboar
+ * · Gore") and is shown with it, here and on the screen. */
+async function roll(formulaText, { label = null } = {}) {
   const parsed = parseDiceFormula(formulaText)
   if (!parsed || state.isRolling) return null
 
@@ -93,8 +96,8 @@ async function roll(formulaText) {
     const { rollParsedFormula } = await import('@/dice/diceRoller')
     const result = await rollParsedFormula(world, parsed, themeForSlot(user.value?.diceSlot))
     const formula = formatDiceFormula(parsed)
-    pushToast(formula, result)
-    broadcastToScreen(formula, result)
+    pushToast(formula, result, label)
+    broadcastToScreen(formula, result, label)
     return result
   } finally {
     state.isRolling = false

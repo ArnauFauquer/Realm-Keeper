@@ -1,0 +1,30 @@
+{
+  "sheet": {
+    "id": "aria",
+    "name": "Aria Stormwind",
+    "type": "character",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {
+      "HP": {
+        "max": 12,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      },
+      "Hope": {
+        "max": 6,
+        "min": 0,
+        "start": 2,
+        "color": null,
+        "style": null
+      }
+    },
+    "stats": [],
+    "sections": [],
+    "text": null
+  },
+  "warnings": []
+}

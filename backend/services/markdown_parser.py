@@ -1,8 +1,20 @@
 import re
 import markdown
 import frontmatter
+from dataclasses import dataclass
 from typing import Dict, List, Tuple
 from pathlib import Path
+
+from services.fences import strip_fenced_blocks
+
+
+@dataclass
+class ParsedNote:
+    frontmatter: Dict
+    raw_body: str    # the body as written: wikilinks not yet converted
+    content: str     # the body ready to render
+    tags: List[str]
+    wikilinks: List[str]
 
 
 class MarkdownParser:
@@ -74,17 +86,19 @@ class MarkdownParser:
             
         return link
         
-    def parse_file(self, file_path: Path) -> Tuple[Dict, str, List[str], List[str]]:
+    def parse(self, file_path: Path) -> ParsedNote:
         with open(file_path, 'r', encoding='utf-8') as f:
             post = frontmatter.load(f)
-            
+
         fm = dict(post.metadata) if post.metadata else {}
-        content = post.content
-        tags = self._extract_tags(content, fm)
-        wikilinks = self._extract_wikilinks(content)
-        content = self._convert_wikilinks(content)
-        
-        return fm, content, tags, wikilinks
+        raw_body = post.content
+        tags = self._extract_tags(raw_body, fm)
+        wikilinks = self._extract_wikilinks(raw_body)
+        return ParsedNote(fm, raw_body, self._convert_wikilinks(raw_body), tags, wikilinks)
+
+    def parse_file(self, file_path: Path) -> Tuple[Dict, str, List[str], List[str]]:
+        parsed = self.parse(file_path)
+        return parsed.frontmatter, parsed.content, parsed.tags, parsed.wikilinks
         
     def _extract_tags(self, content: str, frontmatter: Dict) -> List[str]:
         tags = set()
@@ -96,7 +110,10 @@ class MarkdownParser:
             elif isinstance(fm_tags, str):
                 tags.add(fm_tags)
                 
-        inline_tags = self.tag_pattern.findall(content)
+        # Fenced blocks are code or data (a sheet's `color: #ff0000`, a mermaid
+        # `fill:#f9f`), never tags — and a stray `#private` in one must not
+        # hide the note.
+        inline_tags = self.tag_pattern.findall(strip_fenced_blocks(content))
         tags.update(inline_tags)
         
         return sorted(list(tags))

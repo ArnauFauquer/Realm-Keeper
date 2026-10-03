@@ -5,15 +5,12 @@
 // emits placeholder markup here; NoteView wires the behavior afterwards.
 import { parseDiceFormula } from './diceNotation'
 import { parseSongKey } from './audioLink'
+import { EMBEDDABLE_TYPES, embedIcon } from './docTypes'
 
-// Chart/vista ids are "<folder path>/<slug>" ("La Biblioteca Olvidada/la-entrada"),
-// see chart_service/vista_service create_* — folder names may contain spaces.
-const DOC_REF_RE = /^(chart|vista):(\S.*)$/i
-
-export const DOC_EMBED_ICONS = {
-  chart: 'mdi-map-marker-radius',
-  vista: 'mdi-image-filter-hdr'
-}
+// A document's id is "<folder path>/<slug>" ("La Biblioteca Olvidada/la-entrada")
+// and folder names may contain spaces. Which kinds a note can embed is up to
+// utils/docTypes.js.
+const DOC_REF_RE = new RegExp(String.raw`^(${EMBEDDABLE_TYPES.join('|')}):(\S.*)$`, 'i')
 
 /** Parses "chart:<id>" / "vista:<id>" into { type, id }, or null. */
 export function parseDocRef(text) {
@@ -22,7 +19,7 @@ export function parseDocRef(text) {
   return { type: match[1].toLowerCase(), id: match[2].replace(/^\/+|\/+$/g, '') }
 }
 
-/** The markdown to paste into a note to embed a chart/vista. */
+/** The markdown to paste into a note to embed a document. */
 export function docRefMarkdown(type, id) {
   return '`' + `${type}:${id}` + '`'
 }
@@ -72,5 +69,5 @@ export function renderInlineRef(ref, escape) {
   }
   const id = escape(ref.id)
   return `<span class="doc-embed" data-doc-embed="${ref.type}" data-doc-id="${id}">` +
-    `<span class="doc-embed-placeholder"><span class="mdi ${DOC_EMBED_ICONS[ref.type]}"></span>${ref.type}:${id}</span></span>`
+    `<span class="doc-embed-placeholder"><span class="mdi ${embedIcon(ref.type)}"></span>${ref.type}:${id}</span></span>`
 }
