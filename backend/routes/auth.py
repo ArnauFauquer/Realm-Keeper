@@ -8,6 +8,7 @@ from services.auth_service import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE,
     create_session_token,
+    dice_slot,
     is_email_allowed,
     verify_session_token,
 )
@@ -93,7 +94,9 @@ async def callback(request: Request):
 
 @router.get("/me")
 async def me(user: dict = Depends(require_auth)):
-    return user
+    # None for the fixed local user (auth disabled): not on any allowlist, so
+    # the frontend falls back to the default dice colours.
+    return {**user, "diceSlot": dice_slot(user["email"])}
 
 
 @router.post("/logout")
