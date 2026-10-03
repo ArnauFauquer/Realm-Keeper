@@ -6,9 +6,9 @@ the tools you reach for at the table: interactive maps, perspective scenes,
 a 3D dice roller, a music player, and a second screen to show things to your
 players.
 
-There is no database. Notes, charts and vistas live as files in a Git
-repository; encounters, battlemaps, characters' saved values, images and audio live in
-S3-compatible object storage.
+There is no database. Notes live as files in a Git repository; everything else
+(charts, vistas, encounters, battlemaps, characters' saved values, images and
+audio) lives in S3-compatible object storage.
 
 ## Features
 
@@ -138,9 +138,13 @@ Charts, vistas, folders, assets and tracks can all be created, renamed, moved
 and deleted from the UI.
 
 **Access control**
-- Reading notes, charts, vistas and the screen is public.
-- Writes, the music player and screen control require Google login, limited
+- Reading notes (and the sheets written in them) is public.
+- Everything else — charts, vistas, encounters, battlemaps, the asset library,
+  the music player, writing and screen control — requires Google login, limited
   to an allow-list of emails. Sessions are signed cookies, no user database.
+- A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
+  only what is on it right now: the chart or vista last sent and the images it
+  draws, nothing else.
 - Set `ENABLE_AUTH=false` to run it open as a single local user.
 
 ## How data is stored
@@ -148,22 +152,36 @@ and deleted from the UI.
 | Data                      | Where                                                      |
 | ------------------------- | ---------------------------------------------------------- |
 | Notes                     | `.md` files in the vault (a Git repository)                |
-| Charts / vistas           | `_charts/<id>/chart.json`, `_vistas/<id>/vista.json` in the vault |
+| Charts                    | `docs/charts/<folders>/<id>/chart.json` in the bucket      |
+| Vistas                    | `docs/vistas/<folders>/<id>/vista.json` in the bucket      |
 | Encounters                | `docs/encounters/<folders>/<id>/encounter.json` in the bucket |
 | Battlemaps                | `docs/battlemaps/<folders>/<id>/battlemap.json` in the bucket |
 | Characters' saved values  | `docs/characters/all/characters.json` in the bucket        |
 | Images, audio, map icons  | S3-compatible bucket (MinIO, Ceph RGW, AWS S3, …)          |
 
 The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
-seconds, and commits and pushes every edit made in the app. You can keep
-editing the same vault in Obsidian — both sides stay in sync through Git.
+seconds, and commits and pushes every edit made to a note in the app. You can
+keep editing the same vault in Obsidian — both sides stay in sync through Git.
 
-Encounters, battlemaps and characters are not in Git: they change while people play, and the
-vault is a throwaway clone that a redeploy replaces. They are JSON objects in the
-bucket, held in memory while someone is using them and written a couple of
-seconds after the last change (and when the app shuts down). Without an S3
-endpoint they go to `DOCS_LOCAL_PATH` instead, for local development. Don't
-redeploy in the middle of a session: the new pod would load the last saved copy.
+Everything else is not in Git: the vault is a throwaway clone that a redeploy
+replaces, and a map or a fight changes while people play. Those documents are
+JSON objects in the bucket, one `PUT` per save, with no lock and no commit.
+Charts and vistas are edited whole and saved with a button; encounters,
+battlemaps and characters are *live*: held in memory while someone is using them
+and written a couple of seconds after the last change (and when the app shuts
+down). Without an S3 endpoint they all go to `DOCS_LOCAL_PATH` instead, for
+local development. Don't redeploy in the middle of a session: the new pod would
+load the last saved copy.
+
+**Coming from a vault that kept charts and vistas in Git** (`_charts/` and
+`_vistas/`, how earlier versions stored them): on its first start the backend
+copies them into the bucket, once per kind. Nothing in the vault is changed or
+deleted, and a document already in the bucket is never replaced, so the copy is
+safe to repeat. Once you have checked the charts and vistas in the app, delete
+`_charts/` and `_vistas/` from the vault repository yourself. Their history in
+Git is gone from the app's point of view: to keep an undo trail for the bucket,
+turn on **bucket versioning** (`aws s3api put-bucket-versioning --bucket <bucket>
+--versioning-configuration Status=Enabled`, if your Ceph RGW or MinIO supports it).
 
 ## Quick start (Docker Compose)
 
@@ -263,7 +281,8 @@ merged since the last release. Merging that PR tags `vX.Y.Z` and builds both
 images to `ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}`.
 
 The backend runs as a single replica: the vault lives on a `ReadWriteOnce`
-volume and Git writes are serialized in-process.
+volume, Git writes are serialized in-process and live documents are held in that
+one process's memory.
 
 ## Project structure
 
@@ -272,14 +291,14 @@ Realm-Keeper/
 ├── backend/            FastAPI app
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
-│   ├── models/         Pydantic models (notes, charts, vistas)
+│   ├── models/         Pydantic models (notes, sheets, charts, vistas, encounters, battlemaps)
 │   ├── routes/         notes, sheets, encounters, battlemaps, characters, sync, charts, vistas, asset-library, player, screen, auth
 │   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/
 │       ├── views/      Home, NoteView, ScreenView
-│       ├── components/ Sidebar, modals (graph, charts, vistas, assets, player), dice
+│       ├── components/ Sidebar, document modal (charts, vistas, encounters, battlemaps), graph, assets, player, dice
 │       ├── composables/
 │       ├── dice/       three.js + cannon-es dice simulation
 │       └── api/

@@ -1,7 +1,7 @@
 """The HTTP routes of a kind of document, generated from its DocType: the list,
-create, folder, move, rename, read, save and delete routes ChartService's and
-VistaService's routers wrote by hand, and — for live documents — the commands
-that edit them (see services/sync_hub.py).
+create, folder, move, rename, read, save and delete routes, the ones that set
+its images, and — for live documents — the commands that edit them (see
+services/sync_hub.py).
 
 Every route needs a signed-in user, except reading a document, which `viewer`
 decides (a paired screen may read what is on screen).

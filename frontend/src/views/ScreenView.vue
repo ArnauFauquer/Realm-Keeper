@@ -112,8 +112,7 @@ import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
 import ConstellationScreen from '@/components/ConstellationScreen.vue'
 import BattlemapScreen from '@/components/BattlemapScreen.vue'
-import { fetchChart } from '@/api/charts'
-import { fetchVista } from '@/api/vistas'
+import { chartsApi, vistasApi } from '@/api/docs'
 import { pairScreen } from '@/api/screen'
 import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS } from '@/utils/diceNotation'
 
@@ -426,7 +425,7 @@ export default {
       }
       this.fetching.chart = chartId
       try {
-        const chart = await fetchChart(chartId)
+        const chart = await chartsApi.fetch(chartId)
         this.activeChart = { ...chart, ...this.takePendingLiveEdit('chart', chart.id) }
       } catch (e) {
         console.error('Failed to load chart for screen:', e)
@@ -442,7 +441,7 @@ export default {
       }
       this.fetching.vista = vistaId
       try {
-        const vista = await fetchVista(vistaId)
+        const vista = await vistasApi.fetch(vistaId)
         this.activeVista = { ...vista, ...this.takePendingLiveEdit('vista', vista.id) }
       } catch (e) {
         console.error('Failed to load vista for screen:', e)

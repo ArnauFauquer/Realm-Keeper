@@ -37,7 +37,7 @@
 <script setup>
 import { ref } from 'vue'
 import { charactersApi, encountersApi } from '@/api/docs'
-import { useEncountersModal } from '@/composables/useEncountersModal'
+import { useDocModal } from '@/composables/useDocModal'
 import { characterStateFromSheet, combatantsFromSheet } from '@/utils/encounter'
 
 // A sheet's button for putting it into an encounter: an adversary as one or
@@ -50,7 +50,7 @@ const props = defineProps({
 })
 
 const MAX_COUNT = 20
-const encountersModal = useEncountersModal()
+const encountersModal = useDocModal('encounter')
 
 const open = ref(false)
 const loading = ref(false)

@@ -24,7 +24,7 @@ from config.settings import settings
 from config.logging import setup_logging
 from config.cache import CacheControlMiddleware
 from config.csrf import OriginCheckMiddleware
-from services.doc_registry import hub as doc_hub
+from services.doc_registry import hub as doc_hub, import_legacy_documents
 from services.git_sync_utils import redact_credentials
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
@@ -126,6 +126,9 @@ async def lifespan(app: FastAPI):
     # has content, just possibly stale.
     if settings.REPO_URL and not (settings.VAULT_PATH / ".git").exists():
         raise RuntimeError("Vault clone failed; refusing to start with an empty vault.")
+    # Charts and vistas used to be kept in the vault: bring in any that haven't
+    # been (once; nothing in the vault is touched).
+    await asyncio.to_thread(import_legacy_documents, settings.VAULT_PATH)
     task = asyncio.create_task(_periodic_sync())
     housekeeping = asyncio.create_task(doc_hub.run_housekeeping())
     yield

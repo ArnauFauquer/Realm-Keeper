@@ -1,7 +1,8 @@
 """What one kind of document is: where it lives, its model, and the few rules
 that differ from the next kind. Everything else — folders, create, rename,
 move, delete, the HTTP routes — is written once (DocCollection,
-routes/doc_router.py) and parametrized by this."""
+routes/doc_router.py) and parametrized by this: charts, vistas, encounters and
+battlemaps are all declared in services/doc_registry.py."""
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterator, Mapping, Optional, Tuple, Type
 
@@ -33,6 +34,10 @@ class DocType:
     collections: Tuple[str, ...] = ()   # lists of {id: ...} entities commands may edit
     patchable: Tuple[str, ...] = ()     # top-level fields a command may set
     singleton: Optional[str] = None     # the id of the one document, for kinds with exactly one
+    # Where these documents lived before the document store: a directory of the
+    # vault (git), laid out as <legacy_dir>/<folders>/<slug>/<item_filename>.
+    # Copied over once, at startup (DocCollection.import_legacy).
+    legacy_dir: Optional[str] = None
 
     @property
     def reserved_names(self) -> Tuple[str, ...]:

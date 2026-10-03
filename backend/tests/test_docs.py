@@ -2,12 +2,10 @@
 its routes. Run from backend/:  python -m pytest tests/test_docs.py
 """
 import asyncio
-import io
 import json
 from pathlib import Path
 
 import pytest
-from botocore.exceptions import ClientError
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -16,8 +14,8 @@ from models.encounter import Encounter, EncounterMetadata
 from routes import sync as sync_routes
 from routes.auth import require_auth
 from routes.doc_router import make_doc_router
-from services import doc_commands, storage_service, sync_hub
-from services.doc_backend import DocBackendError, LocalDocBackend, S3DocBackend
+from services import doc_commands, sync_hub
+from services.doc_backend import DocBackendError, LocalDocBackend
 from services.doc_collection import DocCollection, DocNotFound
 from services.doc_type import DocType
 from services.sync_hub import DocHub, diff_docs
@@ -37,59 +35,6 @@ LIBRARY_IMAGE = "/api/asset-library/assets/asset-library/Maps/1a2b3c4d-orc.png"
 
 
 # ── backends ────────────────────────────────────────────────────────────────
-
-class FakeS3:
-    """Just enough of boto3's S3 client for S3DocBackend and _move_prefix."""
-
-    def __init__(self):
-        self.objects = {}
-
-    def _missing(self, op):
-        return ClientError({"Error": {"Code": "NoSuchKey", "Message": "missing"}}, op)
-
-    def get_object(self, Bucket, Key):
-        if Key not in self.objects:
-            raise self._missing("GetObject")
-        return {"Body": io.BytesIO(self.objects[Key])}
-
-    def put_object(self, Bucket, Key, Body, **_):
-        self.objects[Key] = Body
-
-    def head_object(self, Bucket, Key):
-        if Key not in self.objects:
-            raise ClientError({"Error": {"Code": "404", "Message": "x"}}, "HeadObject")
-
-    def list_objects_v2(self, Bucket, Prefix="", MaxKeys=1000):
-        keys = sorted(k for k in self.objects if k.startswith(Prefix))[:MaxKeys]
-        return {"Contents": [{"Key": k, "Size": len(self.objects[k])} for k in keys]}
-
-    def get_paginator(self, name):
-        fake = self
-
-        class Paginator:
-            def paginate(self, Bucket, Prefix=""):
-                yield fake.list_objects_v2(Bucket, Prefix)
-        return Paginator()
-
-    def copy_object(self, Bucket, CopySource, Key):
-        self.objects[Key] = self.objects[CopySource["Key"]]
-
-    def delete_object(self, Bucket, Key):
-        self.objects.pop(Key, None)
-
-    def delete_objects(self, Bucket, Delete):
-        for obj in Delete["Objects"]:
-            self.objects.pop(obj["Key"], None)
-
-
-@pytest.fixture(params=["local", "s3"])
-def backend(request, tmp_path, monkeypatch):
-    if request.param == "local":
-        return LocalDocBackend(tmp_path)
-    fake = FakeS3()
-    monkeypatch.setattr(storage_service, "_client", lambda: fake)
-    return S3DocBackend()
-
 
 def test_backend_round_trip(backend):
     assert backend.get("docs/a/x.json") is None
@@ -155,12 +100,15 @@ def test_create_names_a_document_by_its_slug_and_keeps_it_unique(collection):
     assert collection.get("nothing") is None
 
 
-def test_create_needs_a_name_and_refuses_reserved_ones(collection):
+def test_create_needs_a_name_and_never_names_a_document_like_a_route(collection):
     with pytest.raises(ValueError):
         collection.create("   ")
-    for reserved in ("Combatants", "Folders", "Order"):
-        with pytest.raises(ValueError):
-            collection.create(reserved)
+    # Called what a route is called, a document gets another slug rather than being refused.
+    assert [collection.create(name).id for name in ("Combatants", "Folders", "Order")] == [
+        "combatants-2", "folders-2", "order-2",
+    ]
+    with pytest.raises(ValueError):
+        collection.create("Assets")  # at the top level, a fixed route of every kind
     with pytest.raises(ValueError):
         collection.create("x", folder_path="assets")
 
@@ -620,7 +568,7 @@ def test_mistakes_get_the_right_status(api):
     assert api.post("/api/encounters/nothing/combatants", json={"items": [{"name": "x"}]}).status_code == 404
     assert api.post("/api/encounters/fight/combatants", json={"items": [{"name": "x", "type": "monster"}]}).status_code == 400
     assert api.post("/api/encounters/fight/combatants/orc/adjust", json={"resource": "HP", "by": 99999}).status_code == 422
-    assert api.post("/api/encounters", json={"name": "Combatants"}).status_code == 400
+    assert api.post("/api/encounters", json={"name": "Assets"}).status_code == 400
 
 
 def test_a_character_cannot_be_in_an_encounter_twice_nor_carry_counters(api):

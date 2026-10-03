@@ -8,7 +8,7 @@ const { encountersApi, charactersApi, openModal } = vi.hoisted(() => ({
   openModal: vi.fn()
 }))
 vi.mock('@/api/docs', () => ({ encountersApi, charactersApi }))
-vi.mock('@/composables/useEncountersModal', () => ({ useEncountersModal: () => ({ open: openModal }) }))
+vi.mock('@/composables/useDocModal', () => ({ useDocModal: () => ({ open: openModal }) }))
 
 const AddToEncounter = (await import('@/components/AddToEncounter.vue')).default
 

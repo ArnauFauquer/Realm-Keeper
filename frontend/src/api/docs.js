@@ -31,6 +31,10 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
     fetchTree: (path = '') => client.get(base, { params: { path } }).then(data),
     fetchAll: () => client.get(`${base}/all`).then((res) => res.data[itemsKey]),
     fetch: (id) => client.get(docUrl(id)).then(data),
+    // A document edited whole (charts, vistas): the new fields replace the stored ones.
+    save: (id, fields) => client.put(docUrl(id), fields).then(data),
+    // Sets its picture to a library image, through the route that checks it: setAsset(id, 'image', url).
+    setAsset: (id, route, url) => client.post(`${docUrl(id)}/${route}`, { url }).then(data),
     create: (name, description, folderPath = '') =>
       client.post(base, { name, description, folder_path: folderPath }).then(data),
     remove: (id) => client.delete(docUrl(id)).then(data),
@@ -57,6 +61,13 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
   }
 }
 
+export const chartsApi = createDocApi('charts')
+export const vistasApi = createDocApi('vistas')
 export const encountersApi = createDocApi('encounters')
 export const charactersApi = createDocApi('characters', { singleton: true })
 export const battlemapsApi = createDocApi('battlemaps')
+
+const apis = { chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi }
+
+/** The client of a kind of document (utils/docTypes.js). */
+export const docApi = (type) => apis[type]

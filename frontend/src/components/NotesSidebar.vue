@@ -274,10 +274,7 @@ import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
-import { useChartsModal } from '@/composables/useChartsModal'
-import { useVistasModal } from '@/composables/useVistasModal'
-import { useEncountersModal } from '@/composables/useEncountersModal'
-import { useBattlemapsModal } from '@/composables/useBattlemapsModal'
+import { useDocModal } from '@/composables/useDocModal'
 import { useAssetLibraryModal } from '@/composables/useAssetLibraryModal'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
@@ -302,10 +299,10 @@ async function copyScreenLink() {
   if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
-const { open: openCharts } = useChartsModal()
-const { open: openVistas } = useVistasModal()
-const { open: openEncounters } = useEncountersModal()
-const { open: openBattlemaps } = useBattlemapsModal()
+const { open: openCharts } = useDocModal('chart')
+const { open: openVistas } = useDocModal('vista')
+const { open: openEncounters } = useDocModal('encounter')
+const { open: openBattlemaps } = useDocModal('battlemap')
 const { isOpen: isAssetLibraryOpen, open: openAssetLibrary, close: closeAssetLibrary } = useAssetLibraryModal()
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
