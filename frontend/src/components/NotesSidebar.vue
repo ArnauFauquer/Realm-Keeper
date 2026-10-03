@@ -45,6 +45,10 @@
             <span class="mdi mdi-folder-multiple-image" aria-hidden="true"></span>
             <span>Assets</span>
           </button>
+          <button class="tool-btn" @click="openEncounters">
+            <span class="mdi mdi-sword-cross" aria-hidden="true"></span>
+            <span>Encounters</span>
+          </button>
         </div>
       </nav>
 
@@ -211,6 +215,7 @@
     />
     <ChartsModal :notes="notes" />
     <VistasModal />
+    <EncountersModal />
     <AssetLibraryModal :is-open="isAssetLibraryOpen" @close="closeAssetLibrary" />
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
@@ -257,6 +262,7 @@ import GraphModal from './GraphModal.vue'
 import PlayerModal from './PlayerModal.vue'
 import ChartsModal from './ChartsModal.vue'
 import VistasModal from './VistasModal.vue'
+import EncountersModal from './EncountersModal.vue'
 import AssetLibraryModal from './AssetLibraryModal.vue'
 import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
@@ -264,6 +270,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useChartsModal } from '@/composables/useChartsModal'
 import { useVistasModal } from '@/composables/useVistasModal'
+import { useEncountersModal } from '@/composables/useEncountersModal'
 import { useAssetLibraryModal } from '@/composables/useAssetLibraryModal'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
@@ -290,6 +297,7 @@ async function copyScreenLink() {
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const { open: openCharts } = useChartsModal()
 const { open: openVistas } = useVistasModal()
+const { open: openEncounters } = useEncountersModal()
 const { isOpen: isAssetLibraryOpen, open: openAssetLibrary, close: closeAssetLibrary } = useAssetLibraryModal()
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
@@ -541,7 +549,8 @@ onBeforeUnmount(() => {
 
 .tool-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* As many tools as fit a row, however many there are. */
+  grid-template-columns: repeat(auto-fit, minmax(3.75rem, 1fr));
   gap: var(--space-1);
 }
 

@@ -27,6 +27,9 @@ dist/
 # Local vault runtime data (synced from REPO_URL on startup)
 backend/vault/
 
+# Local JSON documents when no S3 endpoint is configured
+backend/docs-data/
+
 # Environment
 .env
 .env.local

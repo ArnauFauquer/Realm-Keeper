@@ -30,7 +30,7 @@ ALLOWED_IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPES)
 # Top-level prefixes used by other features sharing this bucket — never
 # real albums, so list_albums() must skip them and create/rename must
 # refuse to collide with them.
-RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library"}
+RESERVED_ALBUM_NAMES = {"charts", "vistas", "asset-library", "docs"}
 
 ASSET_LIBRARY_PREFIX = "asset-library/"
 # Where the app serves a library asset from; documents (charts, vistas, sheets...)

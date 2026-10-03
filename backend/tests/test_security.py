@@ -3,34 +3,21 @@
 """
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
-_tmp = Path(tempfile.mkdtemp())
-os.environ.update({
-    "VAULT_PATH": str(_tmp / "vault"),
-    "LOG_DIR": str(_tmp / "logs"),
-    "ENABLE_AUTH": "true",
-    "ALLOWED_EMAILS": "gm@example.com",
-    "SESSION_SECRET_KEY": "test-secret",
-    "NOTE_TAG_IGNORE": "draft",
-    "FRONTEND_URL": "https://app.example.com",
-    "CORS_ALLOWED_ORIGINS": "https://app.example.com",
-    "REPO_URL": "",
-})
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-from fastapi.testclient import TestClient  # noqa: E402
-
-from config.settings import settings  # noqa: E402
-from main import app  # noqa: E402
-from services import storage_service  # noqa: E402
-from services.auth_service import (  # noqa: E402
+from config.settings import settings
+from main import app
+from services import storage_service
+from services.auth_service import (
     SCREEN_COOKIE_NAME, SESSION_COOKIE_NAME, create_screen_key, create_session_token,
 )
-from services.git_sync_utils import GitCommitError, redact_credentials  # noqa: E402
+from services.git_sync_utils import GitCommitError, redact_credentials
+
+# The throwaway folder tests/conftest.py pointed the vault, logs and documents into.
+_tmp = Path(settings.VAULT_PATH).parent
 
 
 @pytest.fixture(scope="module")

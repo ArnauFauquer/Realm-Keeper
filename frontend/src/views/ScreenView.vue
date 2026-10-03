@@ -102,7 +102,7 @@
 </template>
 
 <script>
-import { apiUrl } from '@/config/env'
+import { socketUrl } from '@/utils/socketUrl'
 import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
 import ConstellationScreen from '@/components/ConstellationScreen.vue'
@@ -248,27 +248,7 @@ export default {
     connectWebSocket() {
       this.closeWebSocket()
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-      
-      // Improve host detection:
-      // 1. Use the host from VITE_API_URL if it's set
-      // 2. Otherwise, use the current window host (assuming backend is on same host/port, or proxied)
-      let host = window.location.host
-      if (apiUrl) {
-        // Strip protocol
-        const apiHost = apiUrl.replace(/^http(s)?:\/\//, '')
-        
-        // If VITE_API_URL is just 'localhost:8000' but we are accessing via IP, 
-        // we should try to use the current hostname but with the same port.
-        if (apiHost.startsWith('localhost:') && window.location.hostname !== 'localhost') {
-          const port = apiHost.split(':')[1] || '8000'
-          host = `${window.location.hostname}:${port}`
-        } else {
-          host = apiHost
-        }
-      }
-      
-      const wsUrl = `${protocol}//${host}/ws/screen`
+      const wsUrl = socketUrl('/ws/screen')
 
       console.log('Connecting to screen WebSocket:', wsUrl)
       this.ws = new WebSocket(wsUrl)

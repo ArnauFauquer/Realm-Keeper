@@ -40,7 +40,7 @@
         <span>{{ live ? 'Live' : 'Go live' }}</span>
       </button>
       <button
-        v-if="view === 'editor' && canEdit"
+        v-if="view === 'editor' && canEdit && showSendToScreen"
         class="rk-btn header-btn"
         :disabled="!canSendToScreen || sendingToScreen"
         title="Send to screen"
@@ -70,6 +70,8 @@ defineProps({
   showSave: { type: Boolean, default: true },
   hasUnsavedChanges: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },
+  // Documents with nothing to show on the screen hide the button altogether.
+  showSendToScreen: { type: Boolean, default: true },
   canSendToScreen: { type: Boolean, default: false },
   sendingToScreen: { type: Boolean, default: false },
   // Documents that can mirror their unsaved edits on the screen as they're made

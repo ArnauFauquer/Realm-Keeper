@@ -78,6 +78,9 @@ class CacheControlMiddleware:
                 # Derived from the notes: a note saved with a new sheet must
                 # show up in the next picker, not 60s later.
                 return "no-store, must-revalidate"
+            if path.startswith("/api/encounters") or path.startswith("/api/characters"):
+                # Changing as people play: a stale copy would undo their edits.
+                return "no-store, must-revalidate"
             if (
                 path.startswith("/api/vistas")
                 or path.startswith("/api/charts")

@@ -4,7 +4,18 @@ import { mount } from '@vue/test-utils'
 
 const roll = vi.fn()
 const push = vi.fn()
+const { characters, useCharacters } = vi.hoisted(() => {
+  const characters = {
+    status: { value: 'ready' },
+    stateOf: vi.fn(() => null),
+    ensure: vi.fn(() => Promise.resolve({})),
+    adjust: vi.fn(() => Promise.resolve({})),
+    reconcile: vi.fn(() => Promise.resolve(null))
+  }
+  return { characters, useCharacters: vi.fn(() => characters) }
+})
 vi.mock('@/composables/useDiceRoller', () => ({ useDiceRoller: () => ({ roll }) }))
+vi.mock('@/composables/useCharacters', () => ({ useCharacters }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
@@ -39,6 +50,11 @@ const mountSheet = (props = {}) => mount(SheetBlock, { props: { source: BUGBOAR,
 beforeEach(() => {
   roll.mockClear()
   push.mockClear()
+  useCharacters.mockClear()
+  characters.stateOf.mockReset().mockReturnValue(null)
+  characters.ensure.mockClear()
+  characters.adjust.mockClear()
+  characters.reconcile.mockClear()
 })
 
 describe('SheetBlock', () => {
@@ -124,5 +140,48 @@ describe('SheetBlock', () => {
     const wrapper = mountSheet({ source: 'name: A\ntext: "<img src=x onerror=alert(1)> <script>alert(1)</script>"' })
     expect(wrapper.html()).not.toContain('onerror')
     expect(wrapper.html()).not.toContain('<script')
+  })
+
+  it('puts a sheet into an encounter under its note\'s reference', () => {
+    const wrapper = mountSheet({ noteId: 'Bestiary/Bugboar' })
+    expect(wrapper.findComponent({ name: 'AddToEncounter' }).props()).toMatchObject({ noteId: 'Bestiary/Bugboar' })
+    expect(mountSheet({ canInteract: false }).find('.add-to-encounter').exists()).toBe(false)
+  })
+
+  describe('a character\'s saved counters', () => {
+    const ARIA = 'name: Aria\nid: aria\ntype: character\nresources:\n  HP: 12\n  Hope: { max: 6, start: 2 }'
+    const saved = { id: 'aria', resources: { HP: { current: 7, max: 12, min: 0 }, Hope: { current: 2, max: 6, min: 0 } } }
+
+    it('creates them the first time a signed-in reader sees the sheet', async () => {
+      mountSheet({ source: ARIA })
+      await Promise.resolve()
+      expect(characters.ensure).toHaveBeenCalledWith(expect.objectContaining({ id: 'aria', type: 'character' }))
+      expect(characters.reconcile).not.toHaveBeenCalled()
+    })
+
+    it('shows the saved values and changes them', async () => {
+      characters.stateOf.mockReturnValue(saved)
+      const wrapper = mountSheet({ source: ARIA })
+      await Promise.resolve()
+      const hp = wrapper.findAll('.resource-counter')[0]
+      expect(hp.find('.rc-value').text()).toBe('7 / 12')
+      expect(hp.findAll('.rc-pip.filled')).toHaveLength(7)
+      await hp.findAll('button')[0].trigger('click')
+      expect(characters.adjust).toHaveBeenCalledWith('aria', 'HP', -1)
+      expect(characters.ensure).not.toHaveBeenCalled()
+      expect(characters.reconcile).toHaveBeenCalled() // the sheet may have changed since
+    })
+
+    it('keeps the counters read only until the character has a saved state', () => {
+      const wrapper = mountSheet({ source: ARIA })
+      expect(wrapper.find('.rc-step').exists()).toBe(false)
+      expect(wrapper.findAll('.resource-counter')[1].findAll('.rc-pip.filled')).toHaveLength(2) // Hope starts at 2
+    })
+
+    it('is not followed by someone who is signed out, nor for an adversary', () => {
+      mountSheet({ source: ARIA, canInteract: false })
+      mountSheet()
+      expect(useCharacters).not.toHaveBeenCalled()
+    })
   })
 })

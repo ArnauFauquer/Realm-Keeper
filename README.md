@@ -6,8 +6,9 @@ the tools you reach for at the table: interactive maps, perspective scenes,
 a 3D dice roller, a music player, and a second screen to show things to your
 players.
 
-There is no database. Notes, maps and scenes live as files in a Git
-repository; images and audio live in S3-compatible object storage.
+There is no database. Notes, charts and vistas live as files in a Git
+repository; encounters, characters' saved values, images and audio live in
+S3-compatible object storage.
 
 ## Features
 
@@ -73,6 +74,21 @@ text: |                    # free markdown
 - Sheets work inside callouts too. `GET /api/sheets` lists every sheet in the
   vault (hidden notes excluded).
 
+**Encounters** — who is in a fight, live for everyone at the table. Add
+adversaries and characters from their sheets; each one gets counters (HP,
+Stress... whatever the sheet defines) with ± buttons, free-text conditions,
+notes, an optional initiative, defeated, and its sheet's actions with dice
+buttons. A round counter and *Next turn* (it skips the defeated) are there if
+you want them, and nothing assumes a rules system.
+- Add **3 Bugboars** and each has its own copy of the sheet's counters, starting
+  alike and then diverging. A **character** is added once and has no counters of
+  its own: its saved values are the same on its note and in every encounter, and
+  persist between sessions.
+- Everyone signed in can change everything, and sees every change as it is
+  made (a WebSocket announces them; there is no Save button). Lose the
+  connection and it reloads from the server on reconnecting.
+- A sheet's **Add to encounter** button puts it into one without leaving the note.
+
 **Game-master tools**
 - **Charts** — maps with pins (icon, color, size, linked note), hand-drawn
   paths with direction arrows, and text annotations.
@@ -115,11 +131,20 @@ and deleted from the UI.
 | ------------------------- | ---------------------------------------------------------- |
 | Notes                     | `.md` files in the vault (a Git repository)                |
 | Charts / vistas           | `_charts/<id>/chart.json`, `_vistas/<id>/vista.json` in the vault |
+| Encounters                | `docs/encounters/<folders>/<id>/encounter.json` in the bucket |
+| Characters' saved values  | `docs/characters/all/characters.json` in the bucket        |
 | Images, audio, map icons  | S3-compatible bucket (MinIO, Ceph RGW, AWS S3, …)          |
 
 The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
 seconds, and commits and pushes every edit made in the app. You can keep
 editing the same vault in Obsidian — both sides stay in sync through Git.
+
+Encounters and characters are not in Git: they change while people play, and the
+vault is a throwaway clone that a redeploy replaces. They are JSON objects in the
+bucket, held in memory while someone is using them and written a couple of
+seconds after the last change (and when the app shuts down). Without an S3
+endpoint they go to `DOCS_LOCAL_PATH` instead, for local development. Don't
+redeploy in the middle of a session: the new pod would load the last saved copy.
 
 ## Quick start (Docker Compose)
 
@@ -165,6 +190,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
 | `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
+| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where encounters and characters are kept when there is no `S3_ENDPOINT_URL` |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
 | `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
@@ -228,8 +254,8 @@ Realm-Keeper/
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
 │   ├── models/         Pydantic models (notes, charts, vistas)
-│   ├── routes/         notes, sheets, charts, vistas, asset-library, player, screen, auth
-│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON document store
+│   ├── routes/         notes, sheets, encounters, characters, sync, charts, vistas, asset-library, player, screen, auth
+│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/

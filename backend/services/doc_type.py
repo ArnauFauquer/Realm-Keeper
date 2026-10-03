@@ -1,0 +1,63 @@
+"""What one kind of document is: where it lives, its model, and the few rules
+that differ from the next kind. Everything else — folders, create, rename,
+move, delete, the HTTP routes — is written once (DocCollection,
+routes/doc_router.py) and parametrized by this."""
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterator, Mapping, Optional, Tuple, Type
+
+from pydantic import BaseModel
+
+from services.storage_service import ASSET_LIBRARY_URL_PREFIX
+
+
+@dataclass(frozen=True)
+class DocType:
+    kind: str                       # "encounter"
+    prefix: str                     # "encounters": where it lives, and the URL under /api/
+    item_filename: str              # "encounter.json"
+    model: Type[BaseModel]          # the whole document
+    metadata_model: Type[BaseModel]  # what a gallery needs of it
+    items_key: str                  # the list's name in a listing: {"folders": [...], "encounters": [...]}
+    # Fields a save keeps from the stored document rather than from the request
+    # (set through their own route, so they can be checked: see asset_routes).
+    locked_fields: Tuple[str, ...] = ()
+    # Paths of fields holding an image, which must be asset library images:
+    # "image_url", "tokens[].image_url".
+    image_fields: Tuple[str, ...] = ()
+    # Route name -> field: POST /<id>/image sets "image_url" to a library image.
+    asset_routes: Mapping[str, str] = field(default_factory=dict)
+    # A live document is held in memory and edited by commands that every
+    # client sees as they happen (services/sync_hub.py), instead of being
+    # loaded, edited and saved whole.
+    live: bool = False
+    collections: Tuple[str, ...] = ()   # lists of {id: ...} entities commands may edit
+    patchable: Tuple[str, ...] = ()     # top-level fields a command may set
+    singleton: Optional[str] = None     # the id of the one document, for kinds with exactly one
+
+    @property
+    def reserved_names(self) -> Tuple[str, ...]:
+        """Slugs a document can't have: they'd read as a route under its id."""
+        return (*self.collections, *self.asset_routes, "order", "adjust", "all", "move", "rename", "folders")
+
+
+def _values_at(node: Any, parts: Tuple[str, ...]) -> Iterator[Any]:
+    if not parts:
+        yield node
+        return
+    head, rest = parts[0], parts[1:]
+    if head.endswith("[]"):
+        items = node.get(head[:-2]) if isinstance(node, dict) else None
+        for item in items or []:
+            yield from _values_at(item, rest)
+    elif isinstance(node, dict):
+        yield from _values_at(node.get(head), rest)
+
+
+def validate_library_urls(doc: Dict[str, Any], doctype: DocType) -> None:
+    """Every image a document draws must be an asset library image: those are
+    what a paired screen is allowed to read (routes/screen_access.py), and
+    nothing else may be fetched on a viewer's behalf."""
+    for path in doctype.image_fields:
+        for value in _values_at(doc, tuple(path.split("."))):
+            if value and not (isinstance(value, str) and value.startswith(ASSET_LIBRARY_URL_PREFIX)):
+                raise ValueError("Images must be assets from the asset library")

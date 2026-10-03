@@ -534,6 +534,8 @@ export default {
         el.setAttribute('data-embed-mounted', '1')
         const vnode = h(SheetBlock, {
           source: decodeURIComponent(el.getAttribute('data-sheet-src')),
+          // An adversary's reference is "<note id>#<sheet id>".
+          noteId: this.note?.id || this.notePath,
           canInteract: !!this.user
         })
         vnode.appContext = this.$.appContext

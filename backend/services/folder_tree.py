@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from services.doc_paths import sanitize_folder_name, sanitize_folder_path
 from services.git_sync_utils import GitCommitError, commit_and_push
 
 FOLDER_MARKER = ".gitkeep"
@@ -16,24 +17,6 @@ FOLDER_MARKER = ".gitkeep"
 class FolderTreeError(Exception):
     """Raised when a folder-tree operation fails to save to git."""
     pass
-
-
-def sanitize_folder_path(path: str) -> str:
-    """Validate a (possibly multi-level) folder path: every segment must be
-    a safe path component. Returns "" for the root."""
-    segments = [s for s in (path or "").strip("/").split("/") if s]
-    for s in segments:
-        # Dot-prefixed covers ".", ".." and hidden names like ".git".
-        if s.startswith(".") or "\\" in s:
-            raise ValueError(f"Invalid folder path: {path!r}")
-    return "/".join(segments)
-
-
-def sanitize_folder_name(name: str) -> str:
-    name = (name or "").strip()
-    if not name or name.startswith(".") or "/" in name or "\\" in name:
-        raise ValueError(f"Invalid folder name: {name!r}")
-    return name
 
 
 class FolderTree:

@@ -88,8 +88,10 @@ const fillPercent = computed(() => {
 
 .rc-pips {
   display: flex;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   gap: 4px;
+  min-width: 0;
 }
 
 .rc-pip {
@@ -123,6 +125,8 @@ const fillPercent = computed(() => {
 }
 
 .rc-value {
+  flex: none;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text-primary);
