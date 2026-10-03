@@ -16,6 +16,7 @@
       @click="onStageClick"
       @pointermove="onPointerMove"
       @pointerup="onPointerUp"
+      @pointercancel="onPointerUp"
       @pointerleave="onPointerUp"
     >
       <!-- Fixed-aspect stage, letterboxed within the viewport so a scene lines
@@ -412,7 +413,10 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
 
-const orderedAssets = computed(() => [...props.vista.assets].sort((a, b) => a.y - b.y))
+// Depth is handled by z-index (see assetStyle), so the DOM order must stay
+// stable: re-sorting nodes while one is being dragged makes the browser drop
+// the touch pointer's implicit capture and the drag dies mid-gesture.
+const orderedAssets = computed(() => props.vista.assets)
 
 const vanishingPointStyle = computed(() => ({
   left: `${props.vista.vanishing_point?.x ?? 50}%`,
@@ -736,6 +740,12 @@ function resetAsset(asset) {
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* Without this a finger drag is taken by the browser as a native pan/scroll
+   (pointercancel), so assets and handles can't be dragged on touch screens. */
+.vista-canvas.editable .stage-viewport {
+  touch-action: none;
 }
 
 .stage-viewport.mode-asset {
