@@ -67,3 +67,14 @@ def verify_screen_key(token: str) -> bool:
 
 def is_email_allowed(email: str) -> bool:
     return bool(email) and email.strip().lower() in settings.ALLOWED_EMAILS
+
+
+def dice_slot(email: str) -> Optional[int]:
+    """Position of this email in ALLOWED_EMAILS, which the frontend maps to a
+    dice colour (dice/diceTheme.js). Derived rather than stored — there is no
+    database — so a player keeps their colour across sessions and devices, but
+    reordering the list reshuffles everyone's colours."""
+    try:
+        return settings.ALLOWED_EMAILS.index(email.strip().lower())
+    except ValueError:
+        return None

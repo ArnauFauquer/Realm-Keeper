@@ -125,7 +125,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
-| `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in                          |
+| `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
 | `SESSION_SECRET_KEY`    | random per start         | Signs session cookies — set it in production                      |
 | `SESSION_COOKIE_SECURE` | `false`                  | `true` when served over HTTPS                                     |
 | `FRONTEND_URL`          | `http://localhost:5173`  | Where to redirect after login                                     |

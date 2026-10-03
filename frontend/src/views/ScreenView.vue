@@ -419,7 +419,7 @@ export default {
         this.diceRoll = null
         this.diceClearTimer = null
       }, 15000)
-      this.$nextTick(() => this.playDiceReplay(data.groups || []))
+      this.$nextTick(() => this.playDiceReplay(data.groups || [], data.diceSlot))
     },
     clearDiceRoll() {
       if (this.diceClearTimer) {
@@ -429,13 +429,13 @@ export default {
       this.diceRoll = null
       this.teardownDiceWorld()
     },
-    async playDiceReplay(groups) {
+    async playDiceReplay(groups, diceSlot) {
       const canvas = this.$refs.diceCanvas
       if (!canvas) return
 
       this.teardownDiceWorld()
 
-      const [{ createDiceWorld }, { replayGroups }, { DEFAULT_DICE_THEME }] = await Promise.all([
+      const [{ createDiceWorld }, { replayGroups }, { themeForSlot }] = await Promise.all([
         import('@/dice/diceWorld'),
         import('@/dice/diceRoller'),
         import('@/dice/diceTheme')
@@ -449,7 +449,7 @@ export default {
       this.diceWorld = world
       const rect = canvas.getBoundingClientRect()
       world.resize(rect.width || window.innerWidth, rect.height || window.innerHeight)
-      await replayGroups(world, groups, DEFAULT_DICE_THEME)
+      await replayGroups(world, groups, themeForSlot(diceSlot))
     },
     teardownDiceWorld() {
       if (this.diceWorld) {

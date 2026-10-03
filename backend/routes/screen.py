@@ -9,7 +9,9 @@ from models.vista import VanishingPoint, VistaAsset
 from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from routes.auth import require_auth
 from routes.screen_access import displayed_item, websocket_allowed
-from services.auth_service import SCREEN_COOKIE_NAME, SCREEN_KEY_MAX_AGE, create_screen_key, verify_screen_key
+from services.auth_service import (
+    SCREEN_COOKIE_NAME, SCREEN_KEY_MAX_AGE, create_screen_key, dice_slot, verify_screen_key,
+)
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["screen"])
@@ -163,13 +165,16 @@ async def display_dice(data: dict, user: dict = Depends(require_auth)):
     """
     Broadcasts a dice roll result to all connected screens.
     Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
+    The roller's dice colour comes from the session, not the payload, so one
+    player can't have their roll shown in another's colour.
     """
     await manager.broadcast({
         "type": "dice_roll",
         "formula": data.get("formula", ""),
         "groups": data.get("groups", []),
         "flatModifier": data.get("flatModifier", 0),
-        "total": data.get("total", 0)
+        "total": data.get("total", 0),
+        "diceSlot": dice_slot(user["email"])
     })
     return {"status": "success"}
 
