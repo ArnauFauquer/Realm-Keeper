@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.79](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.78...v0.1.79) (2026-10-03)
+
+
+### Features
+
+* **dice:** give each signed-in player their own dice colour ([#18](https://github.com/ArnauFauquer/Realm-Keeper/issues/18)) ([d7a26bb](https://github.com/ArnauFauquer/Realm-Keeper/commit/d7a26bbc12a857764184fcc9a17f12d8988751d6))
+* **screen:** mirror chart and vista edits on the screen live ([#17](https://github.com/ArnauFauquer/Realm-Keeper/issues/17)) ([4a6e903](https://github.com/ArnauFauquer/Realm-Keeper/commit/4a6e90312c5525f77c6f324130063072f41c5850))
+
 ## [0.1.78](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.77...v0.1.78) (2026-10-02)
 
 
