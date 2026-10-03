@@ -2,8 +2,8 @@
   <div v-if="isOpen" class="rk-scrim" @click.self="closeModal">
     <div class="rk-dialog graph-modal-content" role="dialog" aria-modal="true" aria-labelledby="graph-modal-title">
       <div class="rk-dialog__header">
-        <h2 id="graph-modal-title" class="rk-dialog__title"><span class="mdi mdi-graph-outline"></span> Knowledge Graph</h2>
-        <button class="rk-icon-btn" aria-label="Close graph" @click="closeModal">
+        <h2 id="graph-modal-title" class="rk-dialog__title"><span class="mdi mdi-graph-outline"></span> Constellation</h2>
+        <button class="rk-icon-btn" aria-label="Close constellation" @click="closeModal">
           <span class="mdi mdi-close"></span>
         </button>
       </div>
@@ -11,7 +11,7 @@
         <div class="graph-view">
     <div v-if="loading" class="graph-state" role="status">
       <span class="rk-spinner rk-spinner--lg"></span>
-      <p>Loading graph...</p>
+      <p>Loading constellation...</p>
     </div>
 
     <div v-else-if="error" class="graph-state">
@@ -29,14 +29,14 @@
 
     <div v-else class="graph-container">
       <canvas ref="starCanvas" class="star-canvas"></canvas>
-      <canvas ref="graphCanvas" class="graph-canvas" role="img" aria-label="Knowledge graph"></canvas>
+      <canvas ref="graphCanvas" class="graph-canvas" role="img" aria-label="Constellation of notes"></canvas>
 
       <!-- Mobile toggle button -->
       <button
         class="graph-info-toggle"
         :class="{ 'is-open': showGraphInfo }"
         @click="showGraphInfo = !showGraphInfo"
-        aria-label="Toggle graph info"
+        aria-label="Toggle constellation info"
       >
         <span class="mdi mdi-information-outline"></span>
       </button>
@@ -66,8 +66,8 @@
         class="graph-settings-toggle"
         :class="{ 'is-open': showForceSettings }"
         @click="showForceSettings = !showForceSettings"
-        title="Graph Settings"
-        aria-label="Toggle graph settings"
+        title="Constellation Settings"
+        aria-label="Toggle constellation settings"
       >
         <span class="mdi mdi-cog"></span>
       </button>

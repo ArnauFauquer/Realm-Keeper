@@ -1,5 +1,5 @@
 /**
- * Canvas 2D renderer for the full "constellation" knowledge graph.
+ * Canvas 2D renderer for the full Constellation view (the note/link knowledge graph).
  *
  * The graph used to be drawn as ~2,400 SVG elements, and every simulation tick
  * rewrote the attributes of ~1,350 of them. Here the whole scene is painted

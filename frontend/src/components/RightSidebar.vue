@@ -2,14 +2,14 @@
   <aside class="right-sidebar">
     <div class="sidebar-section mini-graph-section">
       <div class="section-header">
-        <h3 class="rk-overline">Interactive Graph</h3>
-        <button class="rk-btn rk-btn--ghost rk-btn--sm full-graph-link" aria-label="Open full graph" title="Open full graph" @click="openGraphModal">
-          <span class="full-graph-label">Full graph</span>
+        <h3 class="rk-overline">Constellation</h3>
+        <button class="rk-btn rk-btn--ghost rk-btn--sm full-graph-link" aria-label="Open full constellation" title="Open full constellation" @click="openGraphModal">
+          <span class="full-graph-label">Full constellation</span>
           <span class="mdi mdi-arrow-expand"></span>
         </button>
       </div>
       <div class="mini-graph-container" ref="graphContainer">
-        <div v-if="loading" class="graph-state" aria-busy="true"><span class="rk-spinner" role="status" aria-label="Loading graph"></span></div>
+        <div v-if="loading" class="graph-state" aria-busy="true"><span class="rk-spinner" role="status" aria-label="Loading constellation"></span></div>
         <div v-else-if="error" class="graph-state graph-error"><span class="mdi mdi-graph-outline"></span><span>{{ error }}</span></div>
         <template v-else>
           <canvas ref="starCanvas" class="star-canvas"></canvas>
@@ -210,7 +210,7 @@ export default {
           this.initGraph()
         })
       } catch (err) {
-        this.error = "Could not load graph"
+        this.error = "Could not load constellation"
         this.loading = false
       }
     },

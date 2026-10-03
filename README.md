@@ -18,7 +18,7 @@ repository; images and audio live in S3-compatible object storage.
   `[[Note|custom text]]`), frontmatter, tags and callouts.
 - Mermaid diagrams in fenced ` ```mermaid ` blocks.
 - Full-text search, tag filtering and a folder tree sidebar.
-- Knowledge graph of every note and link (D3 force layout).
+- Constellation: an interactive map of every note and link (D3 force layout on canvas).
 - In-browser note editing, committed and pushed back to the vault's Git repo.
 - Notes tagged with `NOTE_TAG_IGNORE` (e.g. `draft`) are hidden from the app.
 
