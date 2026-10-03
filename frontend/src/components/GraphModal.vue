@@ -29,7 +29,7 @@
 
     <div v-else class="graph-container">
       <canvas ref="starCanvas" class="star-canvas"></canvas>
-      <svg ref="svg" class="graph-svg"></svg>
+      <canvas ref="graphCanvas" class="graph-canvas" role="img" aria-label="Knowledge graph"></canvas>
 
       <!-- Mobile toggle button -->
       <button
@@ -107,10 +107,16 @@
 
 <script>
 import * as d3 from 'd3'
+import { markRaw } from 'vue'
 import { getCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
-import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
+import { drawStarfield, computeDegrees } from '@/composables/useConstellationGraph'
+import { createConstellationCanvas } from '@/composables/constellationCanvas'
+
+// Ticks run synchronously before the first paint so the graph appears almost
+// settled instead of visibly exploding outwards.
+const WARMUP_TICKS = 120
 
 export default {
   name: 'GraphModal',
@@ -127,16 +133,9 @@ export default {
       links: [],
       loading: true,
       error: null,
-      simulation: null,
-      svg: null,
-      g: null,
-      zoom: null,
       showTypeStats: false,
       showGraphInfo: false,
       highlightedType: null,
-      linkSelection: null,
-      nodeSelection: null,
-      zoomTimeout: null,
       showForceSettings: false,
       forceSettings: {
         linkDistance: 60,
@@ -148,7 +147,7 @@ export default {
     typeStatistics() {
       const stats = {}
       this.nodes.forEach(node => {
-        const type = node.type || null
+        const type = node.type || ''
         stats[type] = (stats[type] || 0) + 1
       })
       return Object.fromEntries(
@@ -167,11 +166,14 @@ export default {
           })
         }
       } else {
-        if (this.simulation) {
-          this.simulation.stop()
-        }
+        this.teardownGraph()
       }
     }
+  },
+  created() {
+    // Deliberately not in data(): the simulation mutates node positions on
+    // every tick and Vue would wrap all of that in reactive proxies.
+    this.graph = null
   },
   mounted() {
     if (this.isOpen) {
@@ -179,12 +181,7 @@ export default {
     }
   },
   beforeUnmount() {
-    if (this.simulation) {
-      this.simulation.stop()
-    }
-    if (this.zoomTimeout) {
-      clearTimeout(this.zoomTimeout)
-    }
+    this.teardownGraph()
   },
   methods: {
     async fetchGraphData() {
@@ -201,8 +198,9 @@ export default {
           throw new Error("Invalid graph data format returned from API")
         }
 
-        this.nodes = data.nodes.map(node => ({ ...node }))
-        this.links = data.links.map(link => ({ ...link }))
+        // markRaw: d3 owns these objects and writes x/y into them every tick.
+        this.nodes = markRaw(data.nodes.map(node => ({ ...node })))
+        this.links = markRaw(data.links.map(link => ({ ...link })))
         this.loading = false
         
         this.$nextTick(() => {
@@ -215,41 +213,21 @@ export default {
     },
     
     initGraph() {
-      const container = this.$refs.svg
-      if (!container) return
-      
-      d3.select(container).selectAll('*').remove()
-      
-      const width = container.clientWidth
-      const height = container.clientHeight
-      
-      this.svg = d3.select(container)
-        .attr('width', width)
-        .attr('height', height)
+      const canvas = this.$refs.graphCanvas
+      if (!canvas) return
 
-      // ── Starfield on canvas (drawn once, zero repaint cost) ───────────
+      this.teardownGraph()
+
+      const width = canvas.clientWidth
+      const height = canvas.clientHeight
+
+      // ── Starfield on its own canvas (drawn once, zero repaint cost) ───
       drawStarfield(this.$refs.starCanvas, width, height, {
         density: 6000,
         sizeRanges: [[0.3, 0.8], [0.8, 1.5], [1.5, 2.4]],
         opacityRange: [0.15, 0.55]
       })
 
-
-      const debouncedZoom = (event) => {
-        this.g.attr('transform', event.transform)
-      }
-      
-      this.zoom = d3.zoom()
-        .scaleExtent([0.05, 10])
-        .on('zoom', (event) => {
-          clearTimeout(this.zoomTimeout)
-          this.zoomTimeout = setTimeout(() => debouncedZoom(event), 8)
-        })
-      
-      this.svg.call(this.zoom)
-      
-      this.g = this.svg.append('g')
-      
       // ── Degree calculation ─────────────────────────────────────────────
       const { degrees, maxDegree } = computeDegrees(this.nodes, this.links)
 
@@ -260,8 +238,10 @@ export default {
         node.isHub = node.degree >= maxDegree * 0.4
         node.size = node.radius
       })
-      
-      this.simulation = d3.forceSimulation(this.nodes)
+
+      const isFirstLayout = this.nodes.some(node => node.x === undefined)
+
+      const simulation = d3.forceSimulation(this.nodes)
         .force('link', d3.forceLink(this.links)
           .id(d => d.id)
           .distance(this.forceSettings.linkDistance)
@@ -269,116 +249,36 @@ export default {
         .force('charge', d3.forceManyBody().strength(this.forceSettings.chargeStrength))
         .force('center', d3.forceCenter(width / 2, height / 2))
         .force('collision', d3.forceCollide().radius(d => (d.radius || 4) + 8))
-        .alphaDecay(0.02)
+        .alphaDecay(0.03)
         .velocityDecay(0.4)
-      
-      // ── Constellation lines ────────────────────────────────────────────
-      const link = this.g.append('g')
-        .selectAll('line')
-        .data(this.links)
-        .enter()
-        .append('line')
-        .attr('class', 'graph-link')
-        .attr('stroke', 'rgba(160, 190, 255, 0.3)')
-        .attr('stroke-opacity', 1)
-        .attr('stroke-width', 0.8)
-      
-      this.linkSelection = link
+        .stop()
 
-      // ── Star nodes ────────────────────────────────────────────────────
-      const { dragStarted, dragged, dragEnded } = createDragHandlers(() => this.simulation)
+      if (isFirstLayout) {
+        simulation.tick(WARMUP_TICKS)
+      } else {
+        // Re-opened modal: keep the previous layout and only let it ease back in.
+        simulation.alpha(0.1)
+      }
 
-      const node = this.g.append('g')
-        .selectAll('g')
-        .data(this.nodes)
-        .enter()
-        .append('g')
-        .attr('class', 'graph-node')
-        .call(d3.drag()
-          .on('start', dragStarted)
-          .on('drag', dragged)
-          .on('end', dragEnded))
-      
-      this.nodeSelection = node
-      
-      const self = this
-
-      // Glow rings: 3 cheap concentric circles simulate bloom without any SVG filter
-      node.append('circle')
-        .attr('class', 'star-glow3')
-        .attr('r', d => d.radius * (d.isHub ? 6 : 5))
-        .attr('fill', d => this.getNodeColor(d))
-        .attr('opacity', d => d.isHub ? 0.06 : 0.04)
-        .style('pointer-events', 'none')
-
-      node.append('circle')
-        .attr('class', 'star-halo')
-        .attr('r', d => d.radius * (d.isHub ? 3.5 : 2.8))
-        .attr('fill', d => this.getNodeColor(d))
-        .attr('opacity', d => d.isHub ? 0.13 : 0.08)
-        .style('pointer-events', 'none')
-
-      // Core star circle (no filter — zero GPU blur cost)
-      node.append('circle')
-        .attr('class', 'star-core')
-        .attr('r', d => d.radius)
-        .attr('fill', d => this.getNodeColor(d))
-        .on('click', (event, d) => this.onNodeClick(d))
-        .on('mouseover', function(event, d) {
-          if (self.highlightedType !== null) return
-          d3.select(this).attr('r', d.radius * 1.8)
-          d3.select(this.parentNode).select('.star-halo').attr('opacity', 0.28)
-          d3.select(this.parentNode).select('text').attr('opacity', 1)
-          self.highlightConnectedLinks(d, true)
-        })
-        .on('mouseout', function(event, d) {
-          if (self.highlightedType !== null) return
-          d3.select(this).attr('r', d.radius)
-          d3.select(this.parentNode).select('.star-halo').attr('opacity', d.isHub ? 0.13 : 0.08)
-          d3.select(this.parentNode).select('text').attr('opacity', d.degree > 2 ? 0.45 : 0.15)
-          self.highlightConnectedLinks(d, false)
-        })
-
-      // 4-point diffraction spike for hub stars
-      node.filter(d => d.isHub).append('line')
-        .attr('class', 'star-spike-h')
-        .attr('x1', d => -d.radius * 3).attr('y1', 0)
-        .attr('x2', d => d.radius * 3).attr('y2', 0)
-        .attr('stroke', d => this.getNodeColor(d))
-        .attr('stroke-width', 0.8)
-        .attr('opacity', 0.5)
-        .style('pointer-events', 'none')
-
-      node.filter(d => d.isHub).append('line')
-        .attr('class', 'star-spike-v')
-        .attr('x1', 0).attr('y1', d => -d.radius * 3)
-        .attr('x2', 0).attr('y2', d => d.radius * 3)
-        .attr('stroke', d => this.getNodeColor(d))
-        .attr('stroke-width', 0.8)
-        .attr('opacity', 0.5)
-        .style('pointer-events', 'none')
-      
-      node.append('text')
-        .text(d => d.title)
-        .attr('x', d => d.radius + 6)
-        .attr('y', 4)
-        .attr('font-size', d => d.isHub ? '12px' : '10px')
-        .attr('fill', 'rgba(200, 220, 255, 0.9)')
-        .attr('font-weight', d => d.isHub ? '600' : '400')
-        .attr('opacity', d => d.degree > 2 ? 0.45 : 0.15)
-        .attr('letter-spacing', '0.03em')
-        .style('pointer-events', 'none')
-        .style('user-select', 'none')
-      
-      this.simulation.on('tick', () => {
-        link
-          .attr('x1', d => d.source.x)
-          .attr('y1', d => d.source.y)
-          .attr('x2', d => d.target.x)
-          .attr('y2', d => d.target.y)
-        
-        node.attr('transform', d => `translate(${d.x},${d.y})`)
+      const renderer = createConstellationCanvas({
+        canvas,
+        simulation,
+        nodes: this.nodes,
+        links: this.links,
+        getColor: node => this.getNodeColor(node),
+        onNodeClick: node => this.onNodeClick(node)
       })
+      renderer.setHighlightedType(this.highlightedType)
+
+      this.graph = { simulation, renderer }
+      simulation.restart()
+    },
+
+    teardownGraph() {
+      if (!this.graph) return
+      this.graph.simulation.stop()
+      this.graph.renderer.destroy()
+      this.graph = null
     },
 
     getNodeColor(node) {
@@ -398,117 +298,25 @@ export default {
       this.$emit('close')
     },
 
-    highlightConnectedLinks(hoveredNode, highlight) {
-      if (!this.linkSelection || !this.nodeSelection) return
-
-      const connectedNodeIds = new Set()
-      connectedNodeIds.add(hoveredNode.id)
-
-      this.links.forEach(link => {
-        const sourceId = getLinkEndpointId(link.source)
-        const targetId = getLinkEndpointId(link.target)
-
-        if (sourceId === hoveredNode.id) {
-          connectedNodeIds.add(targetId)
-        } else if (targetId === hoveredNode.id) {
-          connectedNodeIds.add(sourceId)
-        }
-      })
-      
-      if (highlight) {
-        this.linkSelection.each(function(d) {
-          const linkEl = d3.select(this)
-          const sourceId = getLinkEndpointId(d.source)
-          const targetId = getLinkEndpointId(d.target)
-          const isConnected = sourceId === hoveredNode.id || targetId === hoveredNode.id
-          linkEl
-            .attr('stroke', isConnected ? 'rgba(200, 225, 255, 0.85)' : 'rgba(100, 130, 200, 0.08)')
-            .attr('stroke-width', isConnected ? 1.2 : 0.5)
-        })
-        this.nodeSelection.each(function(d) {
-          const nodeEl = d3.select(this)
-          const isConnected = connectedNodeIds.has(d.id)
-          nodeEl.select('.star-core').attr('opacity', isConnected ? 1 : 0.15)
-          nodeEl.select('.star-halo').attr('opacity', isConnected ? (d.isHub ? 0.13 : 0.08) : 0.01)
-          nodeEl.select('.star-glow3').attr('opacity', isConnected ? (d.isHub ? 0.06 : 0.04) : 0.01)
-          nodeEl.select('text').attr('opacity', isConnected ? 1 : 0.03)
-        })
-      } else {
-        this.linkSelection
-          .attr('stroke', 'rgba(160, 190, 255, 0.3)')
-          .attr('stroke-width', 0.8)
-        this.nodeSelection.each(function(d) {
-          const nodeEl = d3.select(this)
-          nodeEl.select('.star-core').attr('opacity', 1)
-          nodeEl.select('.star-halo').attr('opacity', d.isHub ? 0.13 : 0.08)
-          nodeEl.select('.star-glow3').attr('opacity', d.isHub ? 0.06 : 0.04)
-          nodeEl.select('text').attr('opacity', d.degree > 2 ? 0.45 : 0.15)
-        })
-      }
-    },
-    
     toggleTypeHighlight(type) {
-      if (this.highlightedType === type) {
-        this.highlightedType = null
-      } else {
-        this.highlightedType = type
-      }
-      this.updateNodeHighlighting()
+      this.highlightedType = this.highlightedType === type ? null : type
+      this.graph?.renderer.setHighlightedType(this.highlightedType)
     },
-    
-    updateNodeHighlighting() {
-      if (!this.g) return
-      
-      const highlightedType = this.highlightedType
-      
-      this.g.selectAll('.graph-node').each(function(d) {
-        const node = d3.select(this)
-        const core = node.select('.star-core')
-        const halo = node.select('.star-halo')
-        const glow3 = node.select('.star-glow3')
-        const text = node.select('text')
-        if (highlightedType === null) {
-          core.attr('opacity', 1).attr('r', d.radius)
-          halo.attr('opacity', d.isHub ? 0.13 : 0.08)
-          glow3.attr('opacity', d.isHub ? 0.06 : 0.04)
-          text.attr('opacity', d.degree > 2 ? 0.45 : 0.15)
-        } else {
-          const nodeType = d.type || null
-          const isMatch = nodeType === highlightedType
-          core.attr('opacity', isMatch ? 1 : 0.1).attr('r', isMatch ? d.radius * 1.4 : d.radius * 0.6)
-          halo.attr('opacity', isMatch ? (d.isHub ? 0.2 : 0.15) : 0.01)
-          glow3.attr('opacity', isMatch ? (d.isHub ? 0.08 : 0.05) : 0.01)
-          text.attr('opacity', isMatch ? 1 : 0.03)
-        }
-      })
-      this.g.selectAll('.graph-link').each(function(d) {
-        const link = d3.select(this)
-        if (highlightedType === null) {
-          link.attr('stroke', 'rgba(160, 190, 255, 0.3)').attr('stroke-width', 0.8)
-        } else {
-          const sourceType = d.source.type || null
-          const targetType = d.target.type || null
-          const isConnected = sourceType === highlightedType || targetType === highlightedType
-          link
-            .attr('stroke', isConnected ? 'rgba(180, 210, 255, 0.7)' : 'rgba(100, 130, 200, 0.04)')
-            .attr('stroke-width', isConnected ? 1.1 : 0.4)
-        }
-      })
-    },
-    
+
     updateChargeStrength(value) {
       this.forceSettings.chargeStrength = -Number(value)
       this.updateForces()
     },
     
     updateForces() {
-      if (!this.simulation) return
-      
-      this.simulation.force('link').distance(this.forceSettings.linkDistance)
-      this.simulation.force('charge').strength(this.forceSettings.chargeStrength)
-      this.simulation.force('collision').radius(d => (d.radius || d.size || 4) + 8)
-      
-      this.simulation.alpha(0.3).restart()
+      const simulation = this.graph?.simulation
+      if (!simulation) return
+
+      simulation.force('link').distance(this.forceSettings.linkDistance)
+      simulation.force('charge').strength(this.forceSettings.chargeStrength)
+      simulation.force('collision').radius(d => (d.radius || d.size || 4) + 8)
+
+      simulation.alpha(0.3).restart()
     }
   }
 }
@@ -560,17 +368,22 @@ export default {
   background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
 }
 
-.graph-svg {
+.graph-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   width: 100%;
   height: 100%;
   cursor: grab;
+  /* Let d3-zoom/d3-drag handle touch gestures instead of the browser scrolling. */
+  touch-action: none;
 }
 
-.graph-svg:active {
+.graph-canvas:active {
   cursor: grabbing;
 }
 
-/* No CSS animations — all transitions handled by D3 for perf */
+/* No CSS animations — the scene is repainted on a single canvas */
 .star-canvas {
   position: absolute;
   top: 0;
@@ -687,17 +500,6 @@ export default {
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--text-secondary);
-}
-
-.graph-node {
-  cursor: pointer;
-}
-
-.graph-node text {
-  fill: rgba(200, 220, 255, 0.9);
-  font-weight: 400;
-  font-family: var(--font-body);
-  letter-spacing: 0.04em;
 }
 
 /* ── Mobile info toggle ────────────────────────────────────────── */
