@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.80](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.79...v0.1.80) (2026-10-03)
+
+
+### Features
+
+* **graph:** faster Constellation on canvas, and show it on /screen ([#22](https://github.com/ArnauFauquer/Realm-Keeper/issues/22)) ([162bacb](https://github.com/ArnauFauquer/Realm-Keeper/commit/162bacb21372e834b203c07998b4dce2ddee3a3c))
+
+
+### Bug Fixes
+
+* **canvas:** allow dragging assets and chart annotations on touch screens ([#20](https://github.com/ArnauFauquer/Realm-Keeper/issues/20)) ([ef67652](https://github.com/ArnauFauquer/Realm-Keeper/commit/ef67652d4d91f267679af72024e7fba1a7514a36))
+
 ## [0.1.79](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.78...v0.1.79) (2026-10-03)
 
 
