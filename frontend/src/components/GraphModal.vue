@@ -138,8 +138,8 @@ export default {
       highlightedType: null,
       showForceSettings: false,
       forceSettings: {
-        linkDistance: 60,
-        chargeStrength: -400
+        linkDistance: 30,
+        chargeStrength: -200
       }
     }
   },
