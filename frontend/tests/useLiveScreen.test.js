@@ -137,4 +137,26 @@ describe('useLiveScreen', () => {
     expect(urls()).toEqual(['/api/screen/vista', '/api/screen/vista/live'])
     expect(post.mock.calls[1][1].assets[0].x).toBe(42)
   })
+
+  it('can show an item that has no id by sending its whole state', async () => {
+    const token = ref({ id: 'constellation', n: 0 })
+    const state = () => ({ view: { k: 2 }, positions: { a: [1, 2] } })
+    const { toggle, sendToScreen } = useLiveScreen('constellation', token, state, { buildShowPayload: state })
+
+    await sendToScreen()
+    expect(urls()).toEqual(['/api/screen/constellation'])
+    expect(post.mock.calls[0][1]).toEqual(state())
+
+    post.mockClear()
+    await toggle()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(urls()).toEqual(['/api/screen/constellation', '/api/screen/constellation/live'])
+    expect(post.mock.calls[1][1]).toEqual(state())
+
+    post.mockClear()
+    token.value = { id: 'constellation', n: 1 } // the renderer reports a change
+    await nextTick()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(urls()).toEqual(['/api/screen/constellation/live'])
+  })
 })

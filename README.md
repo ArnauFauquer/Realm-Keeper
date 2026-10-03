@@ -18,7 +18,7 @@ repository; images and audio live in S3-compatible object storage.
   `[[Note|custom text]]`), frontmatter, tags and callouts.
 - Mermaid diagrams in fenced ` ```mermaid ` blocks.
 - Full-text search, tag filtering and a folder tree sidebar.
-- Knowledge graph of every note and link (D3 force layout).
+- Constellation: an interactive map of every note and link (D3 force layout on canvas).
 - In-browser note editing, committed and pushed back to the vault's Git repo.
 - Notes tagged with `NOTE_TAG_IGNORE` (e.g. `draft`) are hidden from the app.
 
@@ -57,6 +57,8 @@ repository; images and audio live in S3-compatible object storage.
   WebSocket. In the chart and vista editors, **Go live** mirrors your edits on
   the screen as you make them (drag a pin, move an asset), saved or not;
   turning it off with unsaved changes puts the saved version back.
+  The Constellation works the same way: **Send to screen** shows it frozen as it
+  is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
 
 Charts, vistas, folders, assets and tracks can all be created, renamed, moved
 and deleted from the UI.

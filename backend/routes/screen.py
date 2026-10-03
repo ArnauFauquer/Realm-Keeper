@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel
-from typing import List, Dict, Optional
+from pydantic import BaseModel, Field
+from typing import List, Dict, Optional, Tuple
 import json
 from config.logging import get_logger
 from config.settings import settings
@@ -31,9 +31,9 @@ async def reject(websocket: WebSocket, code: int) -> None:
     await websocket.close(code=code)
 
 
-# Messages that patch the chart/vista already on screen with the GM's unsaved
+# Messages that patch the chart/vista/constellation already on screen with the GM's unsaved
 # edits. They're kept apart from current_state (see ConnectionManager).
-LIVE_UPDATE_TYPES = {"update_chart", "update_vista"}
+LIVE_UPDATE_TYPES = {"update_chart", "update_vista", "update_constellation"}
 
 
 class ConnectionManager:
@@ -233,6 +233,30 @@ class ChartLiveRequest(BaseModel):
     annotations: List[Annotation] = []
 
 
+# A vault has hundreds of notes; this only stops a runaway payload.
+MAX_CONSTELLATION_NODES = 5000
+
+
+class ConstellationView(BaseModel):
+    """The GM's pan/zoom (a d3 zoom transform) and the size of the canvas it
+    was made on, so a screen of another size can show the same region."""
+    x: float
+    y: float
+    k: float = Field(gt=0, le=100)
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
+
+
+class ConstellationRequest(BaseModel):
+    """Everything a screen needs to draw the constellation exactly as the GM
+    has it: the force layout runs on the GM's side only, so node positions
+    travel with it instead of each screen computing a different one."""
+    view: ConstellationView
+    positions: Dict[str, Tuple[float, float]] = Field(max_length=MAX_CONSTELLATION_NODES)
+    highlighted_type: Optional[str] = Field(None, max_length=200)
+    hover_id: Optional[str] = Field(None, max_length=1000)
+
+
 def _require_library_urls(*urls: Optional[str]) -> None:
     """Same rule as saving: a draft may only draw images from the asset
     library, since paired screens are allowed to read exactly those."""
@@ -261,4 +285,30 @@ async def update_chart_live(body: ChartLiveRequest, user: dict = Depends(require
         return {"status": "ignored"}
     _require_library_urls(body.image_url, *(p.icon_url for p in body.pins))
     await manager.broadcast({"type": "update_chart", **body.model_dump()})
+    return {"status": "success"}
+
+
+@router.post("/api/screen/constellation")
+async def display_constellation(body: ConstellationRequest, user: dict = Depends(require_auth)):
+    """
+    Shows the constellation (the note graph) on all screens, frozen as the GM
+    has it right now. Screens fetch the graph themselves from the public
+    GET /api/graph/all; this carries the layout and view on top of it. Sent
+    as the screen's content, so a screen that connects later gets it too.
+    """
+    await manager.broadcast({"type": "display_constellation", **body.model_dump()})
+    return {"status": "success"}
+
+
+@router.post("/api/screen/constellation/live")
+async def update_constellation_live(body: ConstellationRequest, user: dict = Depends(require_auth)):
+    """
+    Mirrors the GM's zoom, pan, dragged nodes and highlights on the
+    constellation on screen as they happen. Ignored unless the constellation
+    is what's being shown.
+    """
+    state = manager.current_state or {}
+    if state.get("type") != "display_constellation":
+        return {"status": "ignored"}
+    await manager.broadcast({"type": "update_constellation", **body.model_dump()})
     return {"status": "success"}

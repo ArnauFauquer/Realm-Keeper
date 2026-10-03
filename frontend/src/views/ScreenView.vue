@@ -15,6 +15,11 @@
       <VistaCanvas :vista="activeVista" :editable="false" />
     </div>
 
+    <!-- Constellation area -->
+    <div v-else-if="activeConstellation" class="screen-constellation-area">
+      <ConstellationScreen :key="constellationKey" :state="activeConstellation" />
+    </div>
+
     <!-- Media area -->
     <div v-else class="screen-media-area">
       <!-- 0. Not paired: the socket (and everything it would show) needs a
@@ -99,6 +104,7 @@
 import { apiUrl } from '@/config/env'
 import ChartCanvas from '@/components/ChartCanvas.vue'
 import VistaCanvas from '@/components/VistaCanvas.vue'
+import ConstellationScreen from '@/components/ConstellationScreen.vue'
 import { fetchChart } from '@/api/charts'
 import { fetchVista } from '@/api/vistas'
 import { pairScreen } from '@/api/screen'
@@ -106,7 +112,7 @@ import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATU
 
 export default {
   name: 'ScreenView',
-  components: { ChartCanvas, VistaCanvas },
+  components: { ChartCanvas, VistaCanvas, ConstellationScreen },
   data() {
     return {
       loading: true,
@@ -125,6 +131,10 @@ export default {
       diceWorld: null,
       activeChart: null,
       activeVista: null,
+      // The GM's constellation (layout, pan/zoom, highlights); `constellationKey`
+      // restarts the view whenever the GM sends it again.
+      activeConstellation: null,
+      constellationKey: 0,
       // Live edit that arrived while the chart/vista it belongs to was still
       // being fetched (a screen connecting mid-edit gets both back to back).
       pendingLiveEdit: null,
@@ -271,6 +281,7 @@ export default {
             this.clearDiceRoll()
             this.activeChart = null
             this.activeVista = null
+            this.activeConstellation = null
             this.updateMedia(data.url, data.title)
           } else if (data.type === 'dice_roll') {
             this.showDiceRoll(data)
@@ -279,6 +290,7 @@ export default {
             this.displayUrl = ''
             this.loading = false
             this.activeVista = null
+            this.activeConstellation = null
             this.pendingLiveEdit = null
             this.showChart(data.chart_id)
           } else if (data.type === 'display_vista') {
@@ -286,8 +298,21 @@ export default {
             this.displayUrl = ''
             this.loading = false
             this.activeChart = null
+            this.activeConstellation = null
             this.pendingLiveEdit = null
             this.showVista(data.vista_id)
+          } else if (data.type === 'display_constellation') {
+            this.clearDiceRoll()
+            this.displayUrl = ''
+            this.loading = false
+            this.activeChart = null
+            this.activeVista = null
+            this.pendingLiveEdit = null
+            this.constellationKey++
+            this.activeConstellation = this.constellationState(data)
+          } else if (data.type === 'update_constellation') {
+            // Only patches the constellation that is already showing.
+            if (this.activeConstellation) this.activeConstellation = this.constellationState(data)
           } else if (data.type === 'update_chart') {
             this.applyLiveEdit('chart', data)
           } else if (data.type === 'update_vista') {
@@ -298,6 +323,7 @@ export default {
             this.loading = false
             this.activeChart = null
             this.activeVista = null
+            this.activeConstellation = null
             this.pendingLiveEdit = null
             this.clearDiceRoll()
           }
@@ -353,6 +379,11 @@ export default {
       this.error = false
       this.displayUrl = finalUrl
       this.displayTitle = title || ''
+    },
+    // The message minus its `type`: what ConstellationScreen draws from.
+    constellationState(data) {
+      const { type, ...state } = data
+      return state
     },
     // Patches the chart/vista on screen with the GM's unsaved edits. `type`
     // and the id are only for matching; everything else is the document.
@@ -525,6 +556,14 @@ export default {
 
 /* ─── Chart area ─── */
 .screen-chart-area {
+  position: relative;
+  z-index: 1;
+  width: 100vw;
+  height: 100dvh;
+}
+
+/* ─── Constellation area ─── */
+.screen-constellation-area {
   position: relative;
   z-index: 1;
   width: 100vw;
