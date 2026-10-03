@@ -54,7 +54,9 @@ repository; images and audio live in S3-compatible object storage.
   sidebar mini-player (shuffle, previous, volume).
 - **Player screen** — open `/screen` on a TV or projector; images, charts,
   vistas and dice rolls sent from the GM's view appear there live over
-  WebSocket.
+  WebSocket. In the chart and vista editors, **Go live** mirrors your edits on
+  the screen as you make them (drag a pin, move an asset), saved or not;
+  turning it off with unsaved changes puts the saved version back.
 
 Charts, vistas, folders, assets and tracks can all be created, renamed, moved
 and deleted from the UI.

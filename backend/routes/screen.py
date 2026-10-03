@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from typing import List, Dict
+from typing import List, Dict, Optional
 import json
 from config.logging import get_logger
 from config.settings import settings
+from models.chart import Annotation, ChartPath, Pin
+from models.vista import VanishingPoint, VistaAsset
+from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from routes.auth import require_auth
-from routes.screen_access import websocket_allowed
+from routes.screen_access import displayed_item, websocket_allowed
 from services.auth_service import (
     SCREEN_COOKIE_NAME, SCREEN_KEY_MAX_AGE, create_screen_key, dice_slot, verify_screen_key,
 )
@@ -28,10 +31,19 @@ async def reject(websocket: WebSocket, code: int) -> None:
     await websocket.close(code=code)
 
 
+# Messages that patch the chart/vista already on screen with the GM's unsaved
+# edits. They're kept apart from current_state (see ConnectionManager).
+LIVE_UPDATE_TYPES = {"update_chart", "update_vista"}
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: List[WebSocket] = []
         self.current_state: dict = None
+        # The latest live edit of the chart/vista in current_state, replayed
+        # after it to screens that connect mid-edit. Dropped as soon as
+        # anything else is sent, since that replaces what's on screen.
+        self.live_draft: dict = None
 
     async def connect(self, websocket: WebSocket) -> bool:
         if len(self.active_connections) >= MAX_SCREEN_CONNECTIONS:
@@ -50,6 +62,11 @@ class ConnectionManager:
                 logger.debug(f"Sent current state to new connection: {self.current_state}")
             except Exception as e:
                 logger.error(f"Error sending initial state: {e}")
+        if self.live_draft:
+            try:
+                await websocket.send_json(self.live_draft)
+            except Exception as e:
+                logger.error(f"Error sending live draft: {e}")
         return True
 
     def disconnect(self, websocket: WebSocket):
@@ -62,8 +79,16 @@ class ConnectionManager:
         # not what's showing: keeping them out of current_state means a
         # screen that reconnects still gets the chart/vista/image, and that
         # content stays readable to paired screens (routes/screen_access.py).
-        if message.get("type") != "dice_roll":
+        #
+        # Live edits are the same kind of overlay: current_state stays the
+        # display_chart/display_vista pointer (screen_access reads it to know
+        # what a paired screen may fetch) and the draft rides beside it.
+        kind = message.get("type")
+        if kind in LIVE_UPDATE_TYPES:
+            self.live_draft = message
+        elif kind != "dice_roll":
             self.current_state = message
+            self.live_draft = None
         # DEBUG, not INFO: every payload (media URLs, dice rolls) would
         # otherwise land in the logs for the whole session.
         logger.debug(f"Broadcasting to {len(self.active_connections)} screens: {message}")
@@ -189,4 +214,51 @@ async def display_vista(data: Dict[str, str], user: dict = Depends(require_auth)
         "type": "display_vista",
         "vista_id": data.get("vista_id")
     })
+    return {"status": "success"}
+
+
+class VistaLiveRequest(BaseModel):
+    vista_id: str
+    background_url: Optional[str] = None
+    vanishing_point: VanishingPoint = VanishingPoint()
+    background_offset_y: float = 50.0
+    assets: List[VistaAsset] = []
+
+
+class ChartLiveRequest(BaseModel):
+    chart_id: str
+    image_url: Optional[str] = None
+    pins: List[Pin] = []
+    paths: List[ChartPath] = []
+    annotations: List[Annotation] = []
+
+
+def _require_library_urls(*urls: Optional[str]) -> None:
+    """Same rule as saving: a draft may only draw images from the asset
+    library, since paired screens are allowed to read exactly those."""
+    if any(url and not url.startswith(ASSET_LIBRARY_URL_PREFIX) for url in urls):
+        raise HTTPException(status_code=400, detail="Images must be assets from the asset library")
+
+
+@router.post("/api/screen/vista/live")
+async def update_vista_live(body: VistaLiveRequest, user: dict = Depends(require_auth)):
+    """
+    Mirrors the GM's unsaved edits of the vista on screen, so the table sees
+    them as they're made. Ignored unless this vista is the one being shown —
+    editing a vista never puts it on screen by itself.
+    """
+    if displayed_item("vista") != body.vista_id.strip("/"):
+        return {"status": "ignored"}
+    _require_library_urls(body.background_url, *(a.image_url for a in body.assets))
+    await manager.broadcast({"type": "update_vista", **body.model_dump()})
+    return {"status": "success"}
+
+
+@router.post("/api/screen/chart/live")
+async def update_chart_live(body: ChartLiveRequest, user: dict = Depends(require_auth)):
+    """Chart counterpart of update_vista_live."""
+    if displayed_item("chart") != body.chart_id.strip("/"):
+        return {"status": "ignored"}
+    _require_library_urls(body.image_url, *(p.icon_url for p in body.pins))
+    await manager.broadcast({"type": "update_chart", **body.model_dump()})
     return {"status": "success"}

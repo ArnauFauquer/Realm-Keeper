@@ -205,6 +205,7 @@ def screen_state(client, monkeypatch):
     monkeypatch.setattr(storage_service, "get_library_asset_stream",
                         lambda key: {"Body": _Body(), "ContentLength": 3})
     monkeypatch.setattr(screen.manager, "current_state", None)
+    monkeypatch.setattr(screen.manager, "live_draft", None)
     client.cookies.clear()
     yield screen.manager
     client.cookies.clear()
@@ -255,6 +256,75 @@ def test_dice_roll_keeps_what_is_on_screen(client, screen_state):
     client.post("/api/screen/chart", json={"chart_id": "tavern"})
     client.post("/api/screen/dice", json={"formula": "1d20", "total": 7})
     assert screen_state.current_state == {"type": "display_chart", "chart_id": "tavern"}
+
+
+LIVE_ASSET = "asset-library/props/unsaved-orc.png"
+
+
+def _gm(client):
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
+
+
+def test_live_edit_is_ignored_unless_that_item_is_on_screen(client, screen_state):
+    _gm(client)
+    body = {"vista_id": "night", "assets": []}
+    assert client.post("/api/screen/vista/live", json=body).json() == {"status": "ignored"}
+    assert screen_state.live_draft is None
+
+    client.post("/api/screen/chart", json={"chart_id": "tavern"})
+    assert client.post("/api/screen/vista/live", json=body).json() == {"status": "ignored"}
+    assert client.post("/api/screen/chart/live", json={"chart_id": "other"}).json() == {"status": "ignored"}
+    assert screen_state.live_draft is None
+
+
+def test_live_edit_rides_beside_what_is_on_screen(client, screen_state):
+    _gm(client)
+    client.post("/api/screen/vista", json={"vista_id": "night"})
+    asset = {"id": "a", "name": "Orc", "image_url": f"/api/asset-library/assets/{LIVE_ASSET}", "x": 12}
+    r = client.post("/api/screen/vista/live", json={"vista_id": "night", "assets": [asset]})
+    assert r.json() == {"status": "success"}
+
+    # The pointer stays what screen_access reads; the draft doesn't replace it.
+    assert screen_state.current_state == {"type": "display_vista", "vista_id": "night"}
+    assert screen_state.live_draft["type"] == "update_vista"
+    assert screen_state.live_draft["assets"][0]["x"] == 12
+
+    # A screen connecting mid-edit gets the pointer, then the draft.
+    with client.websocket_connect("/ws/screen") as ws:
+        assert ws.receive_json()["type"] == "display_vista"
+        assert ws.receive_json()["assets"][0]["id"] == "a"
+
+    # Sending anything else replaces the screen, and the draft goes with it.
+    client.post("/api/screen/clear")
+    assert screen_state.live_draft is None
+
+
+def test_live_edit_keeps_unsaved_images_readable_by_the_screen(client, screen_state):
+    _gm(client)
+    client.post("/api/screen/chart", json={"chart_id": "tavern"})
+    pin = {"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": f"/api/asset-library/assets/{LIVE_ASSET}"}
+    client.post("/api/screen/chart/live", json={"chart_id": "tavern", "pins": [pin]})
+    client.cookies.clear()
+
+    client.cookies.set(SCREEN_COOKIE_NAME, create_screen_key("gm@example.com"))
+    assert _asset(client, LIVE_ASSET) == 200
+    assert _asset(client, OTHER_KEY) == 401
+
+
+def test_live_edit_only_draws_library_images(client, screen_state):
+    _gm(client)
+    client.post("/api/screen/vista", json={"vista_id": "night"})
+    evil = {"id": "a", "name": "a", "image_url": "https://evil.example.org/x.svg"}
+    assert client.post("/api/screen/vista/live", json={"vista_id": "night", "assets": [evil]}).status_code == 400
+    r = client.post("/api/screen/vista/live", json={"vista_id": "night", "background_url": "https://evil.example.org/x"})
+    assert r.status_code == 400
+    assert screen_state.live_draft is None
+
+
+def test_live_edit_needs_login(client, screen_state):
+    screen_state.current_state = {"type": "display_vista", "vista_id": "night"}
+    assert client.post("/api/screen/vista/live", json={"vista_id": "night"}).status_code == 401
+    assert client.post("/api/screen/chart/live", json={"chart_id": "tavern"}).status_code == 401
 
 
 def test_dice_slot_follows_allowlist_order(client, monkeypatch):

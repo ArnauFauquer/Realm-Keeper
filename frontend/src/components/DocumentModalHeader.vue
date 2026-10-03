@@ -28,6 +28,18 @@
         <span>{{ copiedKey ? 'Copied!' : 'Copy' }}</span>
       </button>
       <button
+        v-if="view === 'editor' && canEdit && liveSupported"
+        class="rk-btn header-btn"
+        :class="{ 'rk-btn--primary': live }"
+        :disabled="!canSendToScreen"
+        :aria-pressed="live"
+        :title="live ? 'Stop mirroring edits on the screen' : 'Show your edits on the screen as you make them'"
+        @click="$emit('toggle-live')"
+      >
+        <span class="mdi mdi-broadcast"></span>
+        <span>{{ live ? 'Live' : 'Go live' }}</span>
+      </button>
+      <button
         v-if="view === 'editor' && canEdit"
         class="rk-btn header-btn"
         :disabled="!canSendToScreen || sendingToScreen"
@@ -60,12 +72,16 @@ defineProps({
   saving: { type: Boolean, default: false },
   canSendToScreen: { type: Boolean, default: false },
   sendingToScreen: { type: Boolean, default: false },
+  // Documents that can mirror their unsaved edits on the screen as they're made
+  // (charts, vistas) show a "Go live" toggle; `live` is whether it's on.
+  liveSupported: { type: Boolean, default: false },
+  live: { type: Boolean, default: false },
   // Text the editor view's Copy button puts on the clipboard (e.g. a
   // `chart:<id>` embed reference); no button when omitted.
   copyText: { type: String, default: null }
 })
 
-defineEmits(['back', 'save', 'send-to-screen', 'close'])
+defineEmits(['back', 'save', 'send-to-screen', 'toggle-live', 'close'])
 </script>
 
 <style scoped>

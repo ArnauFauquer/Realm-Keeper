@@ -125,6 +125,12 @@ export default {
       diceWorld: null,
       activeChart: null,
       activeVista: null,
+      // Live edit that arrived while the chart/vista it belongs to was still
+      // being fetched (a screen connecting mid-edit gets both back to back).
+      pendingLiveEdit: null,
+      // Id being fetched per kind, so a live edit never lands on (and then
+      // gets overwritten by) the saved version still on its way.
+      fetching: { chart: null, vista: null },
       notPaired: false,
       reconnectTimer: null,
       pairError: '',
@@ -273,19 +279,26 @@ export default {
             this.displayUrl = ''
             this.loading = false
             this.activeVista = null
+            this.pendingLiveEdit = null
             this.showChart(data.chart_id)
           } else if (data.type === 'display_vista') {
             this.clearDiceRoll()
             this.displayUrl = ''
             this.loading = false
             this.activeChart = null
+            this.pendingLiveEdit = null
             this.showVista(data.vista_id)
+          } else if (data.type === 'update_chart') {
+            this.applyLiveEdit('chart', data)
+          } else if (data.type === 'update_vista') {
+            this.applyLiveEdit('vista', data)
           } else if (data.type === 'clear_screen') {
             this.displayUrl = ''
             this.displayTitle = ''
             this.loading = false
             this.activeChart = null
             this.activeVista = null
+            this.pendingLiveEdit = null
             this.clearDiceRoll()
           }
         } catch (e) {
@@ -341,16 +354,38 @@ export default {
       this.displayUrl = finalUrl
       this.displayTitle = title || ''
     },
+    // Patches the chart/vista on screen with the GM's unsaved edits. `type`
+    // and the id are only for matching; everything else is the document.
+    applyLiveEdit(kind, data) {
+      const { type, ...edit } = data
+      const active = kind === 'chart' ? this.activeChart : this.activeVista
+      const id = edit[`${kind}_id`]
+      if (active && active.id === id && this.fetching[kind] !== id) {
+        Object.assign(active, edit)
+      } else {
+        this.pendingLiveEdit = { kind, edit }
+      }
+    },
+    takePendingLiveEdit(kind, id) {
+      const pending = this.pendingLiveEdit
+      if (pending?.kind !== kind || pending.edit[`${kind}_id`] !== id) return null
+      this.pendingLiveEdit = null
+      return pending.edit
+    },
     async showChart(chartId) {
       if (!chartId) {
         this.activeChart = null
         return
       }
+      this.fetching.chart = chartId
       try {
-        this.activeChart = await fetchChart(chartId)
+        const chart = await fetchChart(chartId)
+        this.activeChart = { ...chart, ...this.takePendingLiveEdit('chart', chart.id) }
       } catch (e) {
         console.error('Failed to load chart for screen:', e)
         this.activeChart = null
+      } finally {
+        if (this.fetching.chart === chartId) this.fetching.chart = null
       }
     },
     async showVista(vistaId) {
@@ -358,11 +393,15 @@ export default {
         this.activeVista = null
         return
       }
+      this.fetching.vista = vistaId
       try {
-        this.activeVista = await fetchVista(vistaId)
+        const vista = await fetchVista(vistaId)
+        this.activeVista = { ...vista, ...this.takePendingLiveEdit('vista', vista.id) }
       } catch (e) {
         console.error('Failed to load vista for screen:', e)
         this.activeVista = null
+      } finally {
+        if (this.fetching.vista === vistaId) this.fetching.vista = null
       }
     },
     showDiceRoll(data) {

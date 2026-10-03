@@ -11,10 +11,13 @@
         :saving="saving"
         :can-send-to-screen="!!activeVista?.background_url"
         :sending-to-screen="sendingToScreen"
+        live-supported
+        :live="live"
         :copy-text="activeVista && docRefMarkdown('vista', activeVista.id)"
         @back="backToGallery"
         @save="saveNow"
         @send-to-screen="sendToScreen"
+        @toggle-live="toggleLive(hasUnsavedChanges)"
         @close="closeModal"
       />
 
@@ -99,8 +102,7 @@ import { useAuth } from '@/composables/useAuth'
 import { useVistasModal } from '@/composables/useVistasModal'
 import { useVistas } from '@/composables/useVistas'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { useLiveScreen } from '@/composables/useLiveScreen'
 import { resolveUrl } from '@/utils/resolveUrl'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import * as vistasApi from '@/api/vistas'
@@ -121,7 +123,6 @@ const newVistaInputRef = ref(null)
 
 const activeVista = ref(null)
 const loadingVista = ref(false)
-const sendingToScreen = ref(false)
 const hasUnsavedChanges = ref(false)
 const saving = ref(false)
 
@@ -154,12 +155,25 @@ async function onMove(dragItem, destPath) {
   }
 }
 
+// What the screen needs to draw the vista as it is right now, saved or not.
+const { live, sending: sendingToScreen, sendToScreen, toggle: toggleLive, stop: stopLive } = useLiveScreen(
+  'vista', activeVista,
+  (v) => ({
+    vista_id: v.id,
+    background_url: v.background_url,
+    vanishing_point: v.vanishing_point,
+    background_offset_y: v.background_offset_y,
+    assets: v.assets
+  })
+)
+
 const { confirmDiscard } = useUnsavedChangesGuard(
   hasUnsavedChanges, 'You have unsaved changes to this vista. Discard them?'
 )
 
 function closeModal() {
   if (!confirmDiscard()) return
+  stopLive({ revert: hasUnsavedChanges.value })
   close()
   view.value = 'gallery'
   activeVista.value = null
@@ -252,6 +266,7 @@ async function openVista(vistaId) {
 
 function backToGallery() {
   if (!confirmDiscard()) return
+  stopLive({ revert: hasUnsavedChanges.value })
   view.value = 'gallery'
   activeVista.value = null
   hasUnsavedChanges.value = false
@@ -289,17 +304,6 @@ async function onSetBackground(url) {
     activeVista.value.background_url = updated.background_url
   } catch (err) {
     console.error('Failed to set background:', err)
-  }
-}
-
-async function sendToScreen() {
-  if (!activeVista.value) return
-  try {
-    await post(`${apiUrl}/api/screen/vista`, { vista_id: activeVista.value.id })
-    sendingToScreen.value = true
-    setTimeout(() => { sendingToScreen.value = false }, 2000)
-  } catch (err) {
-    console.error('Failed to send vista to screen:', err)
   }
 }
 </script>
