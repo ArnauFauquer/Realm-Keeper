@@ -110,17 +110,17 @@ def test_a_failed_first_try_is_finished_by_the_next(backend, vault, monkeypatch)
     monkeypatch.setattr(backend, "put", flaky)
     with pytest.raises(OSError):
         charts.import_legacy(vault)
-    assert not backend.exists("docs/.imported/charts")   # so it is tried again
+    assert not backend.exists("charts/.imported-from-vault")   # so it is tried again
     monkeypatch.setattr(backend, "put", put)
     charts.import_legacy(vault)
     assert sorted(m.id for m in charts.list_all()) == ["regions/north/keep", "tavern"]
-    assert backend.exists("docs/.imported/charts")
+    assert backend.exists("charts/.imported-from-vault")
 
 
 def test_without_a_vault_directory_there_is_nothing_to_do_and_nothing_to_mark(backend, tmp_path):
     charts = DocCollection(CHART, backend)
     assert charts.import_legacy(tmp_path / "empty-vault") == 0
-    assert not backend.exists("docs/.imported/charts")
+    assert not backend.exists("charts/.imported-from-vault")
 
 
 def test_kinds_that_were_never_in_the_vault_import_nothing(backend, vault):

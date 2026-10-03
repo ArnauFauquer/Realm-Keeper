@@ -151,15 +151,19 @@ and deleted from the UI.
 
 ## How data is stored
 
-| Data                      | Where                                                      |
-| ------------------------- | ---------------------------------------------------------- |
-| Notes                     | `.md` files in the vault (a Git repository)                |
-| Charts                    | `docs/charts/<folders>/<id>/chart.json` in the bucket      |
-| Vistas                    | `docs/vistas/<folders>/<id>/vista.json` in the bucket      |
-| Encounters                | `docs/encounters/<folders>/<id>/encounter.json` in the bucket |
-| Battlemaps                | `docs/battlemaps/<folders>/<id>/battlemap.json` in the bucket |
-| Characters' saved values  | `docs/characters/all/characters.json` in the bucket        |
-| Images, audio, map icons  | S3-compatible bucket (MinIO, Ceph RGW, AWS S3, …)          |
+| Data                      | Where                                                       |
+| ------------------------- | ----------------------------------------------------------- |
+| Notes                     | `.md` files in the vault (a Git repository)                 |
+| Audio (the player)        | `player/<album>/<track>` in the bucket                      |
+| Images (asset library)    | `asset-library/<folders>/<image>` in the bucket             |
+| Charts                    | `charts/<folders>/<id>/chart.json` in the bucket            |
+| Vistas                    | `vistas/<folders>/<id>/vista.json` in the bucket            |
+| Encounters                | `encounters/<folders>/<id>/encounter.json` in the bucket    |
+| Battlemaps                | `battlemaps/<folders>/<id>/battlemap.json` in the bucket    |
+| Characters' saved values  | `characters/all/characters.json` in the bucket              |
+
+The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …) with one
+top-level prefix per kind of thing, and nothing else at the top.
 
 The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
 seconds, and commits and pushes every edit made to a note in the app. You can
@@ -171,8 +175,8 @@ JSON objects in the bucket, one `PUT` per save, with no lock and no commit.
 Charts and vistas are edited whole and saved with a button; encounters,
 battlemaps and characters are *live*: held in memory while someone is using them
 and written a couple of seconds after the last change (and when the app shuts
-down). Without an S3 endpoint they all go to `DOCS_LOCAL_PATH` instead, for
-local development. Don't redeploy in the middle of a session: the new pod would
+down). Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead (the
+same prefixes, as folders), for local development. Don't redeploy in the middle of a session: the new pod would
 load the last saved copy.
 
 **Coming from a vault that kept charts and vistas in Git** (`_charts/` and
@@ -184,6 +188,30 @@ safe to repeat. Once you have checked the charts and vistas in the app, delete
 Git is gone from the app's point of view: to keep an undo trail for the bucket,
 turn on **bucket versioning** (`aws s3api put-bucket-versioning --bucket <bucket>
 --versioning-configuration Status=Enabled`, if your Ceph RGW or MinIO supports it).
+
+**Moving a bucket that has the older layout** (albums at the top level, documents
+under `docs/`, and `charts/`/`vistas/` holding images): `backend/scripts/migrate_storage_layout.py`
+does it once, for any bucket, and can then be deleted. It reads the same `S3_*`
+settings as the app and shows what it would do unless told otherwise:
+
+```bash
+cd backend
+python scripts/migrate_storage_layout.py               # dry run: what goes where, and any conflict
+python scripts/migrate_storage_layout.py --copy-only   # copy and check; the old keys stay
+python scripts/migrate_storage_layout.py --apply       # copy, check, delete the old keys
+```
+
+Nothing is overwritten and nothing is deleted before its copy is checked, so a run
+that stops halfway can be run again. The old `charts/` and `vistas/` images (from
+before the asset library) go to `asset-library/Legacy/`, and the documents that
+still name one by its old URL are pointed at the new place. `asset-library/` keeps
+its name because notes and documents refer to its images by URL.
+
+For a live deployment: run `--copy-only` while the old version is still serving
+(it keeps working, the copies sit beside the originals), deploy the new version,
+then run `--apply` to move what was written in between and remove the old keys.
+Run it against the same bucket the app uses, from a shell with its `S3_*` settings
+(for Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
 
 ## Quick start (Docker Compose)
 
@@ -229,7 +257,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
 | `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
-| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where encounters, battlemaps and characters are kept when there is no `S3_ENDPOINT_URL` |
+| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where charts, vistas, encounters, battlemaps and characters are kept when there is no `S3_ENDPOINT_URL` |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
 | `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
@@ -296,6 +324,7 @@ Realm-Keeper/
 │   ├── models/         Pydantic models (notes, sheets, charts, vistas, encounters, battlemaps)
 │   ├── routes/         notes, sheets, encounters, battlemaps, characters, sync, charts, vistas, asset-library, player, screen, auth
 │   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub)
+│   ├── scripts/        One-time tools (migrate_storage_layout.py)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/

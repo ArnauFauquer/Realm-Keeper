@@ -31,7 +31,7 @@ Two ideas shape most of the code:
    │  documents ── make_doc_router ── DocCollection        ▲ BattlemapScreen        │
    │  live documents ── DocHub.mutate ─────────────────────┘ (projection)           │
    └───────┬──────────────────────────────┬─────────────────────────────────────────┘
-           │ git pull / commit / push     │ S3 (docs/, asset-library/, albums)
+           │ git pull / commit / push     │ S3 (player/, asset-library/, charts/ ...)
            ▼                              ▼
       vault repository               bucket (MinIO, Ceph RGW, AWS S3…)
 ```
@@ -41,15 +41,31 @@ Two ideas shape most of the code:
 | Data                          | Store | Key / location                                   |
 | ----------------------------- | ----- | ------------------------------------------------ |
 | Notes (and the sheets in them)| Git   | `.md` files in the vault                         |
-| Charts                        | S3    | `docs/charts/<folders>/<id>/chart.json`          |
-| Vistas                        | S3    | `docs/vistas/<folders>/<id>/vista.json`          |
-| Encounters                    | S3    | `docs/encounters/<folders>/<id>/encounter.json`  |
-| Battlemaps                    | S3    | `docs/battlemaps/<folders>/<id>/battlemap.json`  |
-| Characters' saved values      | S3    | `docs/characters/all/characters.json` (one document) |
-| Images, audio                 | S3    | `asset-library/…`, one prefix per album          |
+| Charts                        | S3    | `charts/<folders>/<id>/chart.json`               |
+| Vistas                        | S3    | `vistas/<folders>/<id>/vista.json`               |
+| Encounters                    | S3    | `encounters/<folders>/<id>/encounter.json`       |
+| Battlemaps                    | S3    | `battlemaps/<folders>/<id>/battlemap.json`       |
+| Characters' saved values      | S3    | `characters/all/characters.json` (one document)  |
+| Audio                         | S3    | `player/<album>/<track>`                         |
+| Images                        | S3    | `asset-library/<folders>/<uuid>-<file>`          |
 
-Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead (local
-development and tests). `docs` is a reserved name among the player's albums.
+One top-level prefix per kind of thing, and nothing else at the top of the
+bucket: a kind's prefix is its `DocType.prefix` (also its URL under `/api/`),
+`player/` and `asset-library/` belong to `storage_service.py`. A track's key as the
+player and the notes see it is `<album>/<track>`: the `player/` in front is only
+where it is stored, so notes that name a song don't care where it lives. Nothing
+in a note or document names an *asset's* storage key, though: they name its URL,
+`/api/asset-library/assets/asset-library/...`, which is why that prefix keeps its
+name. A track key can only ever reach `player/` and an asset key only
+`asset-library/`; documents are reachable only through their own routes.
+
+Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead, with the
+same prefixes as folders (local development and tests).
+
+`backend/scripts/migrate_storage_layout.py` moves a bucket that has the older
+layout (albums at the top level, documents under `docs/`) to this one; see the
+README. It is a one-time tool, not something the app does or keeps compatible
+with: the app reads and writes only this layout.
 
 ## Backend
 
@@ -118,7 +134,7 @@ described next.
 the vault (`_charts/`, `_vistas/`). On startup `DocCollection.import_legacy`
 copies them into the bucket, once per kind: nothing in the vault is touched, a
 document already in the bucket is never replaced, and a marker
-(`docs/.imported/<kind>`) stops a document deleted afterwards from coming back
+(`<kind>/.imported-from-vault`) stops a document deleted afterwards from coming back
 at the next start. Without the marker (a failed first try) it simply runs again.
 
 ### Live documents
@@ -172,7 +188,7 @@ at once.
 ### Characters
 
 The saved state of every `character` sheet is one live document
-(`docs/characters/all`), keyed by sheet `id`: its current counters, shared by its
+(`characters/all`), keyed by sheet `id`: its current counters, shared by its
 note, every encounter and every map it appears in. A counter's *definition*
 (max, min, colour) is copied from the sheet when the state is created and
 brought up to date when the sheet changes (`useCharacters().reconcile`); the

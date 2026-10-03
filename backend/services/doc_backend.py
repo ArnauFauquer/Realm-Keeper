@@ -1,12 +1,12 @@
-"""Where JSON documents live: encounters, battlemaps, character state — and,
-later, charts and vistas. One small interface, two stores:
+"""Where JSON documents live: charts, vistas, encounters, battlemaps and the
+characters' state. One small interface, two stores:
 
 - S3 (the bucket the app already uses for audio and images), which survives a
   redeploy and needs no lock or commit: a write is one PUT.
 - A directory on disk, for running without object storage (local development,
   tests).
 
-Keys look like "docs/encounters/goblins/cave-ambush/encounter.json"; a prefix
+Keys look like "encounters/goblins/cave-ambush/encounter.json"; a prefix
 is a key ending in "/". Both stores treat a prefix as a directory: listing,
 deleting and moving work on everything under it.
 """

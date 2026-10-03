@@ -73,11 +73,17 @@ def test_asset_endpoint_cannot_read_other_prefixes(client):
         client.cookies.clear()
 
 
-def test_track_keys_cannot_reach_reserved_prefixes():
-    with pytest.raises(storage_service.StorageError):
-        storage_service.get_track_stream("asset-library/map.png")
-    with pytest.raises(storage_service.StorageError):
-        storage_service.delete_album("asset-library")
+def test_track_keys_cannot_reach_beyond_the_player(monkeypatch):
+    """Whatever a track key says, it names something under player/: not the
+    asset library, not a document."""
+    reached = []
+    monkeypatch.setattr(storage_service, "_get_object_stream", lambda key, range_header=None: reached.append(key))
+    storage_service.get_track_stream("asset-library/map.png")
+    storage_service.get_track_stream("charts/chart.json")
+    assert reached == ["player/asset-library/map.png", "player/charts/chart.json"]
+    for key in ("../x/y.mp3", "a/../y.mp3", "a/b/c.mp3", "chart.json", "/a.mp3"):
+        with pytest.raises(storage_service.StorageError):
+            storage_service.get_track_stream(key)
 
 
 def test_served_content_type_ignores_uploaded_metadata():

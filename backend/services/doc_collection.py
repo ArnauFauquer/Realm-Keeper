@@ -3,9 +3,10 @@ the tree, create with a unique slug, save, rename, move, delete, and the same
 for folders. Written once for charts, vistas, encounters and battlemaps.
 
 A document is a folder named by its slug that holds one JSON file:
-    docs/<prefix>/<folders...>/<slug>/<item_filename>
-Folders are just the directories above it; an empty one is kept by a ".keep"
-marker. Raises ValueError for anything the caller got wrong (DocNotFound for a
+    <prefix>/<folders...>/<slug>/<item_filename>
+where <prefix> is the kind's own top-level prefix in the bucket ("charts",
+"encounters"...). Folders are just the directories above it; an empty one is
+kept by a ".keep" marker. Raises ValueError for anything the caller got wrong (DocNotFound for a
 missing one) and lets storage errors through.
 """
 import json
@@ -25,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 FOLDER_MARKER = ".keep"
 LEGACY_FOLDER_MARKER = ".gitkeep"       # what the vault used to keep an empty folder with
-LEGACY_MARKERS = "docs/.imported/"      # one marker per kind: its vault documents were copied
+LEGACY_MARKER = ".imported-from-vault"  # in a kind's prefix: its vault documents were copied
 # "assets" and "folders" are fixed routes under every resource: a document or
 # folder at the top level with one of those names would be unreachable.
 RESERVED_TOP_SEGMENTS = {"assets", "folders"}
@@ -45,7 +46,7 @@ class DocCollection:
     def __init__(self, doctype: DocType, backend: DocBackend):
         self.doctype = doctype
         self.backend = backend
-        self.root = f"docs/{doctype.prefix}/"
+        self.root = f"{doctype.prefix}/"
 
     # ── keys ────────────────────────────────────────────────────────────
 
@@ -224,7 +225,7 @@ class DocCollection:
         root = Path(vault_path) / legacy if legacy else None
         if root is None or not root.is_dir():
             return 0
-        marker = f"{LEGACY_MARKERS}{self.doctype.prefix}"
+        marker = f"{self.root}{LEGACY_MARKER}"
         if self.backend.exists(marker):
             return 0
 
