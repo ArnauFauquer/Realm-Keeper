@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.81](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.80...v0.1.81) (2026-10-04)
+
+
+### Features
+
+* sheets, encounters, battlemaps and one document layer (charts and vistas move to S3) ([#23](https://github.com/ArnauFauquer/Realm-Keeper/issues/23)) ([a9d6c0a](https://github.com/ArnauFauquer/Realm-Keeper/commit/a9d6c0ab29e02f1445f70cc6da527bc714192d37))
+
 ## [0.1.80](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.79...v0.1.80) (2026-10-03)
 
 
