@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.82](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.81...v0.1.82) (2026-10-04)
+
+
+### Features
+
+* **characters:** one document per character, and a gallery to manage them ([#25](https://github.com/ArnauFauquer/Realm-Keeper/issues/25)) ([82b7634](https://github.com/ArnauFauquer/Realm-Keeper/commit/82b7634e3bfe25c5ed0fa9e1fce9b3659895529e))
+
 ## [0.1.81](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.80...v0.1.81) (2026-10-04)
 
 
