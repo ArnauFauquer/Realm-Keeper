@@ -48,14 +48,12 @@ import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import ChartCanvas from './ChartCanvas.vue'
 import VistaCanvas from './VistaCanvas.vue'
-import { fetchChart } from '@/api/charts'
-import { fetchVista } from '@/api/vistas'
+import { docApi } from '@/api/docs'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { resolveUrl } from '@/utils/resolveUrl'
-import { DOC_EMBED_ICONS } from '@/utils/inlineRefs'
-import { useChartsModal } from '@/composables/useChartsModal'
-import { useVistasModal } from '@/composables/useVistasModal'
+import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
+import { useDocModal } from '@/composables/useDocModal'
 
 const props = defineProps({
   type: { type: String, required: true }, // 'chart' | 'vista'
@@ -66,22 +64,14 @@ const props = defineProps({
   canInteract: { type: Boolean, default: false }
 })
 
-// Everything that differs between a chart and a vista embed.
+// What differs between a chart and a vista embed, beyond what utils/docTypes.js says.
 const TYPES = {
   chart: {
     component: ChartCanvas,
-    fetch: fetchChart,
-    modal: useChartsModal,
-    imageKey: 'image_url',
-    screen: (id) => post(`${apiUrl}/api/screen/chart`, { chart_id: id }),
     canvasProps: (doc) => ({ chart: doc, editable: false, zoomable: false })
   },
   vista: {
     component: VistaCanvas,
-    fetch: fetchVista,
-    modal: useVistasModal,
-    imageKey: 'background_url',
-    screen: (id) => post(`${apiUrl}/api/screen/vista`, { vista_id: id }),
     canvasProps: (doc) => ({ vista: doc, editable: false }),
     // VistaCanvas letterboxes every scene to a fixed 16:9 stage.
     aspectRatio: '16 / 9'
@@ -89,7 +79,14 @@ const TYPES = {
 }
 
 const router = useRouter()
-const config = computed(() => ({ ...TYPES[props.type], icon: DOC_EMBED_ICONS[props.type] }))
+const config = computed(() => ({
+  ...TYPES[props.type],
+  imageKey: DOC_TYPES[props.type].imageField,
+  icon: embedIcon(props.type),
+  fetch: docApi(props.type).fetch,
+  modal: () => useDocModal(props.type),
+  screen: (id) => post(`${apiUrl}/api/screen/${props.type}`, { [`${props.type}_id`]: id })
+}))
 const doc = ref(null)
 const loading = ref(true)
 const error = ref(null)

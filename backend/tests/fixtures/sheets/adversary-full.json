@@ -1,0 +1,83 @@
+{
+  "sheet": {
+    "id": "bugboar",
+    "name": "Bugboar",
+    "type": "adversary",
+    "subtitle": "Tier 1 · Bruiser",
+    "image": "/api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png",
+    "tags": [
+      "goblinoid",
+      "brute"
+    ],
+    "resources": {
+      "HP": {
+        "max": 6,
+        "min": 0,
+        "start": null,
+        "color": "red",
+        "style": null
+      },
+      "Stress": {
+        "max": 3,
+        "min": 0,
+        "start": 0,
+        "color": null,
+        "style": "pips"
+      }
+    },
+    "stats": [
+      {
+        "label": "Difficulty",
+        "value": 14,
+        "roll": null
+      },
+      {
+        "label": "Thresholds",
+        "value": "7 / 13",
+        "roll": null
+      },
+      {
+        "label": "Attack",
+        "value": "+2",
+        "roll": "hf+2"
+      }
+    ],
+    "sections": [
+      {
+        "title": "Actions",
+        "items": [
+          {
+            "name": "Gore",
+            "text": "Hits for `1d10+2` damage.",
+            "roll": "1d20+3",
+            "tags": [
+              "melee"
+            ],
+            "cost": "1 Fear"
+          },
+          {
+            "name": null,
+            "text": "Charge through the line.",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      },
+      {
+        "title": "Features",
+        "items": [
+          {
+            "name": "Relentless",
+            "text": "Keeps coming.",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      }
+    ],
+    "text": "A tusked brute.\n\nIt does not stop."
+  },
+  "warnings": []
+}

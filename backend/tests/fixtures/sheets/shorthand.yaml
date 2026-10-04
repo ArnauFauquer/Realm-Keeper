@@ -1,0 +1,12 @@
+name: Jabalí Gigante
+tags: wild, beast
+image: https://cdn.example.com/boar.png
+resources:
+  HP: 10
+  Rage: { max: 5, min: 1, style: bar }
+stats:
+  Speed: 30
+  Notes: { value: tough hide }
+sections:
+  - title: Traits
+    items: [Thick skin, Charge]

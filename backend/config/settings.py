@@ -27,6 +27,9 @@ class Settings:
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "")
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "realm-keeper-audio")
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    # Where JSON documents (encounters, battlemaps...) are kept when there is
+    # no S3 endpoint to keep them in. Created on first write.
+    DOCS_LOCAL_PATH: Path = Path(os.getenv("DOCS_LOCAL_PATH", "./docs-data"))
 
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
