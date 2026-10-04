@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.1...v0.2.2) (2026-10-04)
+
+
+### Features
+
+* **sheets:** tabs for long sheets, and no repeated name under the note title ([#36](https://github.com/ArnauFauquer/Realm-Keeper/issues/36)) ([5ed348f](https://github.com/ArnauFauquer/Realm-Keeper/commit/5ed348f4343bd30db3c7a5d4870c66626a69fa3d))
+
 ## [0.2.1](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.0...v0.2.1) (2026-10-04)
 
 
