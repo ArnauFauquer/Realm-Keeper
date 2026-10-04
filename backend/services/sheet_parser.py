@@ -1,4 +1,5 @@
-"""Turns the YAML of a ```sheet block into a normalized SheetSpec.
+"""Turns the YAML of a sheet (a character's or an adversary's `source`) into a
+normalized SheetSpec.
 
 frontend/src/utils/sheet.js does the same normalization for rendering; both
 are checked against the shared cases in tests/fixtures/sheets/, so a change
@@ -6,7 +7,7 @@ here needs the same change there.
 """
 import re
 import unicodedata
-from typing import Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from pydantic import ValidationError
@@ -194,9 +195,22 @@ def _sections(raw: Any) -> Tuple[List[SheetSection], dict]:
     return sections, resources
 
 
-def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
-    """The sheet a block describes, plus warnings about things that parsed
-    but are probably not what the author meant. Raises SheetParseError."""
+# What a sheet document holds outside its YAML: its name is the document's
+# (renamed from the gallery), its id is where it is stored, and its type is its
+# kind. The YAML may still carry them (a sheet pasted from somewhere else); they
+# are ignored, and the author is told so.
+DOCUMENT_FIELDS = ("id", "name", "type")
+
+
+def parse_sheet_source(
+    source: str, *, name: Optional[str] = None, sheet_id: Optional[str] = None, sheet_type: Optional[str] = None,
+) -> Tuple[SheetSpec, List[str]]:
+    """The sheet a YAML source describes, plus warnings about things that
+    parsed but are probably not what the author meant. Raises SheetParseError.
+
+    `name`, `sheet_id` and `sheet_type` are a sheet document's own (see
+    parse_sheet_doc): given, they are what the sheet is called, and an empty
+    source is an empty sheet."""
     if len(source) > MAX_SOURCE_LENGTH:
         raise SheetParseError(f"A sheet can't be longer than {MAX_SOURCE_LENGTH // 1000} KB")
     try:
@@ -204,10 +218,20 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
     except yaml.YAMLError as e:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")
+    in_document = name is not None
+    if data is None and in_document:
+        data = {}
     if not isinstance(data, dict):
-        raise SheetParseError("A sheet must be a YAML mapping (name: ..., sections: ...)")
+        raise SheetParseError("A sheet must be a YAML mapping (subtitle: ..., sections: ...)")
     if "resources" in data:
         raise SheetParseError("'resources' is gone: counters go in a section, as its `counters` (the same name: max mapping)")
+
+    warnings = [f"Unknown field '{key}'" for key in data if str(key) not in KNOWN_FIELDS]
+    if in_document:
+        warnings += [
+            f"'{key}' is ignored here: the sheet's {key} is its document's" for key in DOCUMENT_FIELDS if key in data
+        ]
+        data = {**{k: v for k, v in data.items() if k not in DOCUMENT_FIELDS}, "name": name, "type": sheet_type}
 
     name = _text(data.get("name"))
     if not name:
@@ -216,8 +240,7 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
     if sheet_type not in SHEET_TYPES:
         raise SheetParseError(f"type must be one of: {', '.join(SHEET_TYPES)}")
 
-    warnings = [f"Unknown field '{key}'" for key in data if str(key) not in KNOWN_FIELDS]
-    explicit_id = slugify(_text(data.get("id")) or "")
+    explicit_id = sheet_id or slugify(_text(data.get("id")) or "")
     sheet_id = explicit_id or slugify(name)
     if not sheet_id:
         raise SheetParseError("The sheet's id needs at least one letter or number")
@@ -238,3 +261,10 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
     except ValidationError as e:
         raise SheetParseError(f"Invalid sheet: {e.errors()[0]['msg']}")
     return spec, warnings
+
+
+def parse_sheet_doc(doc: Dict[str, Any], sheet_type: str) -> Tuple[SheetSpec, List[str]]:
+    """The sheet a character or adversary document describes."""
+    return parse_sheet_source(
+        doc.get("source") or "", name=doc.get("name") or "", sheet_id=doc.get("id"), sheet_type=sheet_type,
+    )

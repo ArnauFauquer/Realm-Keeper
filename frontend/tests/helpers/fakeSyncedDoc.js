@@ -11,7 +11,6 @@ export const commit = vi.fn((command) => Promise.resolve(command))
 export const characters = {
   status: { value: 'ready' },
   stateOf: vi.fn(() => null),
-  ensure: vi.fn(() => Promise.resolve({})),
   adjust: vi.fn(() => Promise.resolve({}))
 }
 
@@ -21,6 +20,5 @@ export function reset(encounter) {
   error.value = null
   commit.mockClear()
   characters.stateOf.mockReset().mockReturnValue(null)
-  characters.ensure.mockClear()
   characters.adjust.mockClear()
 }

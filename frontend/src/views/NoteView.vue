@@ -39,12 +39,7 @@
 
         <div v-if="editorTab === 'write'" class="editor-toolbar">
           <span class="editor-toolbar-label">Insert</span>
-          <button type="button" class="rk-btn rk-btn--sm" @click="insertSheetTemplate('adversary')">
-            <span class="mdi mdi-skull-outline"></span> Adversary sheet
-          </button>
-          <button type="button" class="rk-btn rk-btn--sm" @click="insertSheetTemplate('character')">
-            <span class="mdi mdi-account-outline"></span> Character sheet
-          </button>
+          <SheetRefPicker @pick="insertAtCursor" />
         </div>
 
         <textarea
@@ -157,15 +152,16 @@ import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
 import { renderCallouts } from '@/utils/callouts'
 import { defineAsyncComponent, h, render } from 'vue'
 import { createMarkdown } from '@/utils/markdown'
-import { SHEET_TEMPLATES } from '@/utils/sheet'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { usePlayer } from '@/composables/usePlayer'
 import { useAuth } from '@/composables/useAuth'
 import RightSidebar from '@/components/RightSidebar.vue'
 import DocumentEmbed from '@/components/DocumentEmbed.vue'
+import SheetRefPicker from '@/components/SheetRefPicker.vue'
+import { DOC_TYPES } from '@/utils/docTypes'
 
-// A sheet (and the YAML parser it needs) is only fetched for a note that has one.
-const SheetBlock = defineAsyncComponent(() => import('@/components/SheetBlock.vue'))
+// A sheet (and the YAML parser it needs) is only fetched for a note that shows one.
+const SheetEmbed = defineAsyncComponent(() => import('@/components/SheetEmbed.vue'))
 
 mermaid.initialize({
   startOnLoad: false,
@@ -196,7 +192,7 @@ mermaid.initialize({
 
 export default {
   name: 'NoteView',
-  components: { RightSidebar },
+  components: { RightSidebar, SheetRefPicker },
   inject: {
     addTagFilter: {
       from: 'addTagFilter',
@@ -224,14 +220,6 @@ export default {
       const lang = token.info.trim().toLowerCase()
       if (lang === 'mermaid') {
         return `<pre class="mermaid">${md.utils.escapeHtml(token.content)}</pre>`
-      }
-      // A sheet is drawn by a component mounted into this placeholder (see
-      // mountDocEmbeds). The YAML travels in an attribute, on one line and
-      // without headings: callouts render their body twice, and a raw HTML
-      // block ends at the first blank line, which the YAML may well contain.
-      if (lang === 'sheet') {
-        const src = md.utils.escapeHtml(encodeURIComponent(token.content))
-        return `<div class="sheet-block" data-sheet-src="${src}"></div>\n`
       }
       return defaultFence(tokens, idx, options, env, self)
     }
@@ -359,10 +347,9 @@ export default {
       this.isCreating = true
       this.isEditing = true
     },
-    // Drops a sheet template into the draft where the cursor is.
-    insertSheetTemplate(type) {
+    // Puts `snippet` (a sheet's link) into the draft where the cursor is.
+    insertAtCursor(snippet) {
       const textarea = this.$refs.editorTextarea
-      const snippet = `\n${SHEET_TEMPLATES[type]}\n`
       const start = textarea ? textarea.selectionStart : this.draftContent.length
       const end = textarea ? textarea.selectionEnd : start
       this.draftContent = this.draftContent.slice(0, start) + snippet + this.draftContent.slice(end)
@@ -502,11 +489,11 @@ export default {
         }
       })
     },
-    // Chart/vista placeholders from the inline-code rule get a real
-    // DocumentEmbed rendered into them, and ```sheet placeholders a
-    // SheetBlock. v-html knows nothing about those component trees, so hosts
-    // whose DOM a later render replaced are unmounted here (and every
-    // remaining one in beforeUnmount).
+    // Document placeholders from the inline-code rule get a real component
+    // rendered into them: a chart or vista a DocumentEmbed, a character or
+    // adversary a SheetEmbed. v-html knows nothing about those component
+    // trees, so hosts whose DOM a later render replaced are unmounted here
+    // (and every remaining one in beforeUnmount).
     mountDocEmbeds(root) {
       this.mountedEmbeds = this.mountedEmbeds.filter(el => {
         if (el.isConnected) return true
@@ -516,37 +503,13 @@ export default {
 
       if (!root) return
 
+      const pageHeadings = [this.note?.title, ...[...root.querySelectorAll('h1, h2, h3')].map((h) => h.textContent)]
       root.querySelectorAll('[data-doc-embed]:not([data-embed-mounted])').forEach(el => {
         el.setAttribute('data-embed-mounted', '1')
-        const vnode = h(DocumentEmbed, {
-          type: el.getAttribute('data-doc-embed'),
-          id: el.getAttribute('data-doc-id'),
-          canInteract: !!this.user
-        })
+        const type = el.getAttribute('data-doc-embed')
+        const props = { type, id: el.getAttribute('data-doc-id'), canInteract: !!this.user }
+        const vnode = DOC_TYPES[type]?.sheet ? h(SheetEmbed, { ...props, pageHeadings }) : h(DocumentEmbed, props)
         // Share the app's router/plugins with this detached render tree.
-        vnode.appContext = this.$.appContext
-        el.textContent = ''
-        render(vnode, el)
-        this.mountedEmbeds.push(el)
-      })
-
-      root.querySelectorAll('[data-sheet-src]:not([data-embed-mounted])').forEach(el => {
-        el.setAttribute('data-embed-mounted', '1')
-        let source
-        try {
-          source = decodeURIComponent(el.getAttribute('data-sheet-src'))
-        } catch {
-          // Hand-written HTML with a broken attribute: leave it, and still
-          // mount the embeds after it.
-          return
-        }
-        const vnode = h(SheetBlock, {
-          source,
-          // An adversary's reference is "<note id>#<sheet id>".
-          noteId: this.note?.id || this.notePath,
-          canInteract: !!this.user,
-          pageHeadings: [this.note?.title, ...[...root.querySelectorAll('h1, h2, h3')].map((h) => h.textContent)]
-        })
         vnode.appContext = this.$.appContext
         el.textContent = ''
         render(vnode, el)
@@ -1112,8 +1075,7 @@ export default {
   transform: translateY(1px);
 }
 
-.markdown-content :deep(.doc-embed),
-.markdown-content :deep(.sheet-block) {
+.markdown-content :deep(.doc-embed) {
   display: block;
 }
 

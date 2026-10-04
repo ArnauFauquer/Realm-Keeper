@@ -58,14 +58,11 @@ describe('the document clients', () => {
     )
     await charactersApi.commands.adjustOwn('aria', 'HP', 3)
     expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/aria/adjust', { resource: 'HP', by: 3 })
-    await charactersApi.ensure('aria', { name: 'Aria' })
-    expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/ensure', { id: 'aria', fields: { name: 'Aria' } })
-    await charactersApi.reassign('aria', 'aria-la-roja')
-    expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/aria/reassign', { id: 'aria-la-roja' })
   })
 
   it('gives the client of a kind by its name', () => {
     expect(docApi('chart')).toBe(chartsApi)
     expect(docApi('vista')).toBe(vistasApi)
+    expect(docApi('adversary').base).toBe('https://api.test/api/adversaries')
   })
 })

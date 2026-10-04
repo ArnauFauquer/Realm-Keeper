@@ -201,6 +201,12 @@ class DocHub:
         room = await self._room(kind, doc_id)
         return copy.deepcopy(room.data)
 
+    def held(self, kind: str, doc_id: str) -> Optional[Dict[str, Any]]:
+        """The document as it is in memory, if it is (possibly newer than what
+        is stored), without loading it."""
+        room = self._rooms.get((kind, doc_id))
+        return copy.deepcopy(room.data) if room is not None else None
+
     async def mutate(
         self, kind: str, doc_id: str, fn: Callable[[Dict[str, Any]], None],
         user: Optional[dict] = None, command: str = "",
@@ -215,6 +221,8 @@ class DocHub:
             edited = copy.deepcopy(room.data)
             fn(edited)
             edited["id"] = room.data["id"]
+            if room.doctype.prepare:
+                room.doctype.prepare(edited, room.data)
             try:
                 validated = room.doctype.model.model_validate(edited).model_dump(mode="json")
             except ValidationError as e:

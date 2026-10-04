@@ -56,9 +56,9 @@ class SheetSection(BaseModel):
 
 
 class SheetSpec(BaseModel):
-    """What a ```sheet block in a note describes, normalized (shorthands
-    expanded, defaults filled). `character` is an individual whose current
-    values persist; `adversary` is a template instantiated per encounter."""
+    """What a sheet's YAML describes, normalized (shorthands expanded,
+    defaults filled). `character` is an individual whose current values
+    persist; `adversary` is a template instantiated per encounter."""
     id: str
     name: str
     type: SheetType = "adversary"
@@ -73,18 +73,17 @@ class SheetSpec(BaseModel):
 
 
 class SheetCatalogEntry(BaseModel):
-    """One sheet found in the vault. `ref` identifies it: a character by its
-    global id (so moving or renaming the note never loses its saved state);
-    an adversary as "<note id>#<sheet id>"."""
+    """One sheet of the catalog: a character or an adversary document, read.
+    `ref` is the document's id (unique within its type)."""
     ref: str
-    note_id: str
-    note_title: str
+    type: SheetType
     sheet: SheetSpec
     warnings: List[str] = []
 
 
 class SheetSummary(BaseModel):
-    """A catalog entry without its body, for listings and pickers."""
+    """A catalog entry without its body, for listings and pickers. `folder` is
+    where the document is kept in its gallery."""
     ref: str
     id: str
     name: str
@@ -93,6 +92,5 @@ class SheetSummary(BaseModel):
     image: Optional[str] = None
     tags: List[str] = []
     resources: Dict[str, ResourceSpec] = {}
-    note_id: str
-    note_title: str
+    folder: str = ""
     warnings: List[str] = []

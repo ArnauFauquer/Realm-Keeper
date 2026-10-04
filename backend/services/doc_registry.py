@@ -4,14 +4,17 @@ live ones. Notes are the only thing that lives elsewhere (in git)."""
 import logging
 from pathlib import Path
 
+from models.adversary import Adversary
 from models.battlemap import Battlemap, BattlemapMetadata
-from models.characters import CHARACTER_ID_PATTERN, Character, CharacterMetadata
+from models.characters import Character
 from models.chart import Chart, ChartMetadata
 from models.encounter import Encounter, EncounterMetadata
+from models.sheet_doc import SheetDocMetadata
 from models.vista import Vista, VistaMetadata
 from services.doc_backend import default_doc_backend
 from services.doc_collection import DocCollection
 from services.doc_type import DocType
+from services.sheet_docs import sheet_preparer
 from services.sync_hub import DocHub
 
 logger = logging.getLogger(__name__)
@@ -48,13 +51,21 @@ BATTLEMAP = DocType(
     live=True, collections=("tokens",), patchable=("name", "description", "image_url", "grid", "encounter"),
 )
 
-# The saved values of each `character` sheet, one document per character, under
-# the sheet's id (characters/<id>/character.json).
+# Sheets: a character is an individual whose counters are played live, the
+# same on every note and in every encounter and map; an adversary is a template,
+# copied into an encounter each time it is added. Both are their sheet's YAML
+# (`source`); see models/sheet_doc.py.
 CHARACTER = DocType(
     kind="character", prefix="characters", item_filename="character.json",
-    model=Character, metadata_model=CharacterMetadata, items_key="characters",
-    live=True, patchable=("name", "resources"), resources_field="resources",
-    id_pattern=CHARACTER_ID_PATTERN,
+    model=Character, metadata_model=SheetDocMetadata, items_key="characters",
+    live=True, patchable=("name", "description", "source"), resources_field="resources",
+    prepare=sheet_preparer("character"),
+)
+
+ADVERSARY = DocType(
+    kind="adversary", prefix="adversaries", item_filename="adversary.json",
+    model=Adversary, metadata_model=SheetDocMetadata, items_key="adversaries",
+    prepare=sheet_preparer("adversary"),
 )
 
 doc_backend = default_doc_backend()
@@ -62,6 +73,7 @@ chart_collection = DocCollection(CHART, doc_backend)
 vista_collection = DocCollection(VISTA, doc_backend)
 encounter_collection = DocCollection(ENCOUNTER, doc_backend)
 characters_collection = DocCollection(CHARACTER, doc_backend)
+adversary_collection = DocCollection(ADVERSARY, doc_backend)
 battlemap_collection = DocCollection(BATTLEMAP, doc_backend)
 
 hub = DocHub({

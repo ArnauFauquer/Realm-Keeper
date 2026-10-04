@@ -9,7 +9,6 @@ decides (a paired screen may read what is on screen).
 import asyncio
 import functools
 import logging
-import re
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -20,6 +19,7 @@ from routes.auth import current_user, require_auth
 from routes.errors import storage_unavailable
 from services import doc_commands
 from services.doc_collection import DocCollection, DocNotFound
+from services.doc_paths import sanitize_folder_name
 from services.doc_type import DocType
 from services.sync_hub import DocHub
 
@@ -83,8 +83,7 @@ class UrlBody(BaseModel):
 
 class ItemsBody(BaseModel):
     items: List[Dict[str, Any]] = Field(max_length=200)
-    # Adding what is already there is not an error: two people opening the same
-    # character's sheet at once both ask for its state to exist.
+    # Adding what is already there is not an error.
     ignore_existing: bool = False
 
 
@@ -97,25 +96,16 @@ class AdjustBody(BaseModel):
     by: int = Field(ge=-1000, le=1000)
 
 
-class EnsureBody(BaseModel):
-    id: str
-    fields: Dict[str, Any] = {}
-
-
-class ReassignBody(BaseModel):
-    id: str
-
-
 def make_doc_router(
     doctype: DocType, collection: DocCollection, hub: DocHub,
     viewer: Callable[[Request, str], None] = login_only,
-    on_reassign: Optional[Callable[[str, str, dict], Awaitable[None]]] = None,
+    on_moved: Optional[Callable[[Dict[str, str], dict], Awaitable[None]]] = None,
 ) -> APIRouter:
-    """`on_reassign(old_id, new_id, user)`, for a keyed kind, is awaited once a
-    document has been given another id: whatever refers to it by id follows."""
+    """`on_moved({old_id: new_id}, user)` is awaited once documents have been
+    given another id (moved, or their folder renamed or moved): whatever
+    refers to them by id follows."""
     router = APIRouter(prefix=f"/api/{doctype.prefix}", tags=[doctype.prefix])
     kind = doctype.kind
-    keyed = doctype.id_pattern is not None
     # Ahead of every route that belongs to one document.
     on = "/{doc_id:path}"
 
@@ -126,21 +116,32 @@ def make_doc_router(
         event = await hub.mutate(kind, doc_id, fn, user=user, command=command)
         return event or {"type": "noop"}
 
-    def given_id(doc_id: str) -> str:
-        doc_id = (doc_id or "").strip()
-        if not re.fullmatch(doctype.id_pattern, doc_id):
-            raise ValueError(f"Invalid id: {doc_id!r}")
-        if doc_id in doctype.reserved_names:
-            raise ValueError(f"'{doc_id}' is a reserved name")
-        return doc_id
-
     async def forget_under(folder: str) -> List[str]:
         """Lets go of every live document inside a folder that is about to move
-        or go, and returns their ids (see `discard`)."""
+        or go, and returns the ids of all its documents (see `discard`)."""
+        folder = folder.strip("/")
         ids = [meta.id for meta in await blocking(collection.list_all) if meta.id.startswith(f"{folder}/")]
-        for doc_id in ids:
-            await hub.forget(kind, doc_id)
+        if doctype.live:
+            for doc_id in ids:
+                await hub.forget(kind, doc_id)
         return ids
+
+    async def moved(moves: Dict[str, str], user: dict) -> None:
+        moves = {old: new for old, new in moves.items() if old != new}
+        if on_moved and moves:
+            await on_moved(moves, user)
+
+    def folder_moves(ids: List[str], old_folder: str, new_folder: str) -> Dict[str, str]:
+        old_folder = old_folder.strip("/")
+        return {doc_id: f"{new_folder}{doc_id[len(old_folder):]}" for doc_id in ids}
+
+    def renamed_folder(path: str, name: Optional[str] = None, parent: Optional[str] = None) -> str:
+        """Where a folder ends up (DocCollection.move_folder decides the same)."""
+        path = path.strip("/")
+        old_parent, _, leaf = path.rpartition("/")
+        parent = old_parent if parent is None else parent.strip("/")
+        leaf = leaf if name is None else sanitize_folder_name(name)
+        return f"{parent}/{leaf}" if parent else leaf
 
     def discard(ids: List[str]) -> None:
         """Once the documents are moved or deleted: a command that arrived in
@@ -172,82 +173,54 @@ def make_doc_router(
             return await change(body.id.strip("/"), user, "rename", lambda d: d.update(name=name))
         return await blocking(collection.rename, body.id, body.name)
 
-    if keyed:
-        # A keyed kind's documents are named by what they belong to (a
-        # character by its sheet's id), so they are made by asking for that id,
-        # not from a name, and they don't live in folders.
+    @router.post("")
+    @guarded
+    async def create(body: CreateBody, user: dict = Depends(require_auth)):
+        return await blocking(collection.create, body.name, body.description, body.folder_path)
 
-        @router.post("/ensure")
-        @guarded
-        async def ensure(body: EnsureBody, user: dict = Depends(require_auth)):
-            """The document with this id, made from `fields` if there is none
-            yet. Asking twice, or two people at once, is harmless."""
-            doc_id = given_id(body.id)
-            _doc, created = await blocking(collection.ensure, doc_id, body.fields)
-            snapshot = await hub.snapshot(kind, doc_id) if doctype.live else _doc
-            return {"created": created, "doc": snapshot}
+    @router.post("/folders")
+    @guarded
+    async def create_folder(body: FolderBody, user: dict = Depends(require_auth)):
+        await blocking(collection.create_folder, body.path)
+        return {"status": "success"}
 
-        @router.post(f"{on}/reassign")
-        @guarded
-        async def reassign(body: ReassignBody, doc_id: str, user: dict = Depends(require_auth)):
-            """Gives the document another id (a character whose sheet's id
-            changed keeps its values). Refused if that id is taken."""
-            old_id, new_id = given_id(doc_id), given_id(body.id)
-            if doctype.live:
-                await hub.forget(kind, old_id)
-            await blocking(collection.change_id, old_id, new_id)
-            if doctype.live:
-                discard([old_id])
-            if on_reassign:
-                await on_reassign(old_id, new_id, user)
-            return {"status": "success", "id": new_id}
+    @router.post("/folders/move")
+    @guarded
+    async def move_folder(body: FolderMoveBody, user: dict = Depends(require_auth)):
+        gone = await forget_under(body.path)
+        await blocking(collection.move_folder, body.path, body.dest_parent_path, None)
+        discard(gone)
+        await moved(folder_moves(gone, body.path, renamed_folder(body.path, parent=body.dest_parent_path)), user)
+        return {"status": "success"}
 
-    if not keyed:
-        @router.post("")
-        @guarded
-        async def create(body: CreateBody, user: dict = Depends(require_auth)):
-            return await blocking(collection.create, body.name, body.description, body.folder_path)
+    @router.put("/folders/{path:path}")
+    @guarded
+    async def rename_folder(path: str, body: FolderRenameBody, user: dict = Depends(require_auth)):
+        gone = await forget_under(path)
+        await blocking(collection.move_folder, path, None, body.name)
+        discard(gone)
+        await moved(folder_moves(gone, path, renamed_folder(path, name=body.name)), user)
+        return {"status": "success"}
 
-        @router.post("/folders")
-        @guarded
-        async def create_folder(body: FolderBody, user: dict = Depends(require_auth)):
-            await blocking(collection.create_folder, body.path)
-            return {"status": "success"}
+    @router.delete("/folders/{path:path}")
+    @guarded
+    async def delete_folder(path: str, user: dict = Depends(require_auth)):
+        gone = await forget_under(path)
+        await blocking(collection.delete_folder, path)
+        discard(gone)
+        return {"status": "success"}
 
-        @router.post("/folders/move")
-        @guarded
-        async def move_folder(body: FolderMoveBody, user: dict = Depends(require_auth)):
-            gone = await forget_under(body.path) if doctype.live else []
-            await blocking(collection.move_folder, body.path, body.dest_parent_path, None)
-            discard(gone)
-            return {"status": "success"}
-
-        @router.put("/folders/{path:path}")
-        @guarded
-        async def rename_folder(path: str, body: FolderRenameBody, user: dict = Depends(require_auth)):
-            gone = await forget_under(path) if doctype.live else []
-            await blocking(collection.move_folder, path, None, body.name)
-            discard(gone)
-            return {"status": "success"}
-
-        @router.delete("/folders/{path:path}")
-        @guarded
-        async def delete_folder(path: str, user: dict = Depends(require_auth)):
-            gone = await forget_under(path) if doctype.live else []
-            await blocking(collection.delete_folder, path)
-            discard(gone)
-            return {"status": "success"}
-
-        @router.post("/move")
-        @guarded
-        async def move_item(body: MoveBody, user: dict = Depends(require_auth)):
-            old_id = body.id.strip("/")
-            if doctype.live:
-                await hub.forget(kind, old_id)
-            new_id = await blocking(collection.move_item, body.id, body.folder_path)
-            if doctype.live:
-                discard([old_id])
-            return {"status": "success", "id": new_id}
+    @router.post("/move")
+    @guarded
+    async def move_item(body: MoveBody, user: dict = Depends(require_auth)):
+        old_id = body.id.strip("/")
+        if doctype.live:
+            await hub.forget(kind, old_id)
+        new_id = await blocking(collection.move_item, body.id, body.folder_path)
+        if doctype.live:
+            discard([old_id])
+        await moved({old_id: new_id}, user)
+        return {"status": "success", "id": new_id}
 
     def add_collection_routes(name: str) -> None:
         # Literal names, not a {collection} parameter: a document id can contain

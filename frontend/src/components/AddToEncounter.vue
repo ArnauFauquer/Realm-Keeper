@@ -36,17 +36,15 @@
 
 <script setup>
 import { ref } from 'vue'
-import { charactersApi, encountersApi } from '@/api/docs'
+import { encountersApi } from '@/api/docs'
 import { useDocModal } from '@/composables/useDocModal'
-import { characterStateFromSheet, combatantsFromSheet } from '@/utils/encounter'
+import { combatantsFromSheet } from '@/utils/encounter'
 
 // A sheet's button for putting it into an encounter: an adversary as one or
 // more independent copies, a character as itself (once).
 const props = defineProps({
-  // The normalized sheet (utils/sheet.js) and the note it is written in, which
-  // is part of an adversary's reference.
-  sheet: { type: Object, required: true },
-  noteId: { type: String, default: '' }
+  // The normalized sheet (utils/sheet.js): its id is its document's.
+  sheet: { type: Object, required: true }
 })
 
 const MAX_COUNT = 20
@@ -62,8 +60,6 @@ const adding = ref(false)
 const message = ref('')
 const failed = ref(false)
 const addedTo = ref('')
-
-const ref_ = () => (props.sheet.type === 'character' ? props.sheet.id : `${props.noteId}#${props.sheet.id}`)
 
 async function toggle() {
   open.value = !open.value
@@ -86,16 +82,12 @@ async function add() {
   failed.value = false
   addedTo.value = ''
   try {
-    const entry = { ...props.sheet, ref: ref_() }
+    const entry = { ...props.sheet, ref: props.sheet.id }
     // The encounter as it is now: copies are numbered after the ones already in it.
     const current = await encountersApi.fetch(chosen.value)
     const amount = Math.max(1, Math.min(MAX_COUNT, Math.floor(Number(count.value)) || 1))
     if (entry.type === 'character' && current.combatants.some((c) => c.type === 'character' && c.sheet === entry.ref)) {
       throw new Error(`${entry.name} is already in this encounter`)
-    }
-    if (entry.type === 'character') {
-      // Its saved counters have to exist before it can show them.
-      await charactersApi.ensure(entry.id, characterStateFromSheet(entry))
     }
     await encountersApi.commands.addItems(chosen.value, 'combatants', combatantsFromSheet(entry, amount, current.combatants))
     addedTo.value = chosen.value

@@ -1,6 +1,6 @@
-// A ```sheet block in a note (YAML) turned into the normalized shape the
-// sheet component renders. backend/services/sheet_parser.py does the same
-// normalization for the catalog; both are checked against the shared cases in
+// A sheet's YAML (a character's or an adversary's `source`) turned into the
+// normalized shape the sheet component renders. backend/services/sheet_parser.py
+// does the same normalization; both are checked against the shared cases in
 // backend/tests/fixtures/sheets/, so a change here needs the same change there.
 import { parse } from 'yaml'
 
@@ -157,9 +157,18 @@ function sections(raw) {
   return { sections: list, resources }
 }
 
-/** { sheet, warnings } for a block's YAML. Throws SheetParseError, whose
- * message is meant for the note's author. */
-export function parseSheetSource(source) {
+// What a sheet document holds outside its YAML: its name is the document's
+// (renamed from the gallery), its id is where it is stored, and its type is its
+// kind. The YAML may still carry them; they are ignored, and the author told so.
+const DOCUMENT_FIELDS = ['id', 'name', 'type']
+
+/**
+ * { sheet, warnings } for a sheet's YAML. Throws SheetParseError, whose
+ * message is meant for the sheet's author. `document` ({ name, id, type }) is
+ * a sheet document's own: given, it is what the sheet is called, and an empty
+ * source is an empty sheet (see parseSheetDoc).
+ */
+export function parseSheetSource(source, document = null) {
   if (source.length > MAX_SOURCE_LENGTH) throw new SheetParseError(`A sheet can't be longer than ${MAX_SOURCE_LENGTH / 1000} KB`)
   let data
   try {
@@ -167,9 +176,18 @@ export function parseSheetSource(source) {
   } catch (e) {
     throw new SheetParseError(`Invalid YAML: ${e.message.split('\n')[0]}`)
   }
-  if (!isMapping(data)) throw new SheetParseError('A sheet must be a YAML mapping (name: ..., sections: ...)')
+  if ((data === null || data === undefined) && document) data = {}
+  if (!isMapping(data)) throw new SheetParseError('A sheet must be a YAML mapping (subtitle: ..., sections: ...)')
   if ('resources' in data) {
     throw new SheetParseError("'resources' is gone: counters go in a section, as its `counters` (the same name: max mapping)")
+  }
+
+  const warnings = Object.keys(data).filter((key) => !KNOWN_FIELDS.has(key)).map((key) => `Unknown field '${key}'`)
+  if (document) {
+    for (const key of DOCUMENT_FIELDS) {
+      if (key in data) warnings.push(`'${key}' is ignored here: the sheet's ${key} is its document's`)
+    }
+    data = { ...Object.fromEntries(Object.entries(data).filter(([key]) => !DOCUMENT_FIELDS.includes(key))), name: document.name, type: document.type }
   }
 
   const name = text(data.name)
@@ -177,8 +195,7 @@ export function parseSheetSource(source) {
   const type = (text(data.type) || 'adversary').toLowerCase()
   if (!SHEET_TYPES.includes(type)) throw new SheetParseError(`type must be one of: ${SHEET_TYPES.join(', ')}`)
 
-  const warnings = Object.keys(data).filter((key) => !KNOWN_FIELDS.has(key)).map((key) => `Unknown field '${key}'`)
-  const explicitId = slugify(text(data.id) || '')
+  const explicitId = document?.id || slugify(text(data.id) || '')
   const id = explicitId || slugify(name)
   if (!id) throw new SheetParseError("The sheet's id needs at least one letter or number")
   if (type === 'character' && !explicitId) {
@@ -206,13 +223,15 @@ export function parseSheetSource(source) {
   }
 }
 
-/** Snippets the note editor inserts. The comments are YAML, not tags: fenced
- * blocks are never scanned for tags. */
+/** The sheet a character or adversary document describes: { sheet, warnings }. */
+export function parseSheetDoc(doc, type) {
+  return parseSheetSource(doc.source || '', { name: doc.name || '', id: doc.id, type })
+}
+
+/** What a new sheet's editor offers to start from. */
 export const SHEET_TEMPLATES = {
   adversary: [
-    '```sheet',
-    'name: New adversary',
-    'type: adversary          # a template: each copy in an encounter has its own values',
+    '# A template: each copy in an encounter has its own values.',
     'subtitle:',
     'image:                   # URL of an asset library image',
     'tags: []',
@@ -227,13 +246,10 @@ export const SHEET_TEMPLATES = {
     '      - name: Attack',
     '        roll: 1d20+3',
     '        text: What it does. Dice in text work too, like `1d8+2`.',
-    '```'
+    ''
   ].join('\n'),
   character: [
-    '```sheet',
-    'name: New character',
-    'id: new-character        # keep it stable: the saved values are kept under it',
-    'type: character          # one individual: its current values persist',
+    '# One individual: its counters keep their values, here and in every encounter.',
     'subtitle:',
     'image:                   # URL of an asset library image',
     'sections:',
@@ -246,6 +262,6 @@ export const SHEET_TEMPLATES = {
     '    items:',
     '      - name: Attack',
     '        roll: 1d20+3',
-    '```'
+    ''
   ].join('\n')
 }

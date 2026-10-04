@@ -1,10 +1,10 @@
 """What one kind of document is: where it lives, its model, and the few rules
 that differ from the next kind. Everything else — folders, create, rename,
 move, delete, the HTTP routes — is written once (DocCollection,
-routes/doc_router.py) and parametrized by this: charts, vistas, encounters and
-battlemaps are all declared in services/doc_registry.py."""
+routes/doc_router.py) and parametrized by this: every kind is declared in
+services/doc_registry.py."""
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterator, Mapping, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Iterator, Mapping, Optional, Tuple, Type
 
 from pydantic import BaseModel
 
@@ -33,11 +33,6 @@ class DocType:
     live: bool = False
     collections: Tuple[str, ...] = ()   # lists of {id: ...} entities commands may edit
     patchable: Tuple[str, ...] = ()     # top-level fields a command may set
-    # A keyed kind's documents are named by what they belong to (a character
-    # by its sheet's id) rather than made from a name: this is what such an id
-    # looks like. They are made by asking for an id (POST /ensure), can be given
-    # another one (POST /<id>/reassign) and don't live in folders.
-    id_pattern: Optional[str] = None
     # A field of counters ({name: {current, max, min}}) of the document itself,
     # changed by POST /<id>/adjust as an entity's are by .../<entity>/adjust.
     resources_field: Optional[str] = None
@@ -45,11 +40,16 @@ class DocType:
     # vault (git), laid out as <legacy_dir>/<folders>/<slug>/<item_filename>.
     # Copied over once, at startup (DocCollection.import_legacy).
     legacy_dir: Optional[str] = None
+    # Called on every document about to be stored (made, saved, or changed by
+    # a command) with what was stored before (None for a new one): it may fill
+    # in fields derived from others, and raises ValueError to refuse it. A
+    # character's counters follow its sheet this way (services/sheet_docs.py).
+    prepare: Optional[Callable[[Dict[str, Any], Optional[Dict[str, Any]]], None]] = None
 
     @property
     def reserved_names(self) -> Tuple[str, ...]:
         """Slugs a document can't have: they'd read as a route under its id."""
-        return (*self.collections, *self.asset_routes, "order", "adjust", "all", "move", "rename", "folders", "ensure", "reassign")
+        return (*self.collections, *self.asset_routes, "order", "adjust", "all", "move", "rename", "folders")
 
 
 def _values_at(node: Any, parts: Tuple[str, ...]) -> Iterator[Any]:

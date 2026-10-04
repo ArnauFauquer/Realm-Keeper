@@ -12,7 +12,7 @@ from scripts import migrate_storage_layout as migrate
 from services import storage_service
 from services.doc_backend import S3DocBackend
 from services.doc_collection import DocCollection
-from services.doc_registry import BATTLEMAP, CHARACTER, CHART, ENCOUNTER, VISTA
+from services.doc_registry import ADVERSARY, BATTLEMAP, CHARACTER, CHART, ENCOUNTER, VISTA
 
 from conftest import FakeS3
 
@@ -89,16 +89,13 @@ def test_the_asset_library_keeps_its_prefix(fake_s3):
 
 def test_each_kind_of_document_has_its_own_top_level_prefix(fake_s3):
     backend = S3DocBackend()
-    for doctype in ALL_KINDS:
-        collection = DocCollection(doctype, backend)
-        if doctype.id_pattern:
-            collection.ensure("thing", {"name": "Thing"})
-        else:
-            collection.create("Thing", folder_path="folder")
+    for doctype in (*ALL_KINDS, ADVERSARY):
+        DocCollection(doctype, backend).create("Thing", folder_path="folder")
     keys = sorted(fake_s3.objects)
     assert keys == [
+        "adversaries/folder/thing/adversary.json",
         "battlemaps/folder/thing/battlemap.json",
-        "characters/thing/character.json",
+        "characters/folder/thing/character.json",
         "charts/folder/thing/chart.json",
         "encounters/folder/thing/encounter.json",
         "vistas/folder/thing/vista.json",

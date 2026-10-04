@@ -10,8 +10,8 @@
 //               fields a save sends besides its name and description
 //   screen      can be shown on the table screen, and mirrored there as it is edited
 //   embeddable  a note can show it with `<type>:<id>`
-//   keyed       named by what it belongs to (a character by its sheet's id): no
-//               "New" button and no folders in its gallery
+//   sheet       a character or adversary: its `source` is a sheet's YAML
+//               (utils/sheet.js), and a note shows it as that sheet
 export const DOC_TYPES = {
   chart: {
     type: 'chart',
@@ -64,11 +64,29 @@ export const DOC_TYPES = {
     plural: 'characters',
     label: 'character',
     icon: 'mdi-account-heart-outline',
+    embedIcon: 'mdi-card-account-details-outline',
     thumbIcon: 'mdi-account',
     emptyIcon: 'mdi-account-heart-outline',
-    emptyText: 'No saved characters yet. A character is saved the first time its sheet is used.',
-    // Named by their sheet's id and made from it, not from the gallery.
-    keyed: true
+    emptyText: 'No characters yet. Create one for each player character or recurring NPC: its counters keep their values wherever it shows.',
+    imageField: 'image',
+    embeddable: true,
+    sheet: true
+  },
+  adversary: {
+    type: 'adversary',
+    resource: 'adversaries',
+    title: 'Adversaries',
+    plural: 'adversaries',
+    label: 'adversary',
+    icon: 'mdi-skull-outline',
+    embedIcon: 'mdi-card-account-details-outline',
+    thumbIcon: 'mdi-skull-outline',
+    emptyIcon: 'mdi-skull-outline',
+    emptyText: 'No adversaries yet. Create one as a template: each time it is added to an encounter, it is copied.',
+    imageField: 'image',
+    saved: ['source'],
+    embeddable: true,
+    sheet: true
   },
   battlemap: {
     type: 'battlemap',
