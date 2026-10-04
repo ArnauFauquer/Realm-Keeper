@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.2...v0.2.3) (2026-10-04)
+
+
+### Features
+
+* **sheets:** characters and adversaries are documents, shown in notes with a link ([#38](https://github.com/ArnauFauquer/Realm-Keeper/issues/38)) ([3069771](https://github.com/ArnauFauquer/Realm-Keeper/commit/3069771d7ee5c331556c0eebe9211bfea543ed74))
+
 ## [0.2.2](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.1...v0.2.2) (2026-10-04)
 
 
