@@ -127,8 +127,9 @@ const fillPercent = computed(() => {
 .rc-value {
   flex: none;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-display);
   font-size: var(--text-sm);
+  font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }

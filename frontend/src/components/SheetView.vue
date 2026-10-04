@@ -245,6 +245,8 @@ function onKeydown(e) {
   border-radius: var(--radius-lg);
   font-size: var(--text-base);
   line-height: var(--leading-normal);
+  /* A neutral rule for tags and titles, lighter than the card's border. */
+  --sheet-hairline: rgba(168, 168, 200, 0.16);
 }
 
 .sheet--character {
@@ -304,12 +306,13 @@ function onKeydown(e) {
   margin-top: var(--space-1);
 }
 
+/* Tags are information, so they stay neutral: violet is kept for what can be
+   pressed (dice). */
 .sheet-tag {
   padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--accent-a30);
-  background: var(--accent-a12);
-  color: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--sheet-hairline);
+  color: var(--text-secondary);
   font-size: var(--text-xs);
   line-height: 1.6;
 }
@@ -348,16 +351,14 @@ function onKeydown(e) {
 /* An untitled group after another is told apart by a rule. */
 .sheet-stat-group + .sheet-stat-group:not(:has(> .sheet-group-title)) {
   padding-top: var(--space-3);
-  border-top: 1px dashed var(--border-light);
+  border-top: 1px solid var(--sheet-hairline);
 }
 
 .sheet-group-title {
-  margin-bottom: var(--space-1);
-  font-size: var(--text-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
 .sheet-stats {
@@ -378,14 +379,14 @@ function onKeydown(e) {
 .sheet-sections {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-5);
 }
 
 @container sheet (min-width: 44rem) {
   .sheet-sections.sheet-grid--fixed {
     display: grid;
     grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
-    gap: var(--space-3) var(--space-5);
+    gap: var(--space-5) var(--space-6);
     align-items: start;
   }
 
@@ -407,10 +408,13 @@ function onKeydown(e) {
   margin-top: var(--space-2);
 }
 
+/* A stat is read for its value: small label, large number, no box border. */
 .sheet-stat {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3) var(--space-3);
   background: var(--surface-sunken);
-  border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
 }
 
@@ -423,8 +427,21 @@ function onKeydown(e) {
 
 .sheet-stat dd {
   margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: 600;
+  line-height: var(--leading-tight);
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+}
+
+/* A stat with a roll is still read as its value: same type, as a button. */
+.sheet-stat dd .sheet-roll {
+  min-height: 2rem;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 
 .sheet-roll {
@@ -451,6 +468,24 @@ function onKeydown(e) {
   border-color: var(--accent);
 }
 
+.sheet-roll:active,
+.sheet-card :deep(code.dice-roll:active) {
+  transform: translateY(1px);
+}
+
+.sheet-roll:focus-visible,
+.sheet-section-title:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-roll:active,
+  .sheet-card :deep(code.dice-roll:active) {
+    transform: none;
+  }
+}
+
 .sheet-roll-static {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
@@ -463,12 +498,13 @@ function onKeydown(e) {
   gap: var(--space-1);
   margin-bottom: var(--space-1);
   padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border-light);
-  font-size: var(--text-sm);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--accent-soft);
+  border-bottom: 1px solid var(--sheet-hairline);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  color: var(--text-primary);
   list-style: none;
   cursor: pointer;
   user-select: none;
@@ -479,13 +515,14 @@ function onKeydown(e) {
 }
 
 .sheet-section-title:hover {
-  color: var(--text-primary);
+  color: var(--accent-soft);
 }
 
 .sheet-fold-icon {
   margin-left: -0.2em;
   font-size: 1.2em;
   line-height: 1;
+  color: var(--text-muted);
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
@@ -565,13 +602,19 @@ function onKeydown(e) {
 }
 
 .sheet-item-name {
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-primary);
 }
 
+/* What using it costs: a tag in the warning hue, as it spends something. */
 .sheet-cost {
-  font-size: var(--text-sm);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(251, 191, 36, 0.28);
+  background: var(--status-warning-bg);
   color: var(--status-warning);
+  font-size: var(--text-xs);
+  line-height: 1.6;
 }
 
 .sheet-item-text,
