@@ -43,11 +43,13 @@ class SheetSection(BaseModel):
     """A block of the sheet: its counters (by name: the specs are in
     SheetSpec.resources), stats and items, in that order. `columns` lays its
     items out in a grid; `wide` takes the whole row when the sheet's sections
-    are in columns; `collapsed` starts it folded."""
+    are in columns; `collapsed` starts it folded; sections sharing a `tab` are
+    shown together under that tab."""
     title: Optional[str] = None
     columns: Optional[int] = None
     wide: bool = False
     collapsed: bool = False
+    tab: Optional[str] = None
     counters: List[str] = []
     stats: List[StatGroup] = []
     items: List[SheetItem] = []

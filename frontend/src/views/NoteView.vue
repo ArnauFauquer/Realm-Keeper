@@ -544,7 +544,8 @@ export default {
           source,
           // An adversary's reference is "<note id>#<sheet id>".
           noteId: this.note?.id || this.notePath,
-          canInteract: !!this.user
+          canInteract: !!this.user,
+          pageHeadings: [this.note?.title, ...[...root.querySelectorAll('h1, h2, h3')].map((h) => h.textContent)]
         })
         vnode.appContext = this.$.appContext
         el.textContent = ''

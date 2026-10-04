@@ -81,6 +81,11 @@ text: |                    # free markdown
   top-level `resources` is refused with a message saying where counters went.
   `stats` may also stay at the top level: they are drawn as a first,
   whole-row section.
+- **Tabs**: sections sharing a `tab` (`tab: Spells`) are shown one tab at a
+  time, under a tab bar placed after the sections without one. A long sheet
+  (a caster's spell lists) stays one screen tall.
+- A sheet named like its note's title or one of its headings doesn't repeat
+  the name in its header (screen readers still get it).
 - A titled section folds with a click; `collapsed: true` starts it folded (a
   spell list, the equipment). An item that is only a name and a roll (a skill,
   a save) is drawn as one row, the roll at its end.

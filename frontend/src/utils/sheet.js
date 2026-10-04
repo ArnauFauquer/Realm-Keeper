@@ -148,6 +148,7 @@ function sections(raw) {
       columns: columns(section.columns, "a section's columns"),
       wide: section.wide === true,
       collapsed: section.collapsed === true,
+      tab: text(section.tab),
       counters: Object.keys(own),
       stats: stats(section.stats),
       items: (section.items || []).map(item)

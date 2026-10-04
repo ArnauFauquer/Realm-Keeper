@@ -8,7 +8,7 @@
     <pre class="sheet-source">{{ source }}</pre>
   </div>
 
-  <SheetView v-else :sheet="sheet" :warnings="warnings" :can-interact="canInteract">
+  <SheetView v-else :sheet="sheet" :warnings="warnings" :can-interact="canInteract" :hide-name="nameShown">
     <!-- A character's counters are the saved ones: the same here, in every
          encounter, and on every other note that shows the sheet. -->
     <template v-if="characters" #counter="{ resource: r }">
@@ -46,7 +46,10 @@ const props = defineProps({
   noteId: { type: String, default: '' },
   // Signed in: dice rolls, library images, saved counters and encounters are
   // behind login, like the rest of the app (notes themselves are public).
-  canInteract: { type: Boolean, default: false }
+  canInteract: { type: Boolean, default: false },
+  // The note's title and headings: a sheet named like one of them doesn't
+  // repeat its name right under it.
+  pageHeadings: { type: Array, default: () => [] }
 })
 
 const result = computed(() => {
@@ -57,6 +60,10 @@ const result = computed(() => {
   }
 })
 const error = computed(() => result.value.error)
+// Compared without case, accents, quotes or punctuation: `Gargamel "Asher"`
+// is the heading `Gargamel “Asher”` once markdown has curled its quotes.
+const plain = (text) => String(text || '').normalize('NFKD').replace(/\p{M}/gu, '').replace(/[^\p{L}\p{N}]+/gu, ' ').trim().toLowerCase()
+const nameShown = computed(() => !!result.value.sheet && props.pageHeadings.some((h) => plain(h) === plain(result.value.sheet.name)))
 const sheet = computed(() => result.value.sheet)
 const warnings = computed(() => result.value.warnings || [])
 
