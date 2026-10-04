@@ -15,14 +15,16 @@
         "min": 0,
         "start": null,
         "color": null,
-        "style": null
+        "style": null,
+        "group": null
       },
       "Rage": {
         "max": 5,
         "min": 1,
         "start": null,
         "color": null,
-        "style": "bar"
+        "style": "bar",
+        "group": null
       }
     },
     "stats": [
@@ -48,6 +50,7 @@
         "title": "Traits",
         "columns": null,
         "wide": false,
+        "collapsed": false,
         "items": [
           {
             "name": null,

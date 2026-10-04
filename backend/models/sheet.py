@@ -9,12 +9,14 @@ class ResourceSpec(BaseModel):
     """A counter on a sheet: HP, Stress, Sanity, Hope... — the name is the
     author's, nothing here knows what it means. `start` is the value the
     counter begins at (the maximum when omitted), so a resource may as well
-    count up from 0 as down from `max`."""
+    count up from 0 as down from `max`. `group` only gathers counters under a
+    heading on the sheet."""
     max: int
     min: int = 0
     start: Optional[int] = None
     color: Optional[str] = None
     style: Optional[str] = None
+    group: Optional[str] = None
 
 
 class StatSpec(BaseModel):
@@ -40,10 +42,11 @@ class SheetItem(BaseModel):
 
 class SheetSection(BaseModel):
     """`columns` lays its items out in a grid; `wide` takes the whole row when
-    the sheet's sections are in columns."""
+    the sheet's sections are in columns; `collapsed` starts it folded."""
     title: Optional[str] = None
     columns: Optional[int] = None
     wide: bool = False
+    collapsed: bool = False
     items: List[SheetItem] = []
 
 

@@ -46,7 +46,7 @@ type: adversary            # character | adversary (default: adversary)
 subtitle: Tier 1 · Bruiser
 image:                     # URL of an asset library image, as copied from the library
 tags: [goblinoid]
-resources:                 # counters: HP: 6, or { max, min, start, color, style }
+resources:                 # counters: HP: 6, or { max, min, start, color, style, group }
   HP: 6
   Stress: { max: 3, start: 0 }   # `start` = where it begins (default: the max)
 stats:                     # label: value, or { value, roll } for a dice button
@@ -74,6 +74,11 @@ text: |                    # free markdown
   on a section takes the whole row), and on a section lays its items out in a
   grid. Narrow sheets (a phone, the encounter tracker) fall back to fewer
   columns on their own.
+- Counters sharing a `group` (`Level 1: { max: 4, group: Spell slots }`) are
+  drawn together under that heading; counters sit in columns on a wide sheet.
+- A titled section folds with a click; `collapsed: true` starts it folded (a
+  spell list, the equipment). An item that is only a name and a roll (a skill,
+  a save) is drawn as one row, the roll at its end.
 
   ```yaml
   stats:

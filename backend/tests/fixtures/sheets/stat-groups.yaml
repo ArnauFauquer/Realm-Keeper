@@ -2,6 +2,10 @@ name: Llu-fast
 id: llu-fast
 type: character
 columns: 2
+resources:
+  HP: 6
+  Level 1: { max: 4, group: Spell slots }
+  Level 2: { max: 3, group: Spell slots }
 stats:
   - Evasión: 11
     Umbrales: 6/12
@@ -16,5 +20,6 @@ sections:
     items: [Arcanos, Historia]
   - title: Rasgos
     wide: true
+    collapsed: true
     items:
       - { name: Arenga, text: "| Nivel | Dado |\n|---|---|\n| 1 | `1d6` |" }

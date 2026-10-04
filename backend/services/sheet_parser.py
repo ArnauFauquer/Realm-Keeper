@@ -95,6 +95,7 @@ def _resource(name: str, raw: Any) -> ResourceSpec:
             "min": _integer(raw.get("min", 0), f"resource '{name}' min"),
             "color": _text(raw.get("color")),
             "style": _text(raw.get("style")),
+            "group": _text(raw.get("group")),
         }
         if raw.get("start") is not None:
             spec["start"] = _integer(raw["start"], f"resource '{name}' start")
@@ -180,7 +181,7 @@ def _sections(raw: Any) -> List[SheetSection]:
             raise SheetParseError("a section's items must be a list")
         sections.append(SheetSection(
             title=_text(section.get("title")), columns=_columns(section.get("columns"), "a section's columns"),
-            wide=section.get("wide") is True, items=[_item(i) for i in items or []],
+            wide=section.get("wide") is True, collapsed=section.get("collapsed") is True, items=[_item(i) for i in items or []],
         ))
     return sections
 

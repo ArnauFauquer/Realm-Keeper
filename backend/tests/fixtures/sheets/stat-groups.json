@@ -6,7 +6,32 @@
     "subtitle": null,
     "image": null,
     "tags": [],
-    "resources": {},
+    "resources": {
+      "HP": {
+        "max": 6,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null,
+        "group": null
+      },
+      "Level 1": {
+        "max": 4,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null,
+        "group": "Spell slots"
+      },
+      "Level 2": {
+        "max": 3,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null,
+        "group": "Spell slots"
+      }
+    },
     "stats": [
       {
         "title": null,
@@ -46,6 +71,7 @@
         "title": "Habilidades",
         "columns": 3,
         "wide": false,
+        "collapsed": false,
         "items": [
           {
             "name": null,
@@ -67,6 +93,7 @@
         "title": "Rasgos",
         "columns": null,
         "wide": true,
+        "collapsed": true,
         "items": [
           {
             "name": "Arenga",

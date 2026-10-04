@@ -115,6 +115,38 @@ describe('SheetBlock', () => {
     expect(features.find('table td code.dice-roll').exists()).toBe(true)
   })
 
+  it('gathers counters by group, in the order the groups first appear', () => {
+    const wrapper = mountSheet({
+      source: 'name: A\nresources:\n  HP: 10\n  Level 1: { max: 4, group: Slots }\n  Hope: 6\n  Level 2: { max: 3, group: Slots }'
+    })
+    const groups = wrapper.findAll('.sheet-resource-group')
+    expect(groups).toHaveLength(2)
+    expect(groups[0].findAll('.rc-name').map((n) => n.text())).toEqual(['HP', 'Hope'])
+    expect(groups[1].find('.sheet-group-title').text()).toBe('Slots')
+    expect(groups[1].findAll('.rc-name').map((n) => n.text())).toEqual(['Level 1', 'Level 2'])
+  })
+
+  it('draws a name-and-roll item as a row, and folds a section asked to', () => {
+    const wrapper = mountSheet({
+      source: [
+        'name: A',
+        'sections:',
+        '  - { title: Skills, items: [{ name: Arcana, roll: 1d20+9 }, { name: Lore, roll: 1d20, text: Old things. }] }',
+        '  - { title: Spells, collapsed: true, items: [Fireball] }',
+        '  - { items: [Untitled] }'
+      ].join('\n')
+    })
+    const [skills, spells, untitled] = wrapper.findAll('.sheet-section')
+    const [arcana, lore] = skills.findAll('.sheet-item')
+    expect(arcana.classes()).toContain('sheet-item--row')
+    expect(lore.classes()).not.toContain('sheet-item--row')
+    expect(skills.element.tagName).toBe('DETAILS')
+    expect(skills.element.open).toBe(true)
+    expect(spells.element.open).toBe(false)
+    expect(spells.find('summary').text()).toBe('Spells')
+    expect(untitled.element.tagName).toBe('SECTION')
+  })
+
   it('rolls an action, and dice written in its text', async () => {
     const wrapper = mountSheet()
     await wrapper.find('.sheet-item .sheet-roll').trigger('click')

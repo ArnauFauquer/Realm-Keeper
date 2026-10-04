@@ -15,14 +15,16 @@
         "min": 0,
         "start": null,
         "color": "red",
-        "style": null
+        "style": null,
+        "group": null
       },
       "Stress": {
         "max": 3,
         "min": 0,
         "start": 0,
         "color": null,
-        "style": "pips"
+        "style": "pips",
+        "group": null
       }
     },
     "stats": [
@@ -53,6 +55,7 @@
         "title": "Actions",
         "columns": null,
         "wide": false,
+        "collapsed": false,
         "items": [
           {
             "name": "Gore",
@@ -76,6 +79,7 @@
         "title": "Features",
         "columns": null,
         "wide": false,
+        "collapsed": false,
         "items": [
           {
             "name": "Relentless",
