@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.84](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.83...v0.1.84) (2026-10-04)
+
+
+### Features
+
+* **sheets:** grouped counters, foldable sections and compact rows ([#29](https://github.com/ArnauFauquer/Realm-Keeper/issues/29)) ([1ecab6f](https://github.com/ArnauFauquer/Realm-Keeper/commit/1ecab6f3afc4a94a648cf2fbbe0922ebe47157df))
+
 ## [0.1.83](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.82...v0.1.83) (2026-10-04)
 
 
