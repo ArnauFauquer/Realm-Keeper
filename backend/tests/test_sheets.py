@@ -48,7 +48,7 @@ def test_a_sheet_that_is_far_too_long_is_not_parsed():
 
 
 def test_anchors_that_nothing_refers_to_are_harmless():
-    sheet, _ = parse_sheet_source("name: A\nresources:\n  HP: &hp 6\n")
+    sheet, _ = parse_sheet_source("name: A\nsections:\n  - counters:\n      HP: &hp 6\n")
     assert sheet.resources["HP"].max == 6
 
 
@@ -146,11 +146,11 @@ def test_wikilinks_inside_a_sheet_still_count_as_links(vault):
 # ── catalog ─────────────────────────────────────────────────────────────────
 
 def _sheet_vault(vault: Path) -> MarkdownService:
-    _write(vault, "Bestiary/Bugboar", "# Bugboar\n```sheet\nname: Bugboar\nresources:\n  HP: 6\n```\n")
-    _write(vault, "Party/Aria", "```sheet\nname: Aria\nid: aria\ntype: character\nresources:\n  HP: 12\n```\n")
+    _write(vault, "Bestiary/Bugboar", "# Bugboar\n```sheet\nname: Bugboar\nsections:\n  - counters: {HP: 6}\n```\n")
+    _write(vault, "Party/Aria", "```sheet\nname: Aria\nid: aria\ntype: character\nsections:\n  - counters: {HP: 12}\n```\n")
     _write(vault, "Party/Aria Old", "```sheet\nname: Aria (old)\nid: aria\ntype: character\n```\n")
     _write(vault, "Secret", "---\ntags: [draft]\n---\n```sheet\nname: Hidden Thing\n```\n")
-    _write(vault, "Broken", "```sheet\nresources: {HP: 1}\n```\n")
+    _write(vault, "Broken", "```sheet\nsections: [{counters: {HP: 1}}]\n```\n")
     _write(vault, "Stray tag", "```sheet\nname: Mimic\n# a comment about #draft stuff\n```\n")
     _write(vault, "Plain", "# No sheets here\n")
     return MarkdownService(vault_path=str(vault), ignore_tag="draft")

@@ -12,24 +12,21 @@
         "min": 0,
         "start": null,
         "color": null,
-        "style": null,
-        "group": null
+        "style": null
       },
       "Level 1": {
         "max": 4,
         "min": 0,
         "start": null,
         "color": null,
-        "style": null,
-        "group": "Spell slots"
+        "style": null
       },
       "Level 2": {
         "max": 3,
         "min": 0,
         "start": null,
-        "color": null,
-        "style": null,
-        "group": "Spell slots"
+        "color": "#60a5fa",
+        "style": null
       }
     },
     "stats": [
@@ -68,10 +65,60 @@
     ],
     "sections": [
       {
+        "title": null,
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "counters": [
+          "HP"
+        ],
+        "stats": [],
+        "items": []
+      },
+      {
+        "title": "Spells",
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "counters": [
+          "Level 1",
+          "Level 2"
+        ],
+        "stats": [
+          {
+            "title": null,
+            "columns": null,
+            "stats": [
+              {
+                "label": "Save DC",
+                "value": 17,
+                "roll": null
+              },
+              {
+                "label": "Spell attack",
+                "value": "+9",
+                "roll": "1d20+9"
+              }
+            ]
+          }
+        ],
+        "items": [
+          {
+            "name": null,
+            "text": "Fireball",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      },
+      {
         "title": "Habilidades",
         "columns": 3,
         "wide": false,
         "collapsed": false,
+        "counters": [],
+        "stats": [],
         "items": [
           {
             "name": null,
@@ -94,6 +141,8 @@
         "columns": null,
         "wide": true,
         "collapsed": true,
+        "counters": [],
+        "stats": [],
         "items": [
           {
             "name": "Arenga",

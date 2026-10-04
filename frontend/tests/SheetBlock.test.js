@@ -28,14 +28,14 @@ name: Bugboar
 subtitle: Tier 1 · Bruiser
 image: /api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png
 tags: [goblinoid]
-resources:
-  HP: 6
-  Stress: { max: 3, start: 0 }
 stats:
   Difficulty: 14
   Attack: { value: "+2", roll: "hf+2" }
   Notes: { value: sturdy, roll: "not dice" }
 sections:
+  - counters:
+      HP: 6
+      Stress: { max: 3, start: 0 }
   - title: Actions
     items:
       - name: Gore
@@ -109,21 +109,30 @@ describe('SheetBlock', () => {
     expect(groups[1].find('.sheet-stats').attributes('style')).toContain('--sheet-columns: 6')
     expect(groups[0].find('.sheet-stats').classes()).not.toContain('sheet-grid--fixed')
     expect(wrapper.find('.sheet-sections').attributes('style')).toContain('--sheet-columns: 2')
-    const [skills, features] = wrapper.findAll('.sheet-section')
+    const [, skills, features] = wrapper.findAll('.sheet-section') // the sheet's own stats come first
     expect(skills.find('.sheet-items').attributes('style')).toContain('--sheet-columns: 3')
     expect(features.classes()).toContain('sheet-section--wide')
     expect(features.find('table td code.dice-roll').exists()).toBe(true)
   })
 
-  it('gathers counters by group, in the order the groups first appear', () => {
+  it('draws each section\'s counters and stats in it, before its items', () => {
     const wrapper = mountSheet({
-      source: 'name: A\nresources:\n  HP: 10\n  Level 1: { max: 4, group: Slots }\n  Hope: 6\n  Level 2: { max: 3, group: Slots }'
+      source: [
+        'name: A',
+        'sections:',
+        '  - counters: { HP: 10, Hope: 6 }',
+        '  - title: Spells',
+        '    counters: { Level 1: 4, Level 2: 3 }',
+        '    stats: { Save DC: 17 }',
+        '    items: [Fireball]'
+      ].join('\n')
     })
-    const groups = wrapper.findAll('.sheet-resource-group')
-    expect(groups).toHaveLength(2)
-    expect(groups[0].findAll('.rc-name').map((n) => n.text())).toEqual(['HP', 'Hope'])
-    expect(groups[1].find('.sheet-group-title').text()).toBe('Slots')
-    expect(groups[1].findAll('.rc-name').map((n) => n.text())).toEqual(['Level 1', 'Level 2'])
+    const [top, spells] = wrapper.findAll('.sheet-section')
+    expect(top.findAll('.rc-name').map((n) => n.text())).toEqual(['HP', 'Hope'])
+    expect(spells.findAll('.rc-name').map((n) => n.text())).toEqual(['Level 1', 'Level 2'])
+    expect(spells.find('.sheet-stat dt').text()).toBe('Save DC')
+    const order = [...spells.element.children].map((el) => el.className.split(' ')[0])
+    expect(order).toEqual(['sheet-section-title', 'sheet-counters', 'sheet-stat-groups', 'sheet-items'])
   })
 
   it('draws a name-and-roll item as a row, and folds a section asked to', () => {
@@ -209,7 +218,7 @@ describe('SheetBlock', () => {
   })
 
   describe('a character\'s saved counters', () => {
-    const ARIA = 'name: Aria\nid: aria\ntype: character\nresources:\n  HP: 12\n  Hope: { max: 6, start: 2 }'
+    const ARIA = 'name: Aria\nid: aria\ntype: character\nsections:\n  - counters: { HP: 12, Hope: { max: 6, start: 2 } }'
     const saved = { id: 'aria', resources: { HP: { current: 7, max: 12, min: 0 }, Hope: { current: 2, max: 6, min: 0 } } }
 
     it('creates them the first time a signed-in reader sees the sheet', async () => {

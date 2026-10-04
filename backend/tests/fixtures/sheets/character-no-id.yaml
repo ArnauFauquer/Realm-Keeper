@@ -1,4 +1,6 @@
 name: Bram
 type: character
-resources:
-  HP: 8
+sections:
+  - counters:
+      HP: 8
+

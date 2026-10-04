@@ -15,16 +15,14 @@
         "min": 0,
         "start": null,
         "color": null,
-        "style": null,
-        "group": null
+        "style": null
       },
       "Rage": {
         "max": 5,
         "min": 1,
         "start": null,
         "color": null,
-        "style": "bar",
-        "group": null
+        "style": "bar"
       }
     },
     "stats": [
@@ -47,10 +45,24 @@
     ],
     "sections": [
       {
+        "title": null,
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "counters": [
+          "HP",
+          "Rage"
+        ],
+        "stats": [],
+        "items": []
+      },
+      {
         "title": "Traits",
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "counters": [],
+        "stats": [],
         "items": [
           {
             "name": null,

@@ -12,12 +12,23 @@
         "min": 0,
         "start": null,
         "color": null,
-        "style": null,
-        "group": null
+        "style": null
       }
     },
     "stats": [],
-    "sections": [],
+    "sections": [
+      {
+        "title": null,
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "counters": [
+          "HP"
+        ],
+        "stats": [],
+        "items": []
+      }
+    ],
     "columns": null,
     "text": null
   },
