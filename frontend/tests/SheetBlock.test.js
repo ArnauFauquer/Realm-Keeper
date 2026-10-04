@@ -156,6 +156,33 @@ describe('SheetBlock', () => {
     expect(untitled.element.tagName).toBe('SECTION')
   })
 
+  it('shows sections with a tab one tab at a time, after the others', async () => {
+    const wrapper = mountSheet({
+      source: [
+        'name: A',
+        'sections:',
+        '  - counters: { HP: 10 }',
+        '  - { title: Attacks, tab: Combat, items: [Sword] }',
+        '  - { title: Spells, tab: Magic, items: [Fireball] }',
+        '  - { title: Saves, tab: Combat, items: [Death] }',
+        '  - { title: Notes, items: [Always here] }'
+      ].join('\n')
+    })
+    const titles = () => wrapper.findAll('.sheet-section-title').map((t) => t.text())
+    expect(wrapper.findAll('.sheet-tab').map((t) => t.text())).toEqual(['Combat', 'Magic'])
+    expect(titles()).toEqual(['Notes', 'Attacks', 'Saves'])
+    await wrapper.findAll('.sheet-tab')[1].trigger('click')
+    expect(titles()).toEqual(['Notes', 'Spells'])
+    expect(wrapper.find('.sheet-tab--active').text()).toBe('Magic')
+  })
+
+  it('keeps the name for screen readers only when the page already shows it', () => {
+    const named = (pageHeadings) => mountSheet({ source: 'name: Gargamel "Asher" Roigé', pageHeadings }).find('.sheet-name')
+    expect(named(['Gargamel “Asher” Roigé']).classes()).toContain('sheet-name--hidden')
+    expect(named(['gargamel asher roige']).classes()).toContain('sheet-name--hidden')
+    expect(named(['Gargamel', 'Ficha']).classes()).not.toContain('sheet-name--hidden')
+  })
+
   it('rolls an action, and dice written in its text', async () => {
     const wrapper = mountSheet()
     await wrapper.find('.sheet-item .sheet-roll').trigger('click')

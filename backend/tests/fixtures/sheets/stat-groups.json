@@ -69,6 +69,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [
           "HP"
         ],
@@ -80,6 +81,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": "Magic",
         "counters": [
           "Level 1",
           "Level 2"
@@ -117,6 +119,7 @@
         "columns": 3,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [],
         "stats": [],
         "items": [
@@ -141,6 +144,7 @@
         "columns": null,
         "wide": true,
         "collapsed": true,
+        "tab": null,
         "counters": [],
         "stats": [],
         "items": [

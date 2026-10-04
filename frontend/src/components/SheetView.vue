@@ -3,7 +3,7 @@
     <header v-if="!compact" class="sheet-head">
       <img v-if="imageSrc" :src="imageSrc" :alt="sheet.name" class="sheet-portrait" />
       <div class="sheet-title">
-        <div class="sheet-name">{{ sheet.name }}</div>
+        <div class="sheet-name" :class="{ 'sheet-name--hidden': hideName }">{{ sheet.name }}</div>
         <div class="sheet-meta">
           <span class="sheet-type">{{ TYPE_LABELS[sheet.type] }}</span>
           <span v-if="sheet.subtitle">{{ sheet.subtitle }}</span>
@@ -21,21 +21,38 @@
     </ul>
 
     <!-- Everything below the header is sections: the sheet's own `stats`
-         come first, as an untitled one taking the whole row. -->
+         come first, as an untitled one taking the whole row. Sections with a
+         `tab` come after the others, one tab at a time, under a tab bar that
+         takes the whole row. -->
     <div
       v-if="displaySections.length"
       class="sheet-sections"
       :class="{ 'sheet-grid--fixed': sheet.columns }"
       :style="columnsStyle(sheet.columns)"
     >
+      <template v-for="section in displaySections" :key="section.key">
+      <div v-if="section.isTabBar" class="sheet-tabs" role="tablist" :aria-label="`${sheet.name}: sections`">
+        <button
+          v-for="tab in tabs"
+          :key="tab"
+          type="button"
+          role="tab"
+          class="sheet-tab"
+          :class="{ 'sheet-tab--active': tab === currentTab }"
+          :aria-selected="tab === currentTab"
+          @click="selectedTab = tab"
+        >
+          {{ tab }}
+        </button>
+      </div>
       <!-- A titled section folds (`collapsed` starts it folded); one without a
            title has nothing to fold under. -->
       <component
         :is="section.title ? 'details' : 'section'"
-        v-for="(section, index) in displaySections"
-        :key="index"
+        v-else
         class="sheet-section"
         :class="{ 'sheet-section--wide': section.wide }"
+        :role="section.tab ? 'tabpanel' : undefined"
         :open="section.title ? !section.collapsed : undefined"
       >
         <summary v-if="section.title" class="sheet-section-title">
@@ -126,6 +143,7 @@
           </li>
         </ul>
       </component>
+      </template>
     </div>
 
     <div v-if="sheet.text && !compact" class="sheet-text" v-html="block(sheet.text)"></div>
@@ -135,7 +153,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import ResourceCounter from './ResourceCounter.vue'
 import { createMarkdown } from '@/utils/markdown'
@@ -154,7 +172,10 @@ const props = defineProps({
   // Signed in: dice rolls and library images are behind login, like the rest
   // of the app (notes themselves are public).
   canInteract: { type: Boolean, default: false },
-  compact: { type: Boolean, default: false }
+  compact: { type: Boolean, default: false },
+  // The page around the sheet already shows its name (the note's title):
+  // the header keeps it for screen readers only.
+  hideName: { type: Boolean, default: false }
 })
 
 const TYPE_LABELS = { character: 'Character', adversary: 'Adversary' }
@@ -167,9 +188,13 @@ const md = createMarkdown({ refKinds: ['dice'] })
 // whole-row section, then its sections, each with its counters' specs (the
 // encounter tracker, `compact`, has its own counters). A catalog entry made
 // before sections had counters or stats lacks them.
+const tabs = computed(() => [...new Set(props.sheet.sections.map((section) => section.tab).filter(Boolean))])
+const selectedTab = ref(null)
+const currentTab = computed(() => (tabs.value.includes(selectedTab.value) ? selectedTab.value : tabs.value[0]))
+
 const displaySections = computed(() => {
   const head = props.sheet.stats.length ? [{ title: null, wide: true, stats: props.sheet.stats }] : []
-  return [...head, ...props.sheet.sections].map((section) => {
+  const all = [...head, ...props.sheet.sections].map((section, index) => {
     const counterList = props.compact
       ? []
       : (section.counters || []).map((name) => ({ name, ...props.sheet.resources[name] }))
@@ -178,11 +203,20 @@ const displaySections = computed(() => {
       columns: null,
       items: [],
       ...section,
+      // Keyed by place in the sheet, so a section's folded state stays its own
+      // across tab changes.
+      key: index,
       stats: section.stats || [],
       counterList,
       labelWidth: `${Math.min(16, Math.max(4.5, ...counterList.map((r) => r.name.length * 0.55 + 0.5)))}em`
     }
   })
+  if (!tabs.value.length) return all
+  return [
+    ...all.filter((section) => !section.tab),
+    { key: 'tabs', isTabBar: true },
+    ...all.filter((section) => section.tab === currentTab.value)
+  ]
 })
 
 // An item that is only a name and a roll (a skill, a save) reads as one row,
@@ -284,6 +318,15 @@ function onKeydown(e) {
 
 .sheet-title {
   min-width: 0;
+}
+
+.sheet-name--hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .sheet-name {
@@ -429,6 +472,50 @@ function onKeydown(e) {
   .sheet-section--wide {
     grid-column: 1 / -1;
   }
+}
+
+.sheet-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--space-1);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--sheet-hairline);
+  scrollbar-width: none;
+}
+
+.sheet-tab {
+  flex: none;
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.sheet-tab:hover {
+  color: var(--text-primary);
+  background: var(--hover-tint);
+}
+
+.sheet-tab--active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.sheet-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 .sheet-section {

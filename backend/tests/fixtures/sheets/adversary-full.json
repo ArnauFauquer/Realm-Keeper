@@ -54,6 +54,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [
           "HP",
           "Stress"
@@ -66,6 +67,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [],
         "stats": [],
         "items": [
@@ -92,6 +94,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [],
         "stats": [],
         "items": [

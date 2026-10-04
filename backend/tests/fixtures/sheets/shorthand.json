@@ -49,6 +49,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [
           "HP",
           "Rage"
@@ -61,6 +62,7 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "tab": null,
         "counters": [],
         "stats": [],
         "items": [

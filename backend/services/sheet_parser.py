@@ -189,7 +189,7 @@ def _sections(raw: Any) -> Tuple[List[SheetSection], dict]:
         sections.append(SheetSection(
             title=_text(section.get("title")), columns=_columns(section.get("columns"), "a section's columns"),
             wide=section.get("wide") is True, collapsed=section.get("collapsed") is True,
-            counters=list(own), stats=_stats(section.get("stats")), items=[_item(i) for i in items or []],
+            tab=_text(section.get("tab")), counters=list(own), stats=_stats(section.get("stats")), items=[_item(i) for i in items or []],
         ))
     return sections, resources
 
