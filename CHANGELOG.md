@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.2.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.84...v0.2.0) (2026-10-04)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sheets:** sheets with a top-level `resources` must move it into a section's `counters`.
+
+### Features
+
+* **sheets:** counters live in sections; top-level resources is gone ([#31](https://github.com/ArnauFauquer/Realm-Keeper/issues/31)) ([4f39c24](https://github.com/ArnauFauquer/Realm-Keeper/commit/4f39c24245222494a27ab4f798f289ba79a56f9c))
+
 ## [0.1.84](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.83...v0.1.84) (2026-10-04)
 
 
