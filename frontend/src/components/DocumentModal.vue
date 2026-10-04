@@ -39,6 +39,7 @@
             :loading-text="`Loading ${kind.plural}...`"
             :empty-icon="kind.emptyIcon"
             :empty-text="kind.emptyText"
+            :allow-folders="!kind.keyed"
             @navigate="goToPath"
             @enter-folder="enterFolder"
             @open-item="(item) => openItem(item.id, item.name)"
@@ -49,7 +50,7 @@
             @rename-item="onRenameItem"
             @move="onMove"
           >
-            <template #actions>
+            <template v-if="!kind.keyed" #actions>
               <div v-if="showNewInput" class="new-item-form">
                 <input
                   ref="newInputRef"
@@ -95,7 +96,7 @@
 
         <div v-else class="editor-view">
           <!-- (not `:name`: that would rename the slot itself) -->
-          <slot name="editor" :id="activeId" :title="activeName" :close="closeModal"></slot>
+          <slot name="editor" :id="activeId" :title="activeName" :close="closeModal" :back="backToGallery"></slot>
         </div>
       </div>
     </div>

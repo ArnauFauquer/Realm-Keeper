@@ -95,7 +95,7 @@ async function add() {
     }
     if (entry.type === 'character') {
       // Its saved counters have to exist before it can show them.
-      await charactersApi.commands.addItems(null, 'characters', [characterStateFromSheet(entry)], { ignoreExisting: true })
+      await charactersApi.ensure(entry.id, characterStateFromSheet(entry))
     }
     await encountersApi.commands.addItems(chosen.value, 'combatants', combatantsFromSheet(entry, amount, current.combatants))
     addedTo.value = chosen.value

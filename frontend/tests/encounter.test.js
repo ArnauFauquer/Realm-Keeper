@@ -44,9 +44,9 @@ describe('combatantsFromSheet', () => {
 })
 
 describe('characterStateFromSheet', () => {
-  it('keeps a character\'s saved values under its id', () => {
-    expect(characterStateFromSheet({ id: 'aria', resources: { HP: { max: 12 }, Hope: { max: 6, start: 2 } } })).toEqual({
-      id: 'aria',
+  it('is its name and its counters, starting where the sheet says', () => {
+    expect(characterStateFromSheet({ id: 'aria', name: 'Aria', resources: { HP: { max: 12 }, Hope: { max: 6, start: 2 } } })).toEqual({
+      name: 'Aria',
       resources: {
         HP: { current: 12, max: 12, min: 0, color: null, style: null },
         Hope: { current: 2, max: 6, min: 0, color: null, style: null }

@@ -12,11 +12,11 @@ from scripts import migrate_storage_layout as migrate
 from services import storage_service
 from services.doc_backend import S3DocBackend
 from services.doc_collection import DocCollection
-from services.doc_registry import BATTLEMAP, CHARACTERS, CHART, ENCOUNTER, VISTA
+from services.doc_registry import BATTLEMAP, CHARACTER, CHART, ENCOUNTER, VISTA
 
 from conftest import FakeS3
 
-ALL_KINDS = (CHART, VISTA, ENCOUNTER, BATTLEMAP, CHARACTERS)
+ALL_KINDS = (CHART, VISTA, ENCOUNTER, BATTLEMAP, CHARACTER)
 LIB = "/api/asset-library/assets/asset-library/"
 
 
@@ -91,14 +91,14 @@ def test_each_kind_of_document_has_its_own_top_level_prefix(fake_s3):
     backend = S3DocBackend()
     for doctype in ALL_KINDS:
         collection = DocCollection(doctype, backend)
-        if doctype.singleton:
-            collection.write_raw(doctype.singleton, {"id": doctype.singleton})
+        if doctype.id_pattern:
+            collection.ensure("thing", {"name": "Thing"})
         else:
             collection.create("Thing", folder_path="folder")
     keys = sorted(fake_s3.objects)
     assert keys == [
         "battlemaps/folder/thing/battlemap.json",
-        "characters/all/characters.json",
+        "characters/thing/character.json",
         "charts/folder/thing/chart.json",
         "encounters/folder/thing/encounter.json",
         "vistas/folder/thing/vista.json",
@@ -113,7 +113,6 @@ def test_each_kind_of_document_has_its_own_top_level_prefix(fake_s3):
     ("docs/charts/regions/tavern/chart.json", "charts/regions/tavern/chart.json", "document"),
     ("docs/vistas/La Biblioteca/la-entrada/vista.json", "vistas/La Biblioteca/la-entrada/vista.json", "document"),
     ("docs/encounters/fight/encounter.json", "encounters/fight/encounter.json", "document"),
-    ("docs/characters/all/characters.json", "characters/all/characters.json", "document"),
     ("docs/charts/empty/.keep", "charts/empty/.keep", "document"),
     ("docs/.imported/charts", "charts/.imported-from-vault", "document-marker"),
     ("charts/hola/map/Wei.jpg", "asset-library/Legacy/charts/hola/map/Wei.jpg", "legacy-image"),
@@ -136,7 +135,9 @@ def test_where_a_key_goes(key, target, rule):
     ("charts/empty/.keep", "in-place"),
     ("charts/.imported-from-vault", "in-place"),
     ("vistas/night/vista.json", "in-place"),
-    ("characters/all/characters.json", "in-place"),
+    ("characters/aria/character.json", "in-place"),
+    ("characters/all/characters.json", "characters-to-split"),
+    ("docs/characters/all/characters.json", "characters-to-split"),
     ("stray.txt", "not-under-a-prefix"),
     ("docs/mystery/x.json", "unknown-under-docs"),
     ("docs/charts", "unknown-under-docs"),
@@ -182,7 +183,10 @@ def old_bucket():
         "docs/vistas/La Biblioteca/pazadizos/vista.json": OLD_VISTA,
         "docs/encounters/fight/encounter.json": b'{"id": "fight", "name": "Fight"}',
         "docs/battlemaps/cave/battlemap.json": b'{"id": "cave", "name": "Cave"}',
-        "docs/characters/all/characters.json": b'{"id": "all", "name": "Characters"}',
+        "docs/characters/all/characters.json": json.dumps({"id": "all", "rev": 7, "characters": [
+            {"id": "aria", "resources": {"HP": {"current": 3, "max": 12, "min": 0}}},
+            {"id": "bram", "resources": {}},
+        ]}).encode(),
     })
 
 
@@ -195,13 +199,15 @@ NEW_KEYS = sorted([
     "charts/.imported-from-vault", "vistas/.imported-from-vault",
     "charts/wei/chart.json", "charts/empty/.keep",
     "vistas/La Biblioteca/pazadizos/vista.json",
-    "encounters/fight/encounter.json", "battlemaps/cave/battlemap.json", "characters/all/characters.json",
+    "encounters/fight/encounter.json", "battlemaps/cave/battlemap.json",
+    "characters/aria/character.json", "characters/bram/character.json",
 ])
 
 
-def migrate_all(fake, **kwargs):
+def migrate_all(fake, delete_sources):
     plan = migrate.build_plan(migrate.list_objects(fake, "bucket"))
-    migrate.execute(fake, "bucket", plan, log=lambda *_: None, **kwargs)
+    migrate.execute(fake, "bucket", plan, delete_sources=delete_sources, log=lambda *_: None)
+    migrate.split_characters(fake, "bucket", plan.character_documents, write=True, delete_sources=delete_sources, log=lambda *_: None)
     return plan
 
 
@@ -219,7 +225,8 @@ def test_nothing_is_lost_or_changed_on_the_way():
     assert fake.objects["player/Action/01 Beyond Distant Lands.mp3"] == before["Action/01 Beyond Distant Lands.mp3"]
     assert fake.objects["charts/wei/chart.json"] == before["docs/charts/wei/chart.json"]
     assert fake.objects["asset-library/Legacy/charts/wei/pins/p/Gate.png"] == before["charts/wei/pins/p/Gate.png"]
-    assert sorted(fake.objects.values()) == sorted(before.values())    # the same objects, in other places
+    moved = {k: v for k, v in before.items() if "characters" not in k}
+    assert sorted(v for k, v in fake.objects.items() if not k.startswith("characters/")) == sorted(moved.values())
 
 
 def test_running_it_again_has_nothing_to_do():
@@ -237,7 +244,7 @@ def test_copy_only_leaves_the_old_keys_and_a_later_apply_removes_them():
     assert old <= set(fake.objects) and set(NEW_KEYS) <= set(fake.objects)
 
     plan = migrate_all(fake, delete_sources=True)                      # the second run
-    assert not plan.moves and len(plan.already_there) == len(old - set(NEW_KEYS))
+    assert not plan.moves and len(plan.already_there) == len(old - set(NEW_KEYS)) - 1   # (the characters are split, not moved)
     assert sorted(fake.objects) == NEW_KEYS
 
 
@@ -437,3 +444,41 @@ def test_a_conflict_stops_it_before_anything_is_touched(command, capsys):
 def test_without_an_endpoint_there_is_no_bucket(monkeypatch, capsys):
     monkeypatch.setattr(settings, "S3_ENDPOINT_URL", "")
     assert migrate.main(["--apply", "--yes"]) == 2
+
+
+# ── the migration: one document per character ───────────────────────────────
+
+def test_each_character_of_the_shared_document_gets_its_own(monkeypatch):
+    fake = old_bucket()
+    migrate_all(fake, delete_sources=True)
+    aria = json.loads(fake.objects["characters/aria/character.json"])
+    assert aria["resources"]["HP"]["current"] == 3 and aria["rev"] == 0 and aria["name"] == "aria"
+    assert "docs/characters/all/characters.json" not in fake.objects
+    monkeypatch.setattr(storage_service, "_client", lambda: fake)
+    collection = DocCollection(CHARACTER, S3DocBackend())
+    assert sorted(m.id for m in collection.list_all()) == ["aria", "bram"]
+
+
+def test_a_character_the_app_already_made_from_its_sheet_takes_the_saved_values():
+    fake = old_bucket()
+    fake.objects["characters/aria/character.json"] = json.dumps(
+        {"id": "aria", "name": "Aria", "rev": 0, "resources": {"HP": {"current": 12, "max": 12, "min": 0}}}).encode()
+    migrate_all(fake, delete_sources=True)
+    aria = json.loads(fake.objects["characters/aria/character.json"])
+    assert aria["resources"]["HP"]["current"] == 3 and aria["name"] == "Aria"
+
+
+def test_but_one_used_since_is_kept():
+    fake = old_bucket()
+    fake.objects["characters/aria/character.json"] = json.dumps(
+        {"id": "aria", "name": "Aria", "rev": 4, "resources": {"HP": {"current": 9, "max": 12, "min": 0}}}).encode()
+    migrate_all(fake, delete_sources=True)
+    assert json.loads(fake.objects["characters/aria/character.json"])["resources"]["HP"]["current"] == 9
+
+
+def test_a_dry_run_splits_nothing():
+    fake = old_bucket()
+    before = dict(fake.objects)
+    plan = migrate.build_plan(migrate.list_objects(fake, "bucket"))
+    assert migrate.split_characters(fake, "bucket", plan.character_documents, write=False, delete_sources=False, log=lambda *_: None) == 2
+    assert fake.objects == before

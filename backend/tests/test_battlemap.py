@@ -16,7 +16,7 @@ from services.battlemap_projection import project_for_screen
 from services.battlemap_screen import BattlemapScreen
 from services.doc_backend import LocalDocBackend
 from services.doc_collection import DocCollection, DocNotFound
-from services.doc_registry import BATTLEMAP, CHARACTERS, ENCOUNTER
+from services.doc_registry import BATTLEMAP, CHARACTER, ENCOUNTER
 from services.sync_hub import DocHub
 
 LIB = "/api/asset-library/assets/asset-library/"
@@ -72,7 +72,7 @@ ENCOUNTER_DOC = {"combatants": [
      "resources": {"HP": {"current": 2, "max": 6, "min": 0, "color": "red", "style": None}, "Stress": {"current": 1, "max": 3}}},
     {"id": "c2", "type": "character", "sheet": "aria", "resources": {}},
 ]}
-CHARACTERS_DOC = {"characters": [{"id": "aria", "resources": {"HP": {"current": 9, "max": 12, "min": 0}}}]}
+CHARACTERS_DOC = {"aria": {"id": "aria", "resources": {"HP": {"current": 9, "max": 12, "min": 0}}}}
 
 
 def test_a_hidden_token_never_reaches_a_screen():
@@ -126,7 +126,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 60)
     monkeypatch.setattr(battlemap_screen, "COALESCE", 0.02)
     backend = LocalDocBackend(tmp_path)
-    collections = {c.kind: DocCollection(c, backend) for c in (BATTLEMAP, ENCOUNTER, CHARACTERS)}
+    collections = {c.kind: DocCollection(c, backend) for c in (BATTLEMAP, ENCOUNTER, CHARACTER)}
     collections["battlemap"].create("Cave")
     collections["encounter"].create("Fight")
     return DocHub(collections)
@@ -234,6 +234,17 @@ def test_the_counters_a_token_shows_follow_its_encounter_and_the_characters(worl
         await world.mutate("encounter", "fight", lambda d: doc_commands.adjust_resource(d, ENCOUNTER, "combatants", "c1", "HP", -4))
         await asyncio.sleep(0.2)
         assert manager.sent[-1]["tokens"][0]["meters"][0]["current"] == 2
+
+        # A character's counters are its own document's.
+        world._collections["character"].ensure("aria", {"name": "Aria", "resources": {"HP": {"current": 9, "max": 12}}})
+        await world.mutate("encounter", "fight", lambda d: doc_commands.add_items(d, ENCOUNTER, "combatants", [
+            {"id": "c2", "name": "Aria", "type": "character", "sheet": "aria"},
+        ]))
+        await add_token(world, id="b", name="Aria", x=2, y=1, combatant="c2", show_bars=True, bars=["HP"])
+        await world.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -3))
+        await asyncio.sleep(0.2)
+        aria = next(t for t in manager.sent[-1]["tokens"] if t["id"] == "b")
+        assert aria["meters"][0]["current"] == 6
 
     asyncio.run(scenario())
 
@@ -385,3 +396,16 @@ def test_a_screen_that_connects_later_gets_the_map_as_it_is(gm, client):
     with client.websocket_connect("/ws/screen") as socket:
         assert socket.receive_json()["type"] == "display_battlemap"
         assert socket.receive_json()["tokens"][0]["x"] == 9
+
+
+def test_a_character_given_another_id_is_followed_by_its_encounters_and_tokens(gm):
+    gm.post("/api/characters/ensure", json={"id": "vex", "fields": {"name": "Vex", "resources": {"HP": {"current": 4, "max": 9}}}})
+    fight = gm.post("/api/encounters", json={"name": "Vex fight"}).json()["id"]
+    gm.post(f"/api/encounters/{fight}/combatants", json={"items": [{"id": "v", "name": "Vex", "type": "character", "sheet": "vex"}]})
+    cave = gm.post("/api/battlemaps", json={"name": "Vex cave"}).json()["id"]
+    gm.post(f"/api/battlemaps/{cave}/tokens", json={"items": [{"id": "t", "name": "Vex", "sheet": "vex", "combatant": "v"}]})
+
+    assert gm.post("/api/characters/vex/reassign", json={"id": "vex-the-red"}).json()["id"] == "vex-the-red"
+    assert gm.get(f"/api/encounters/{fight}").json()["combatants"][0]["sheet"] == "vex-the-red"
+    assert gm.get(f"/api/battlemaps/{cave}").json()["tokens"][0]["sheet"] == "vex-the-red"
+    assert gm.get("/api/characters/vex-the-red").json()["resources"]["HP"]["current"] == 4

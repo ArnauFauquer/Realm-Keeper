@@ -141,3 +141,39 @@ export function useSyncedDocFollowing(kind, id, fetchFor) {
     status: computed(() => entry.value?.status.value ?? 'idle')
   }
 }
+
+/**
+ * Several documents of one kind, followed together: `ids` is a function
+ * returning the ids to follow right now (an encounter's characters), and as it
+ * changes new ones are followed and the ones no longer asked for let go of.
+ * `docs` maps each id to its document (missing while it loads, or if there is
+ * none); `statusOf(id)` says which. `fetchFor(id)` loads one.
+ */
+export function useSyncedDocs(kind, ids, fetchFor) {
+  const held = shallowRef(new Map()) // id -> entry
+
+  watch(() => [...new Set((ids() || []).filter(Boolean))].sort().join('\n'), (key) => {
+    const wanted = key ? key.split('\n') : []
+    const next = new Map()
+    for (const id of wanted) next.set(id, held.value.get(id) || acquireEntry(kind, id, () => fetchFor(id)))
+    for (const [id, entry] of held.value) if (!next.has(id)) entry.release()
+    held.value = next
+  }, { immediate: true })
+
+  onBeforeUnmount(() => held.value.forEach((entry) => entry.release()))
+
+  const docs = computed(() => {
+    const found = {}
+    for (const [id, entry] of held.value) if (entry.doc.value) found[id] = entry.doc.value
+    return found
+  })
+
+  return {
+    docs,
+    statusOf: (id) => held.value.get(id)?.status.value ?? 'idle',
+    /** Loads it again (it may have just been made), if it is followed. */
+    reload: (id) => held.value.get(id)?.load(),
+    /** Runs a command on one of them and applies the event it returns. */
+    commit: (id, command) => (held.value.get(id)?.commit(command) ?? command)
+  }
+}

@@ -27,7 +27,7 @@ class FakeSocket {
   }
 }
 
-const { useSyncedDoc, useSyncedDocFollowing } = await import('@/composables/useSyncedDoc')
+const { useSyncedDoc, useSyncedDocFollowing, useSyncedDocs } = await import('@/composables/useSyncedDoc')
 const { syncStatus } = await import('@/composables/syncSocket')
 
 const flush = async () => {
@@ -260,5 +260,70 @@ describe('useSyncedDocFollowing', () => {
     expect(syncStatus.value).toBe('open')
     view.unmount()
     expect(syncStatus.value).toBe('idle')
+  })
+})
+
+
+describe('useSyncedDocs', () => {
+  function useMany(ids, fetchFor) {
+    let result
+    const app = createApp(defineComponent({
+      setup() {
+        result = useSyncedDocs('character', () => ids.value, fetchFor)
+        return () => h('div')
+      }
+    }))
+    app.mount(document.createElement('div'))
+    mounted.push(app)
+    return { ...result, unmount: () => app.unmount() }
+  }
+  const character = (id, hp) => ({ id, rev: 1, resources: { HP: { current: hp, max: 9 } } })
+  const missing = () => Promise.reject({ response: { status: 404 } })
+
+  it('follows each id it is given, and lets go of the ones no longer asked for', async () => {
+    const ids = ref(['aria'])
+    const fetchFor = vi.fn(async (id) => character(id, id === 'aria' ? 3 : 5))
+    const { docs, statusOf } = useMany(ids, fetchFor)
+    await flush()
+    expect(Object.keys(docs.value)).toEqual(['aria'])
+    ids.value = ['aria', 'bram', 'bram', null]
+    await flush()
+    expect(fetchFor).toHaveBeenCalledTimes(2)                       // aria is not loaded again
+    expect(docs.value.bram.resources.HP.current).toBe(5)
+    ids.value = ['bram']
+    await flush()
+    expect(Object.keys(docs.value)).toEqual(['bram'])
+    expect(statusOf('aria')).toBe('idle')
+  })
+
+  it('keeps each one up to date with its own events', async () => {
+    const ids = ref(['aria', 'bram'])
+    const { docs } = useMany(ids, async (id) => character(id, 1))
+    await flush()
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'character:bram', rev: 2, set: { resources: { HP: { current: 8, max: 9 } } } })
+    expect(docs.value.bram.resources.HP.current).toBe(8)
+    expect(docs.value.aria.resources.HP.current).toBe(1)
+  })
+
+  it('knows one that does not exist yet, and loads it once it does', async () => {
+    const ids = ref(['vex'])
+    let exists = false
+    const { docs, statusOf, reload } = useMany(ids, (id) => (exists ? Promise.resolve(character(id, 4)) : missing()))
+    await flush()
+    expect(statusOf('vex')).toBe('gone')
+    expect(docs.value.vex).toBeUndefined()
+    exists = true
+    await reload('vex')
+    await flush()
+    expect(statusOf('vex')).toBe('ready')
+    expect(docs.value.vex.resources.HP.current).toBe(4)
+  })
+
+  it('applies the event a command returns', async () => {
+    const ids = ref(['aria'])
+    const { docs, commit } = useMany(ids, async (id) => character(id, 3))
+    await flush()
+    await commit('aria', Promise.resolve({ type: 'doc', rev: 2, set: { resources: { HP: { current: 2, max: 9 } } } }))
+    expect(docs.value.aria.resources.HP.current).toBe(2)
   })
 })

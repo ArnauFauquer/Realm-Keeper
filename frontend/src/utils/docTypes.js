@@ -10,6 +10,8 @@
 //               fields a save sends besides its name and description
 //   screen      can be shown on the table screen, and mirrored there as it is edited
 //   embeddable  a note can show it with `<type>:<id>`
+//   keyed       named by what it belongs to (a character by its sheet's id): no
+//               "New" button and no folders in its gallery
 export const DOC_TYPES = {
   chart: {
     type: 'chart',
@@ -54,6 +56,19 @@ export const DOC_TYPES = {
     icon: 'mdi-sword-cross',
     emptyIcon: 'mdi-sword-cross',
     emptyText: 'No encounters yet. Create one to track who is in a fight, their counters and conditions.'
+  },
+  character: {
+    type: 'character',
+    resource: 'characters',
+    title: 'Characters',
+    plural: 'characters',
+    label: 'character',
+    icon: 'mdi-account-heart-outline',
+    thumbIcon: 'mdi-account',
+    emptyIcon: 'mdi-account-heart-outline',
+    emptyText: 'No saved characters yet. A character is saved the first time its sheet is used.',
+    // Named by their sheet's id and made from it, not from the gallery.
+    keyed: true
   },
   battlemap: {
     type: 'battlemap',

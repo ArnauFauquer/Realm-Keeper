@@ -235,10 +235,11 @@ const props = defineProps({
 const id = props.battlemapId
 const { commands } = battlemapsApi
 const { doc, status, error, commit } = useSyncedDoc('battlemap', id, () => battlemapsApi.fetch(id))
-const characters = useCharacters()
 // The encounter whose combatants the tokens stand for, followed live too (a
 // token shows its combatant's counters as they change).
 const { doc: encounter } = useSyncedDocFollowing('encounter', () => doc.value?.encounter || null, (encounterId) => encountersApi.fetch(encounterId))
+// And the saved values of its characters, one live document each.
+const characters = useCharacters(() => (encounter.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
 const TABS = [{ value: 'tokens', label: 'Tokens' }, { value: 'map', label: 'Map' }]
 const COLORS = ['#6d4fc2', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#94a3b8']
@@ -268,10 +269,10 @@ watch(() => props.canInteract, (signedIn) => {
 }, { immediate: true })
 
 const viewTokens = computed(() =>
-  (doc.value?.tokens || []).map((token) => ({ ...token, meters: metersFor(token, encounter.value, characters.doc.value) }))
+  (doc.value?.tokens || []).map((token) => ({ ...token, meters: metersFor(token, encounter.value, characters.docs.value) }))
 )
 const selected = computed(() => doc.value?.tokens.find((t) => t.id === selectedId.value) || null)
-const options = computed(() => (selected.value ? barOptions(selected.value, encounter.value, characters.doc.value) : []))
+const options = computed(() => (selected.value ? barOptions(selected.value, encounter.value, characters.docs.value) : []))
 const unplaced = computed(() => {
   const placed = new Set((doc.value?.tokens || []).map((t) => t.combatant).filter(Boolean))
   return (encounter.value?.combatants || []).filter((c) => !placed.has(c.id))

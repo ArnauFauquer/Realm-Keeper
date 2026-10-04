@@ -40,12 +40,12 @@ describe('what a save and a screen are sent', () => {
 
 describe('the kinds', () => {
   it('has one entry for each, under the key it is looked up by', () => {
-    expect(Object.keys(DOC_TYPES)).toEqual(['chart', 'vista', 'encounter', 'battlemap'])
+    expect(Object.keys(DOC_TYPES)).toEqual(['chart', 'vista', 'encounter', 'character', 'battlemap'])
     for (const [key, docType] of Object.entries(DOC_TYPES)) expect(docType.type).toBe(key)
   })
 
   it('names the resource each lives under: what the backend serves', () => {
-    expect(Object.values(DOC_TYPES).map((t) => t.resource)).toEqual(['charts', 'vistas', 'encounters', 'battlemaps'])
+    expect(Object.values(DOC_TYPES).map((t) => t.resource)).toEqual(['charts', 'vistas', 'encounters', 'characters', 'battlemaps'])
   })
 
   it('has the screen and a picture only for the ones that can be shown', () => {

@@ -41,7 +41,13 @@ class BattlemapScreen:
                 # Gone (DocNotFound), or not a valid id at all: the map is
                 # still shown, just without anyone's counters.
                 pass
-        characters = await self.hub.snapshot("characters", "all")
+        characters = {}
+        for combatant in (encounter or {}).get("combatants", []):
+            if combatant.get("type") == "character" and combatant.get("sheet"):
+                try:
+                    characters[combatant["sheet"]] = await self.hub.snapshot("character", combatant["sheet"])
+                except ValueError:
+                    pass   # not saved yet (or gone): no counters to show
         return project_for_screen(battlemap, encounter, characters)
 
     async def show(self, battlemap_id: str) -> None:
@@ -63,7 +69,7 @@ class BattlemapScreen:
             return
         if kind == "battlemap" and doc_id == displayed:
             self._schedule()
-        elif kind == "characters":
+        elif kind == "character":
             self._schedule()
         elif kind == "encounter":
             try:

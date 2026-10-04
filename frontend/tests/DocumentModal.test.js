@@ -326,3 +326,23 @@ describe('DocumentModal — creating', () => {
     expect(wrapper.find('.editor-view').text()).toContain('editing:fresh:')
   })
 })
+
+describe('DocumentModal — a keyed kind (saved characters)', () => {
+  beforeEach(() => { api = fakeApi('characters') })
+
+  it('has no New button and no folders: its documents are made from their sheets', async () => {
+    const { wrapper } = mountModal(DOC_TYPES.character)
+    modal.open()
+    await flushPromises()
+    expect(buttonByText(wrapper, 'New character')).toBeUndefined()
+    expect(buttonByText(wrapper, 'New folder')).toBeUndefined()
+  })
+
+  it('lets its editor go back to the gallery', async () => {
+    const { wrapper, slotProps } = mountModal(DOC_TYPES.character)
+    await openOn(wrapper, 'aria')
+    slotProps.back()
+    await nextTick()
+    expect(wrapper.find('.gallery-view').exists()).toBe(true)
+  })
+})

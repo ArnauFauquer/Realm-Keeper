@@ -23,9 +23,9 @@ function counters(resources) {
 // on a screen's behalf); a sheet's image can be any URL.
 const libraryImage = (image) => (image && image.startsWith(LIBRARY_PREFIX) ? image : null)
 
-/** The saved state to create for a `character` sheet the first time it is used. */
+/** What to save for a `character` sheet the first time it is used (its id is the sheet's). */
 export function characterStateFromSheet(sheet) {
-  return { id: sheet.id, resources: counters(sheet.resources) }
+  return { name: sheet.name, resources: counters(sheet.resources) }
 }
 
 /**
