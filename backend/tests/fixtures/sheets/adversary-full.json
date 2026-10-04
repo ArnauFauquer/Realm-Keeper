@@ -27,24 +27,32 @@
     },
     "stats": [
       {
-        "label": "Difficulty",
-        "value": 14,
-        "roll": null
-      },
-      {
-        "label": "Thresholds",
-        "value": "7 / 13",
-        "roll": null
-      },
-      {
-        "label": "Attack",
-        "value": "+2",
-        "roll": "hf+2"
+        "title": null,
+        "columns": null,
+        "stats": [
+          {
+            "label": "Difficulty",
+            "value": 14,
+            "roll": null
+          },
+          {
+            "label": "Thresholds",
+            "value": "7 / 13",
+            "roll": null
+          },
+          {
+            "label": "Attack",
+            "value": "+2",
+            "roll": "hf+2"
+          }
+        ]
       }
     ],
     "sections": [
       {
         "title": "Actions",
+        "columns": null,
+        "wide": false,
         "items": [
           {
             "name": "Gore",
@@ -66,6 +74,8 @@
       },
       {
         "title": "Features",
+        "columns": null,
+        "wide": false,
         "items": [
           {
             "name": "Relentless",
@@ -77,6 +87,7 @@
         ]
       }
     ],
+    "columns": null,
     "text": "A tusked brute.\n\nIt does not stop."
   },
   "warnings": []

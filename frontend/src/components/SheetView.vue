@@ -37,47 +37,66 @@
       </div>
     </slot>
 
-    <dl v-if="sheet.stats.length" class="sheet-stats">
-      <div v-for="stat in sheet.stats" :key="stat.label" class="sheet-stat">
-        <dt>{{ stat.label }}</dt>
-        <dd>
-          <button
-            v-if="canInteract && isRollable(stat.roll)"
-            type="button"
-            class="sheet-roll"
-            :title="`Roll ${stat.roll}`"
-            @click="rollFormula(stat.roll, stat.label)"
-          >
-            <span class="mdi mdi-dice-multiple"></span>{{ statText(stat) }}
-          </button>
-          <span v-else>{{ statText(stat) }}</span>
-        </dd>
-      </div>
-    </dl>
-
-    <section v-for="(section, index) in sheet.sections" :key="index" class="sheet-section">
-      <div v-if="section.title" class="sheet-section-title">{{ section.title }}</div>
-      <ul class="sheet-items">
-        <li v-for="(item, i) in section.items" :key="i" class="sheet-item" :data-roll-label="item.name">
-          <div v-if="item.name || item.roll || item.cost || item.tags.length" class="sheet-item-head">
-            <span v-if="item.name" class="sheet-item-name">{{ item.name }}</span>
-            <button
-              v-if="canInteract && isRollable(item.roll)"
-              type="button"
-              class="sheet-roll"
-              :title="`Roll ${item.roll}`"
-              @click="rollFormula(item.roll, item.name)"
-            >
-              <span class="mdi mdi-dice-multiple"></span>{{ item.roll }}
-            </button>
-            <span v-else-if="item.roll" class="sheet-roll-static">{{ item.roll }}</span>
-            <span v-if="item.cost" class="sheet-cost">{{ item.cost }}</span>
-            <span v-for="tag in item.tags" :key="tag" class="sheet-tag">{{ tag }}</span>
+    <!-- Each group of stats is its own grid; `columns` fixes how many go in a
+         row once there is room for them. -->
+    <div v-if="sheet.stats.length" class="sheet-stat-groups">
+      <div v-for="(group, g) in sheet.stats" :key="g" class="sheet-stat-group">
+        <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
+        <dl class="sheet-stats" :class="{ 'sheet-grid--fixed': group.columns }" :style="columnsStyle(group.columns)">
+          <div v-for="stat in group.stats" :key="stat.label" class="sheet-stat">
+            <dt>{{ stat.label }}</dt>
+            <dd>
+              <button
+                v-if="canInteract && isRollable(stat.roll)"
+                type="button"
+                class="sheet-roll"
+                :title="`Roll ${stat.roll}`"
+                @click="rollFormula(stat.roll, stat.label)"
+              >
+                <span class="mdi mdi-dice-multiple"></span>{{ statText(stat) }}
+              </button>
+              <span v-else>{{ statText(stat) }}</span>
+            </dd>
           </div>
-          <div v-if="item.text" class="sheet-item-text" v-html="inline(item.text)"></div>
-        </li>
-      </ul>
-    </section>
+        </dl>
+      </div>
+    </div>
+
+    <div
+      v-if="sheet.sections.length"
+      class="sheet-sections"
+      :class="{ 'sheet-grid--fixed': sheet.columns }"
+      :style="columnsStyle(sheet.columns)"
+    >
+      <section
+        v-for="(section, index) in sheet.sections"
+        :key="index"
+        class="sheet-section"
+        :class="{ 'sheet-section--wide': section.wide }"
+      >
+        <div v-if="section.title" class="sheet-section-title">{{ section.title }}</div>
+        <ul class="sheet-items" :class="{ 'sheet-grid--fixed': section.columns }" :style="columnsStyle(section.columns)">
+          <li v-for="(item, i) in section.items" :key="i" class="sheet-item" :data-roll-label="item.name">
+            <div v-if="item.name || item.roll || item.cost || item.tags.length" class="sheet-item-head">
+              <span v-if="item.name" class="sheet-item-name">{{ item.name }}</span>
+              <button
+                v-if="canInteract && isRollable(item.roll)"
+                type="button"
+                class="sheet-roll"
+                :title="`Roll ${item.roll}`"
+                @click="rollFormula(item.roll, item.name)"
+              >
+                <span class="mdi mdi-dice-multiple"></span>{{ item.roll }}
+              </button>
+              <span v-else-if="item.roll" class="sheet-roll-static">{{ item.roll }}</span>
+              <span v-if="item.cost" class="sheet-cost">{{ item.cost }}</span>
+              <span v-for="tag in item.tags" :key="tag" class="sheet-tag">{{ tag }}</span>
+            </div>
+            <div v-if="item.text" class="sheet-item-text" v-html="block(item.text)"></div>
+          </li>
+        </ul>
+      </section>
+    </div>
 
     <div v-if="sheet.text && !compact" class="sheet-text" v-html="block(sheet.text)"></div>
 
@@ -125,8 +144,9 @@ const imageSrc = computed(() => {
 const isRollable = (formula) => !!formula && !!parseDiceFormula(formula)
 const statText = (stat) => stat.value ?? stat.roll
 
-const inline = (text) => sanitizeHtml(md.renderInline(text))
+// Texts are block markdown, so a table or a list works in an item too.
 const block = (text) => sanitizeHtml(md.render(text))
+const columnsStyle = (columns) => (columns ? { '--sheet-columns': columns } : null)
 
 function rollFormula(formula, label) {
   roll(formula, { label: label ? `${props.sheet.name} · ${label}` : props.sheet.name })
@@ -166,7 +186,10 @@ function onKeydown(e) {
   gap: var(--space-3);
   margin: var(--space-4) 0;
   padding: var(--space-4);
-  max-width: 46rem;
+  /* The layouts below (columns of stats, sections, items) follow the card's
+     width, not the window's: the same sheet sits in a note and in the
+     encounter tracker. */
+  container: sheet / inline-size;
   background: var(--surface-raised);
   border: 1px solid var(--accent-a30);
   border-left: 4px solid var(--accent);
@@ -260,11 +283,64 @@ function onKeydown(e) {
   gap: var(--space-1);
 }
 
+.sheet-stat-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* An untitled group after another is told apart by a rule. */
+.sheet-stat-group + .sheet-stat-group:not(:has(> .sheet-group-title)) {
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border-light);
+}
+
+.sheet-group-title {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
 .sheet-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
   gap: var(--space-2);
   margin: 0;
+}
+
+/* `columns` in the sheet: as many as asked once the card is wide enough to
+   fit them, the automatic layout below that. */
+@container sheet (min-width: 40rem) {
+  .sheet-stats.sheet-grid--fixed {
+    grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
+  }
+}
+
+.sheet-sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+@container sheet (min-width: 44rem) {
+  .sheet-sections.sheet-grid--fixed {
+    display: grid;
+    grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
+    gap: var(--space-3) var(--space-5);
+    align-items: start;
+  }
+
+  .sheet-section--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.sheet-section {
+  min-width: 0;
+  container: sheet-section / inline-size;
 }
 
 .sheet-stat {
@@ -339,6 +415,15 @@ function onKeydown(e) {
 
 .sheet-card .sheet-item {
   margin: 0;
+  min-width: 0;
+}
+
+@container sheet-section (min-width: 26rem) {
+  .sheet-card .sheet-items.sheet-grid--fixed {
+    display: grid;
+    grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
+    gap: var(--space-2) var(--space-4);
+  }
 }
 
 .sheet-item-head {
@@ -363,15 +448,38 @@ function onKeydown(e) {
   color: var(--text-secondary);
 }
 
-.sheet-item-text :deep(p),
-.sheet-text :deep(p) {
+.sheet-card .sheet-item-text :deep(:is(p, ul, ol)),
+.sheet-card .sheet-text :deep(:is(p, ul, ol)) {
   margin: 0 0 var(--space-2);
   max-width: none;
 }
 
-.sheet-item-text :deep(p:last-child),
-.sheet-text :deep(p:last-child) {
+.sheet-card .sheet-item-text :deep(:last-child),
+.sheet-card .sheet-text :deep(:last-child) {
   margin-bottom: 0;
+}
+
+/* Tables written in a text (Markdown `| a | b |`). The note styles its own
+   tables too; this is for the sheet anywhere else (the encounter tracker). */
+.sheet-card :deep(table) {
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.sheet-card :deep(th),
+.sheet-card :deep(td) {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-light);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sheet-card :deep(th) {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 /* The note around a sheet styles every ul / li / p in it (NoteView's

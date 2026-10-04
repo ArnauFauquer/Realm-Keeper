@@ -208,7 +208,7 @@ describe('EncounterTracker', () => {
   it("shows a combatant's sheet when its details are opened, once", async () => {
     fetchSheet.mockResolvedValue({ sheet: {
       id: 'bugboar', name: 'Bugboar', type: 'adversary', tags: [], resources: {}, text: null,
-      stats: [{ label: 'Difficulty', value: 14, roll: null }], sections: []
+      stats: [{ title: null, columns: null, stats: [{ label: 'Difficulty', value: 14, roll: null }] }], sections: []
     } })
     const wrapper = mountTracker()
     const details = cards(wrapper)[0].find('details')
