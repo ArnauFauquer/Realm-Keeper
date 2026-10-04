@@ -11,14 +11,17 @@ from typing import Any, List, Optional, Tuple
 import yaml
 from pydantic import ValidationError
 
-from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatSpec
+from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
 from services.storage_service import ASSET_LIBRARY_PREFIX, ASSET_LIBRARY_URL_PREFIX
 
 SHEET_TYPES = ("character", "adversary")
 # A sheet is a few dozen lines. The limit keeps a block pasted by mistake (or a
 # hostile one) from being parsed, and from taking the whole catalog with it.
 MAX_SOURCE_LENGTH = 100_000
-KNOWN_FIELDS = {"id", "name", "type", "subtitle", "image", "tags", "resources", "stats", "sections", "text"}
+KNOWN_FIELDS = {"id", "name", "type", "subtitle", "image", "tags", "resources", "stats", "sections", "columns", "text"}
+# How many columns a layout may ask for (the sheet's sections, a section's
+# items, a group of stats). Narrow screens fall back to fewer on their own.
+MAX_COLUMNS = 12
 
 
 class SheetParseError(ValueError):
@@ -111,11 +114,16 @@ def _resources(raw: Any) -> dict:
     return {str(name): _resource(str(name), value) for name, value in raw.items()}
 
 
-def _stats(raw: Any) -> List[StatSpec]:
-    if raw is None:
-        return []
-    if not isinstance(raw, dict):
-        raise SheetParseError("stats must be a mapping of label to value")
+def _columns(value: Any, what: str) -> Optional[int]:
+    if value is None:
+        return None
+    n = _integer(value, what)
+    if not 1 <= n <= MAX_COLUMNS:
+        raise SheetParseError(f"{what} must be between 1 and {MAX_COLUMNS}")
+    return n
+
+
+def _stat_list(raw: dict) -> List[StatSpec]:
     stats = []
     for label, value in raw.items():
         if isinstance(value, dict):
@@ -123,6 +131,32 @@ def _stats(raw: Any) -> List[StatSpec]:
         else:
             stats.append(StatSpec(label=str(label), value=value))
     return stats
+
+
+def _stat_group(raw: Any) -> StatGroup:
+    """A plain mapping of stats, or {title, columns, stats} (told apart by
+    having a `stats` key)."""
+    if not isinstance(raw, dict):
+        raise SheetParseError("each group of stats must be a mapping of label to value")
+    if "stats" in raw:
+        if not isinstance(raw["stats"], dict):
+            raise SheetParseError("a stat group's stats must be a mapping of label to value")
+        return StatGroup(
+            title=_text(raw.get("title")), columns=_columns(raw.get("columns"), "a stat group's columns"),
+            stats=_stat_list(raw["stats"]),
+        )
+    return StatGroup(stats=_stat_list(raw))
+
+
+def _stats(raw: Any) -> List[StatGroup]:
+    """Always a list of groups: a single mapping is one untitled group."""
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [_stat_group(group) for group in raw]
+    if not isinstance(raw, dict):
+        raise SheetParseError("stats must be a mapping of label to value, or a list of groups of them")
+    return [_stat_group(raw)] if raw else []
 
 
 def _item(raw: Any) -> SheetItem:
@@ -144,7 +178,10 @@ def _sections(raw: Any) -> List[SheetSection]:
         items = section.get("items")
         if items is not None and not isinstance(items, list):
             raise SheetParseError("a section's items must be a list")
-        sections.append(SheetSection(title=_text(section.get("title")), items=[_item(i) for i in items or []]))
+        sections.append(SheetSection(
+            title=_text(section.get("title")), columns=_columns(section.get("columns"), "a section's columns"),
+            wide=section.get("wide") is True, items=[_item(i) for i in items or []],
+        ))
     return sections
 
 
@@ -184,7 +221,7 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
             id=sheet_id, name=name, type=sheet_type, subtitle=_text(data.get("subtitle")), image=image,
             tags=_tags(data.get("tags")), resources=_resources(data.get("resources")),
             stats=_stats(data.get("stats")), sections=_sections(data.get("sections")),
-            text=_text(data.get("text")),
+            columns=_columns(data.get("columns"), "columns"), text=_text(data.get("text")),
         )
     except ValidationError as e:
         raise SheetParseError(f"Invalid sheet: {e.errors()[0]['msg']}")

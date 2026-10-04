@@ -1,0 +1,85 @@
+{
+  "sheet": {
+    "id": "llu-fast",
+    "name": "Llu-fast",
+    "type": "character",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {},
+    "stats": [
+      {
+        "title": null,
+        "columns": null,
+        "stats": [
+          {
+            "label": "Evasión",
+            "value": 11,
+            "roll": null
+          },
+          {
+            "label": "Umbrales",
+            "value": "6/12",
+            "roll": null
+          }
+        ]
+      },
+      {
+        "title": "Rasgos",
+        "columns": 6,
+        "stats": [
+          {
+            "label": "Agilidad",
+            "value": "0",
+            "roll": "hf"
+          },
+          {
+            "label": "Presencia",
+            "value": "+2",
+            "roll": "hf+2"
+          }
+        ]
+      }
+    ],
+    "sections": [
+      {
+        "title": "Habilidades",
+        "columns": 3,
+        "wide": false,
+        "items": [
+          {
+            "name": null,
+            "text": "Arcanos",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "Historia",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      },
+      {
+        "title": "Rasgos",
+        "columns": null,
+        "wide": true,
+        "items": [
+          {
+            "name": "Arenga",
+            "text": "| Nivel | Dado |\n|---|---|\n| 1 | `1d6` |",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      }
+    ],
+    "columns": 2,
+    "text": null
+  },
+  "warnings": []
+}

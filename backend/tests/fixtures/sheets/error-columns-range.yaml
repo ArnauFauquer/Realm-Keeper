@@ -1,0 +1,5 @@
+name: A
+stats:
+  - title: Rasgos
+    columns: 20
+    stats: { Fuerza: 1 }

@@ -27,19 +27,27 @@
     },
     "stats": [
       {
-        "label": "Speed",
-        "value": 30,
-        "roll": null
-      },
-      {
-        "label": "Notes",
-        "value": "tough hide",
-        "roll": null
+        "title": null,
+        "columns": null,
+        "stats": [
+          {
+            "label": "Speed",
+            "value": 30,
+            "roll": null
+          },
+          {
+            "label": "Notes",
+            "value": "tough hide",
+            "roll": null
+          }
+        ]
       }
     ],
     "sections": [
       {
         "title": "Traits",
+        "columns": null,
+        "wide": false,
         "items": [
           {
             "name": null,
@@ -58,6 +66,7 @@
         ]
       }
     ],
+    "columns": null,
     "text": null
   },
   "warnings": []

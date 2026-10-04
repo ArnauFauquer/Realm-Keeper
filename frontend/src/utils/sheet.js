@@ -10,7 +10,10 @@ export const SHEET_TYPES = ['character', 'adversary']
 // same reason: a few nested ones expand to gigabytes.
 const MAX_SOURCE_LENGTH = 100_000
 
-const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'resources', 'stats', 'sections', 'text'])
+const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'resources', 'stats', 'sections', 'columns', 'text'])
+// How many columns a layout may ask for (the sheet's sections, a section's
+// items, a group of stats). Narrow screens fall back to fewer on their own.
+const MAX_COLUMNS = 12
 const ASSET_URL_PREFIX = '/api/asset-library/assets/'
 const ASSET_KEY_PREFIX = 'asset-library/'
 
@@ -81,14 +84,38 @@ function resources(raw) {
   return Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, resource(name, value)]))
 }
 
-function stats(raw) {
-  if (raw === null || raw === undefined) return []
-  if (!isMapping(raw)) throw new SheetParseError('stats must be a mapping of label to value')
+function columns(value, what) {
+  if (value === null || value === undefined) return null
+  const n = integer(value, what)
+  if (n < 1 || n > MAX_COLUMNS) throw new SheetParseError(`${what} must be between 1 and ${MAX_COLUMNS}`)
+  return n
+}
+
+function statList(raw) {
   return Object.entries(raw).map(([label, value]) =>
     isMapping(value)
       ? { label, value: value.value ?? null, roll: text(value.roll) }
       : { label, value: value ?? null, roll: null }
   )
+}
+
+// A group is either a plain mapping of stats, or { title, columns, stats }
+// (told apart by having a `stats` key).
+function statGroup(raw) {
+  if (!isMapping(raw)) throw new SheetParseError('each group of stats must be a mapping of label to value')
+  if ('stats' in raw) {
+    if (!isMapping(raw.stats)) throw new SheetParseError("a stat group's stats must be a mapping of label to value")
+    return { title: text(raw.title), columns: columns(raw.columns, "a stat group's columns"), stats: statList(raw.stats) }
+  }
+  return { title: null, columns: null, stats: statList(raw) }
+}
+
+/** Always a list of groups: a single mapping is one untitled group. */
+function stats(raw) {
+  if (raw === null || raw === undefined) return []
+  if (Array.isArray(raw)) return raw.map(statGroup)
+  if (!isMapping(raw)) throw new SheetParseError('stats must be a mapping of label to value, or a list of groups of them')
+  return Object.keys(raw).length ? [statGroup(raw)] : []
 }
 
 function item(raw) {
@@ -107,7 +134,12 @@ function sections(raw) {
     if (section.items !== null && section.items !== undefined && !Array.isArray(section.items)) {
       throw new SheetParseError("a section's items must be a list")
     }
-    return { title: text(section.title), items: (section.items || []).map(item) }
+    return {
+      title: text(section.title),
+      columns: columns(section.columns, "a section's columns"),
+      wide: section.wide === true,
+      items: (section.items || []).map(item)
+    }
   })
 }
 
@@ -149,6 +181,7 @@ export function parseSheetSource(source) {
       resources: resources(data.resources),
       stats: stats(data.stats),
       sections: sections(data.sections),
+      columns: columns(data.columns, 'columns'),
       text: text(data.text)
     },
     warnings

@@ -52,6 +52,7 @@ resources:                 # counters: HP: 6, or { max, min, start, color, style
 stats:                     # label: value, or { value, roll } for a dice button
   Difficulty: 14
   Attack: { value: "+2", roll: "hf+2" }
+columns: 2                 # optional: sections side by side on a wide sheet
 sections:
   - title: Actions
     items:
@@ -67,7 +68,21 @@ text: |                    # free markdown
   give it a stable `id` — whatever it saves is kept under that id, so renaming
   or moving its note loses nothing. **`adversary`** is a template: each copy
   in an encounter will have its own values.
-- Texts are markdown; an inline dice formula (`` `1d8+2` ``) is a button. Quote
+- **Layout**: `stats` can also be a list of groups, each drawn apart: a plain
+  mapping, or `{ title, columns, stats }` to give it a heading and a fixed number
+  per row. `columns` on the sheet puts its sections side by side (`wide: true`
+  on a section takes the whole row), and on a section lays its items out in a
+  grid. Narrow sheets (a phone, the encounter tracker) fall back to fewer
+  columns on their own.
+
+  ```yaml
+  stats:
+    - { Evasion: 11, Thresholds: 6/12 }
+    - title: Traits
+      columns: 6
+      stats: { Agility: { value: "0", roll: hf }, Strength: { value: "-1", roll: hf-1 } }
+  ```
+- Texts are markdown (tables included); an inline dice formula (`` `1d8+2` ``) is a button. Quote
   a text that starts with a `[[link]]`, or YAML reads it as a list.
 - A sheet with a mistake shows what is wrong, in the note, instead of the sheet.
   The editor's **Insert** buttons drop a ready-made template at the cursor.

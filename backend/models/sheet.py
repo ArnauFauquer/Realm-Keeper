@@ -23,6 +23,13 @@ class StatSpec(BaseModel):
     roll: Optional[str] = None
 
 
+class StatGroup(BaseModel):
+    """Stats shown together; `columns` fixes how many go in a row."""
+    title: Optional[str] = None
+    columns: Optional[int] = None
+    stats: List[StatSpec] = []
+
+
 class SheetItem(BaseModel):
     name: Optional[str] = None
     text: Optional[str] = None
@@ -32,7 +39,11 @@ class SheetItem(BaseModel):
 
 
 class SheetSection(BaseModel):
+    """`columns` lays its items out in a grid; `wide` takes the whole row when
+    the sheet's sections are in columns."""
     title: Optional[str] = None
+    columns: Optional[int] = None
+    wide: bool = False
     items: List[SheetItem] = []
 
 
@@ -47,8 +58,9 @@ class SheetSpec(BaseModel):
     image: Optional[str] = None
     tags: List[str] = []
     resources: Dict[str, ResourceSpec] = {}
-    stats: List[StatSpec] = []
+    stats: List[StatGroup] = []
     sections: List[SheetSection] = []
+    columns: Optional[int] = None
     text: Optional[str] = None
 
 

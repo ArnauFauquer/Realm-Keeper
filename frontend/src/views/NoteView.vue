@@ -1008,8 +1008,8 @@ export default {
 
 /* Prose keeps a readable measure. Headings (and their rules), tables, code,
    callouts, and paragraphs that only wrap an image or a chart/vista embed
-   still use the full column. */
-.markdown-content :deep(:is(p:not(:has(img, .doc-embed)), ul, ol, blockquote)) {
+   still use the full column, and so does a sheet (it has its own layout). */
+.markdown-content :deep(:is(p:not(:has(img, .doc-embed)), ul, ol, blockquote):not(.sheet-card *)) {
   max-width: 70ch;
 }
 

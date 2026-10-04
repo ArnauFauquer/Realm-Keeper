@@ -88,6 +88,33 @@ describe('SheetBlock', () => {
     expect(roll).toHaveBeenCalledWith('hf+2', { label: 'Bugboar · Attack' })
   })
 
+  it('lays out groups of stats, sections and items in the columns asked for', () => {
+    const wrapper = mountSheet({
+      source: [
+        'name: A',
+        'columns: 2',
+        'stats:',
+        '  - { Evasion: 11 }',
+        '  - title: Traits',
+        '    columns: 6',
+        '    stats: { Agility: 1, Strength: 0 }',
+        'sections:',
+        '  - { title: Skills, columns: 3, items: [Arcana, History] }',
+        '  - { title: Features, wide: true, items: ["| Level | Die |\\n|---|---|\\n| 1 | `1d6` |"] }'
+      ].join('\n')
+    })
+    const groups = wrapper.findAll('.sheet-stat-group')
+    expect(groups).toHaveLength(2)
+    expect(groups[1].find('.sheet-group-title').text()).toBe('Traits')
+    expect(groups[1].find('.sheet-stats').attributes('style')).toContain('--sheet-columns: 6')
+    expect(groups[0].find('.sheet-stats').classes()).not.toContain('sheet-grid--fixed')
+    expect(wrapper.find('.sheet-sections').attributes('style')).toContain('--sheet-columns: 2')
+    const [skills, features] = wrapper.findAll('.sheet-section')
+    expect(skills.find('.sheet-items').attributes('style')).toContain('--sheet-columns: 3')
+    expect(features.classes()).toContain('sheet-section--wide')
+    expect(features.find('table td code.dice-roll').exists()).toBe(true)
+  })
+
   it('rolls an action, and dice written in its text', async () => {
     const wrapper = mountSheet()
     await wrapper.find('.sheet-item .sheet-roll').trigger('click')
