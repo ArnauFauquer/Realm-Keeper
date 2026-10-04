@@ -2,10 +2,6 @@ name: Llu-fast
 id: llu-fast
 type: character
 columns: 2
-resources:
-  HP: 6
-  Level 1: { max: 4, group: Spell slots }
-  Level 2: { max: 3, group: Spell slots }
 stats:
   - Evasión: 11
     Umbrales: 6/12
@@ -15,6 +11,16 @@ stats:
       Agilidad: { value: "0", roll: hf }
       Presencia: { value: "+2", roll: hf+2 }
 sections:
+  - counters:
+      HP: 6
+  - title: Spells
+    counters:
+      Level 1: 4
+      Level 2: { max: 3, color: "#60a5fa" }
+    stats:
+      Save DC: 17
+      Spell attack: { value: "+9", roll: 1d20+9 }
+    items: [Fireball]
   - title: Habilidades
     columns: 3
     items: [Arcanos, Historia]

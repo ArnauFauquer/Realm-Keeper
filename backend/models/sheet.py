@@ -9,14 +9,13 @@ class ResourceSpec(BaseModel):
     """A counter on a sheet: HP, Stress, Sanity, Hope... — the name is the
     author's, nothing here knows what it means. `start` is the value the
     counter begins at (the maximum when omitted), so a resource may as well
-    count up from 0 as down from `max`. `group` only gathers counters under a
-    heading on the sheet."""
+    count up from 0 as down from `max`. A sheet's counters are written in its
+    sections (`counters`); their names are unique in the sheet."""
     max: int
     min: int = 0
     start: Optional[int] = None
     color: Optional[str] = None
     style: Optional[str] = None
-    group: Optional[str] = None
 
 
 class StatSpec(BaseModel):
@@ -41,12 +40,16 @@ class SheetItem(BaseModel):
 
 
 class SheetSection(BaseModel):
-    """`columns` lays its items out in a grid; `wide` takes the whole row when
-    the sheet's sections are in columns; `collapsed` starts it folded."""
+    """A block of the sheet: its counters (by name: the specs are in
+    SheetSpec.resources), stats and items, in that order. `columns` lays its
+    items out in a grid; `wide` takes the whole row when the sheet's sections
+    are in columns; `collapsed` starts it folded."""
     title: Optional[str] = None
     columns: Optional[int] = None
     wide: bool = False
     collapsed: bool = False
+    counters: List[str] = []
+    stats: List[StatGroup] = []
     items: List[SheetItem] = []
 
 

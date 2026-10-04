@@ -15,16 +15,14 @@
         "min": 0,
         "start": null,
         "color": "red",
-        "style": null,
-        "group": null
+        "style": null
       },
       "Stress": {
         "max": 3,
         "min": 0,
         "start": 0,
         "color": null,
-        "style": "pips",
-        "group": null
+        "style": "pips"
       }
     },
     "stats": [
@@ -52,10 +50,24 @@
     ],
     "sections": [
       {
+        "title": null,
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "counters": [
+          "HP",
+          "Stress"
+        ],
+        "stats": [],
+        "items": []
+      },
+      {
         "title": "Actions",
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "counters": [],
+        "stats": [],
         "items": [
           {
             "name": "Gore",
@@ -80,6 +92,8 @@
         "columns": null,
         "wide": false,
         "collapsed": false,
+        "counters": [],
+        "stats": [],
         "items": [
           {
             "name": "Relentless",
