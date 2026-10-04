@@ -69,7 +69,12 @@
           <div v-for="(group, g) in section.stats" :key="g" class="sheet-stat-group">
             <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
             <dl class="sheet-stats" :class="{ 'sheet-grid--fixed': group.columns }" :style="columnsStyle(group.columns)">
-              <div v-for="stat in group.stats" :key="stat.label" class="sheet-stat">
+              <div
+                v-for="stat in group.stats"
+                :key="stat.label"
+                class="sheet-stat"
+                :class="{ 'sheet-stat--text': isLongText(stat) }"
+              >
                 <dt>{{ stat.label }}</dt>
                 <dd>
                   <button
@@ -192,6 +197,9 @@ const imageSrc = computed(() => {
 
 const isRollable = (formula) => !!formula && !!parseDiceFormula(formula)
 const statText = (stat) => stat.value ?? stat.roll
+// A value that is a phrase ("Mountains +4") rather than a number reads a step
+// smaller than the numbers around it.
+const isLongText = (stat) => String(statText(stat) ?? '').length > 8
 
 // Texts are block markdown, so a table or a list works in an item too.
 const block = (text) => sanitizeHtml(md.render(text))
@@ -251,6 +259,12 @@ function onKeydown(e) {
 
 .sheet--character {
   border-left-color: var(--status-success);
+}
+
+@media (max-width: 480px) {
+  .sheet-card {
+    padding: var(--space-3);
+  }
 }
 
 .sheet-head {
@@ -335,11 +349,17 @@ function onKeydown(e) {
   gap: var(--space-1) var(--space-5);
 }
 
-/* One label width per section, so its pips and bars start in line. */
+/* One label width per section, so its pips and bars start in line; on a
+   narrow sheet the label gives way (and wraps) before the row overflows. */
 .sheet-counters :deep(.rc-name) {
   flex: none;
-  width: var(--rc-label-width);
+  width: min(var(--rc-label-width), 38%);
   min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.sheet-counters :deep(.rc-bar) {
+  min-width: 3rem;
 }
 
 .sheet-stat-groups {
@@ -361,11 +381,27 @@ function onKeydown(e) {
   color: var(--text-secondary);
 }
 
+/* Without `columns`, each stat is as wide as its label needs (from 7.5rem),
+   so "Spell save DC" isn't broken over two lines; with `columns`, a grid. */
 .sheet-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-2);
   margin: 0;
+}
+
+.sheet-stats > .sheet-stat {
+  flex: 0 1 auto;
+  min-width: 7.5rem;
+}
+
+.sheet-stats.sheet-grid--fixed {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+}
+
+.sheet-stats.sheet-grid--fixed > .sheet-stat {
+  min-width: 0;
 }
 
 /* `columns` in the sheet: as many as asked once their section is wide enough
@@ -418,6 +454,16 @@ function onKeydown(e) {
   border-radius: var(--radius-md);
 }
 
+.sheet-stats > .sheet-stat {
+  max-width: 100%;
+}
+
+.sheet-stats:not(.sheet-grid--fixed) .sheet-stat dt {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sheet-stat dt {
   font-size: var(--text-xs);
   text-transform: uppercase;
@@ -436,6 +482,10 @@ function onKeydown(e) {
 }
 
 /* A stat with a roll is still read as its value: same type, as a button. */
+.sheet-stat--text dd {
+  font-size: var(--text-md);
+}
+
 .sheet-stat dd .sheet-roll {
   min-height: 2rem;
   font-family: var(--font-display);
@@ -585,7 +635,7 @@ function onKeydown(e) {
   min-width: 1rem;
   align-self: flex-end;
   margin-bottom: 0.45em;
-  border-bottom: 1px dotted var(--border-medium);
+  border-bottom: 1px dotted rgba(168, 168, 200, 0.4);
 }
 
 .sheet-item--row .sheet-cost {
