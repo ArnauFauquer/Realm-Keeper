@@ -11,21 +11,17 @@
   <SheetView v-else :sheet="sheet" :warnings="warnings" :can-interact="canInteract">
     <!-- A character's counters are the saved ones: the same here, in every
          encounter, and on every other note that shows the sheet. -->
-    <template v-if="characters" #resources>
-      <div v-if="resourceList.length" class="sheet-resources">
-        <ResourceCounter
-          v-for="r in resourceList"
-          :key="r.name"
-          :name="r.name"
-          :current="r.saved?.current ?? r.start ?? r.max"
-          :max="r.saved?.max ?? r.max"
-          :min="r.saved?.min ?? r.min"
-          :display="r.style"
-          :color="r.color"
-          :editable="!!r.saved"
-          @adjust="(by) => adjust(r.name, by)"
-        />
-      </div>
+    <template v-if="characters" #counter="{ resource: r }">
+      <ResourceCounter
+        :name="r.name"
+        :current="saved(r.name)?.current ?? r.start ?? r.max"
+        :max="saved(r.name)?.max ?? r.max"
+        :min="saved(r.name)?.min ?? r.min"
+        :display="r.style"
+        :color="r.color"
+        :editable="!!saved(r.name)"
+        @adjust="(by) => adjust(r.name, by)"
+      />
     </template>
 
     <template v-if="canInteract" #footer>
@@ -67,11 +63,7 @@ const warnings = computed(() => result.value.warnings || [])
 // Only a signed-in reader of a character's sheet follows the saved counters.
 const characters = props.canInteract && sheet.value?.type === 'character' ? useCharacters(() => [sheet.value?.id]) : null
 
-const resourceList = computed(() =>
-  Object.entries(sheet.value?.resources || {}).map(([name, spec]) => ({
-    name, ...spec, saved: characters?.stateOf(sheet.value.id)?.resources?.[name] || null
-  }))
-)
+const saved = (name) => characters?.stateOf(sheet.value.id)?.resources?.[name] || null
 
 async function adjust(resource, by) {
   try {
@@ -131,11 +123,5 @@ if (characters) {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text-secondary);
-}
-
-.sheet-resources {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
 }
 </style>

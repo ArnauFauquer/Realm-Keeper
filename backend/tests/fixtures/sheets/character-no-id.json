@@ -12,7 +12,8 @@
         "min": 0,
         "start": null,
         "color": null,
-        "style": null
+        "style": null,
+        "group": null
       }
     },
     "stats": [],

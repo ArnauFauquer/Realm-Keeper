@@ -20,22 +20,31 @@
       </li>
     </ul>
 
-    <!-- Whoever shows the sheet may show live counters here instead (a
-         character's saved values). -->
-    <slot name="resources">
-      <div v-if="!compact && resourceList.length" class="sheet-resources">
-        <ResourceCounter
-          v-for="r in resourceList"
-          :key="r.name"
-          :name="r.name"
-          :current="r.start ?? r.max"
-          :max="r.max"
-          :min="r.min"
-          :display="r.style"
-          :color="r.color"
-        />
+    <!-- Counters gathered by their `group`, in columns once there is room.
+         Whoever shows the sheet may draw each one live instead (the `counter`
+         slot: a character's saved values). -->
+    <div v-if="!compact && resourceGroups.length" class="sheet-resources">
+      <div
+        v-for="group in resourceGroups"
+        :key="group.title ?? ''"
+        class="sheet-resource-group"
+        :style="{ '--rc-label-width': group.labelWidth }"
+      >
+        <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
+        <div class="sheet-resource-grid">
+          <slot v-for="r in group.resources" :key="r.name" name="counter" :resource="r">
+            <ResourceCounter
+              :name="r.name"
+              :current="r.start ?? r.max"
+              :max="r.max"
+              :min="r.min"
+              :display="r.style"
+              :color="r.color"
+            />
+          </slot>
+        </div>
       </div>
-    </slot>
+    </div>
 
     <!-- Each group of stats is its own grid; `columns` fixes how many go in a
          row once there is room for them. -->
@@ -68,17 +77,30 @@
       :class="{ 'sheet-grid--fixed': sheet.columns }"
       :style="columnsStyle(sheet.columns)"
     >
-      <section
+      <!-- A titled section folds (`collapsed` starts it folded); one without a
+           title has nothing to fold under. -->
+      <component
+        :is="section.title ? 'details' : 'section'"
         v-for="(section, index) in sheet.sections"
         :key="index"
         class="sheet-section"
         :class="{ 'sheet-section--wide': section.wide }"
+        :open="section.title ? !section.collapsed : undefined"
       >
-        <div v-if="section.title" class="sheet-section-title">{{ section.title }}</div>
+        <summary v-if="section.title" class="sheet-section-title">
+          <span class="mdi mdi-chevron-right sheet-fold-icon" aria-hidden="true"></span>{{ section.title }}
+        </summary>
         <ul class="sheet-items" :class="{ 'sheet-grid--fixed': section.columns }" :style="columnsStyle(section.columns)">
-          <li v-for="(item, i) in section.items" :key="i" class="sheet-item" :data-roll-label="item.name">
+          <li
+            v-for="(item, i) in section.items"
+            :key="i"
+            class="sheet-item"
+            :class="{ 'sheet-item--row': isRow(item) }"
+            :data-roll-label="item.name"
+          >
             <div v-if="item.name || item.roll || item.cost || item.tags.length" class="sheet-item-head">
               <span v-if="item.name" class="sheet-item-name">{{ item.name }}</span>
+              <span v-if="isRow(item)" class="sheet-item-leader" aria-hidden="true"></span>
               <button
                 v-if="canInteract && isRollable(item.roll)"
                 type="button"
@@ -95,7 +117,7 @@
             <div v-if="item.text" class="sheet-item-text" v-html="block(item.text)"></div>
           </li>
         </ul>
-      </section>
+      </component>
     </div>
 
     <div v-if="sheet.text && !compact" class="sheet-text" v-html="block(sheet.text)"></div>
@@ -133,7 +155,25 @@ const router = useRouter()
 const { roll } = useDiceRoller()
 const md = createMarkdown({ refKinds: ['dice'] })
 
-const resourceList = computed(() => Object.entries(props.sheet.resources || {}).map(([name, spec]) => ({ name, ...spec })))
+// Groups in the order they first appear; counters without one form an
+// untitled group of their own. Each group's labels share one width (its
+// longest, within reason) so the pips line up.
+const resourceGroups = computed(() => {
+  const groups = new Map()
+  for (const [name, spec] of Object.entries(props.sheet.resources || {})) {
+    const key = spec.group ?? null
+    if (!groups.has(key)) groups.set(key, { title: key, resources: [] })
+    groups.get(key).resources.push({ name, ...spec })
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    labelWidth: `${Math.min(16, Math.max(4.5, ...group.resources.map((r) => r.name.length * 0.55 + 0.5)))}em`
+  }))
+})
+
+// An item that is only a name and a roll (a skill, a save) reads as one row,
+// the roll at the end like on a paper sheet.
+const isRow = (item) => !item.text && !!item.name && !!item.roll
 
 const imageSrc = computed(() => {
   const image = props.sheet.image
@@ -280,7 +320,20 @@ function onKeydown(e) {
 .sheet-resources {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
+}
+
+.sheet-resource-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: var(--space-1) var(--space-5);
+}
+
+/* One label width per group, so its pips and bars start in line. */
+.sheet-resource-group :deep(.rc-name) {
+  flex: none;
+  width: var(--rc-label-width);
+  min-width: 0;
 }
 
 .sheet-stat-groups {
@@ -394,6 +447,9 @@ function onKeydown(e) {
 }
 
 .sheet-section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   margin-bottom: var(--space-1);
   padding-bottom: var(--space-1);
   border-bottom: 1px solid var(--border-light);
@@ -402,6 +458,32 @@ function onKeydown(e) {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--accent-soft);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+}
+
+.sheet-section-title::-webkit-details-marker {
+  display: none;
+}
+
+.sheet-section-title:hover {
+  color: var(--text-primary);
+}
+
+.sheet-fold-icon {
+  margin-left: -0.2em;
+  font-size: 1.2em;
+  line-height: 1;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.sheet-section[open] > .sheet-section-title .sheet-fold-icon {
+  transform: rotate(90deg);
+}
+
+.sheet-section:not([open]) > .sheet-section-title {
+  margin-bottom: 0;
 }
 
 .sheet-card .sheet-items {
@@ -418,7 +500,7 @@ function onKeydown(e) {
   min-width: 0;
 }
 
-@container sheet-section (min-width: 26rem) {
+@container sheet-section (min-width: 20rem) {
   .sheet-card .sheet-items.sheet-grid--fixed {
     display: grid;
     grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
@@ -431,6 +513,44 @@ function onKeydown(e) {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* A name-and-roll item as one row: name and tags, a dotted leader, the roll
+   at the end. */
+.sheet-item--row .sheet-item-head {
+  gap: var(--space-1);
+}
+
+.sheet-item--row .sheet-item-name {
+  order: 0;
+}
+
+.sheet-item--row .sheet-tag {
+  order: 1;
+  flex: none;
+  font-size: 0.7rem;
+}
+
+.sheet-item-leader {
+  order: 2;
+  flex: 1 1 1rem;
+  min-width: 1rem;
+  align-self: flex-end;
+  margin-bottom: 0.45em;
+  border-bottom: 1px dotted var(--border-medium);
+}
+
+.sheet-item--row .sheet-cost {
+  order: 3;
+  flex: none;
+}
+
+/* When the row is too narrow, the roll wraps to the next line, still at the
+   end. */
+.sheet-item--row :is(.sheet-roll, .sheet-roll-static) {
+  order: 4;
+  flex: none;
+  margin-left: auto;
 }
 
 .sheet-item-name {

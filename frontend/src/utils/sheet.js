@@ -69,10 +69,11 @@ function resource(name, raw) {
       min: integer(raw.min ?? 0, `resource '${name}' min`),
       start: raw.start === null || raw.start === undefined ? null : integer(raw.start, `resource '${name}' start`),
       color: text(raw.color),
-      style: text(raw.style)
+      style: text(raw.style),
+      group: text(raw.group)
     }
   } else {
-    spec = { max: integer(raw, `resource '${name}'`), min: 0, start: null, color: null, style: null }
+    spec = { max: integer(raw, `resource '${name}'`), min: 0, start: null, color: null, style: null, group: null }
   }
   if (spec.min > spec.max) throw new SheetParseError(`resource '${name}' has a min above its max`)
   return spec
@@ -138,6 +139,7 @@ function sections(raw) {
       title: text(section.title),
       columns: columns(section.columns, "a section's columns"),
       wide: section.wide === true,
+      collapsed: section.collapsed === true,
       items: (section.items || []).map(item)
     }
   })
