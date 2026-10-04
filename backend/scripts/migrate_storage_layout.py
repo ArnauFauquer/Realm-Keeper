@@ -9,6 +9,7 @@ bucket (local MinIO, production Ceph), then delete it.
                                                  (what charts and vistas kept in the bucket
                                                  before the asset library; see below)
     asset-library/...                            (stays: notes and documents refer to it by URL)
+    [docs/]characters/all/characters.json        characters/<id>/character.json, one per character
 
 where <kind> is charts, vistas, encounters, battlemaps or characters.
 
@@ -46,7 +47,7 @@ DOC_KINDS: Dict[str, str] = {
     "vistas": "vista.json",
     "encounters": "encounter.json",
     "battlemaps": "battlemap.json",
-    "characters": "characters.json",
+    "characters": "character.json",
 }
 # Before the asset library, charts and vistas kept their images in the bucket
 # under their own names. Nothing else ever did, so a top-level `encounters/`,
@@ -56,6 +57,8 @@ PLAYER = "player"
 ASSET_LIBRARY = "asset-library"
 LEGACY_IMAGES_FOLDER = f"{ASSET_LIBRARY}/Legacy"
 IMPORT_MARKER = ".imported-from-vault"
+# Every character's saved values used to be one document; now each has its own.
+SHARED_CHARACTERS = ("docs/characters/all/characters.json", "characters/all/characters.json")
 FOLDER_MARKER = ".keep"
 
 # What an image of the old scheme was served at ("/api/vistas/assets/vistas/<id>/...").
@@ -75,6 +78,8 @@ class Stored(NamedTuple):
 def destination(key: str) -> Tuple[Optional[str], str]:
     """Where `key` belongs in the new layout, and why: (new key, rule). The new
     key is None for what is already in place or can't be placed."""
+    if key in SHARED_CHARACTERS:
+        return None, "characters-to-split"
     top, _, rest = key.partition("/")
     if not rest:
         return None, "not-under-a-prefix"
@@ -119,6 +124,7 @@ class Plan:
     already_there: List[Move] = field(default_factory=list)       # copied before: only the old key is left
     conflicts: List[Tuple[Move, str]] = field(default_factory=list)  # (the move, what is in its way)
     unplaced: List[Tuple[str, str]] = field(default_factory=list)    # (key, why)
+    character_documents: List[str] = field(default_factory=list)      # to split, one file per character
     in_place: int = 0
 
 
@@ -149,6 +155,8 @@ def build_plan(objects: Iterable[Stored]) -> Plan:
         if target is None:
             if rule == "in-place":
                 plan.in_place += 1
+            elif rule == "characters-to-split":
+                plan.character_documents.append(key)
             else:
                 plan.unplaced.append((key, rule))
             continue
@@ -178,6 +186,8 @@ def describe(plan: Plan) -> str:
     ):
         if rules[rule]:
             lines.append(f"  {rules[rule]:>6}  {label}")
+    if plan.character_documents:
+        lines.append(f"  {len(plan.character_documents):>6}  shared characters document(s) to split, one file per character")
     lines.append(f"  {plan.in_place:>6}  already where they belong")
     if plan.already_there:
         lines.append(f"  {len(plan.already_there):>6}  copied already, only the old key is left")
@@ -274,6 +284,48 @@ def rewrite_documents(client, bucket: str, apply: bool, log=print) -> int:
     return changed
 
 
+def split_characters(client, bucket: str, sources: List[str], write: bool, delete_sources: bool, log=print) -> int:
+    """Gives each character of the old shared document its own document,
+    characters/<id>/character.json. Returns how many it wrote (or would).
+
+    One that already has its own document keeps it if it has been changed
+    there (rev above 0): the app made it from the sheet and someone has used it
+    since. One the app only just made from the sheet (rev 0) takes the saved
+    values, which are the real ones."""
+    written = 0
+    for key in sources:
+        shared = json.loads(client.get_object(Bucket=bucket, Key=key)["Body"].read().decode("utf-8"))
+        for state in shared.get("characters", []):
+            character_id = state.get("id")
+            if not character_id:
+                continue
+            target = f"characters/{character_id}/character.json"
+            try:
+                existing = json.loads(client.get_object(Bucket=bucket, Key=target)["Body"].read().decode("utf-8"))
+            except Exception:
+                existing = None
+            if existing is not None and existing.get("rev", 0) > 0:
+                log(f"  {target} has been used since it was made: kept, the old values of {character_id} are not copied")
+                continue
+            document = {
+                **{k: v for k, v in state.items() if k not in ("updated_at",)},
+                "id": character_id,
+                "name": (existing or {}).get("name") or state.get("name") or character_id,
+                "schema_version": 2,
+                "rev": 0,
+            }
+            written += 1
+            log(f"  {key} -> {target}{' (replacing the one made from the sheet)' if existing else ''}")
+            if write:
+                client.put_object(
+                    Bucket=bucket, Key=target, ContentType="application/json",
+                    Body=json.dumps(document, indent=2, ensure_ascii=False).encode("utf-8"),
+                )
+        if delete_sources:
+            client.delete_object(Bucket=bucket, Key=key)
+    return written
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Move a bucket to the current storage layout.")
     mode = parser.add_mutually_exclusive_group()
@@ -301,7 +353,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     keys = len(plan.moves) + len(plan.already_there)
     if not (args.apply or args.copy_only):
         rewrites = rewrite_documents(client, bucket, apply=False)
-        print(f"\n{keys} key(s) to move, {rewrites} document(s) to point at the new images."
+        characters = split_characters(client, bucket, plan.character_documents, write=False, delete_sources=False)
+        print(f"\n{keys} key(s) to move, {rewrites} document(s) to point at the new images,"
+              f" {characters} character(s) to give their own document."
               " This was a dry run: add --copy-only or --apply to change something.")
         return 0
     if not args.yes and input(f"\nMove {keys} key(s) in this bucket? [y/N] ").strip().lower() != "y":
@@ -310,6 +364,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     copied = execute(client, bucket, plan, delete_sources=args.apply)
     print(f"Copied {copied} key(s){' and removed their old keys' if args.apply else ' (the old keys are still there)'}.")
+    # The shared characters document may only now be in its place (moved out of docs/).
+    after = build_plan(list_objects(client, bucket)).character_documents if args.apply else plan.character_documents
+    characters = split_characters(client, bucket, after, write=True, delete_sources=args.apply)
+    print(f"Gave {characters} character(s) their own document"
+          f"{' and removed the shared one' if args.apply and after else ''}.")
     if args.apply:
         print(f"Pointed {rewrite_documents(client, bucket, apply=True)} document(s) at the new images.")
     return 0

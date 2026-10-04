@@ -33,10 +33,12 @@ def _meters(token: Dict[str, Any], combatant: Optional[Dict[str, Any]], saved: D
 
 
 def project_for_screen(
-    battlemap: Dict[str, Any], encounter: Optional[Dict[str, Any]] = None, characters: Optional[Dict[str, Any]] = None,
+    battlemap: Dict[str, Any], encounter: Optional[Dict[str, Any]] = None,
+    characters: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
+    """`characters`: the saved values of the encounter's characters, by id."""
     combatants = {c["id"]: c for c in (encounter or {}).get("combatants", [])}
-    saved = {c["id"]: c for c in (characters or {}).get("characters", [])}
+    saved = characters or {}
     tokens = [
         {
             "id": token["id"], "name": token.get("name", ""), "x": token["x"], "y": token["y"],

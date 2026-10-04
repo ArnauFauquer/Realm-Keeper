@@ -40,7 +40,7 @@
         <button class="rk-icon-btn" aria-label="Create folder" @click="submitNewFolder"><span class="mdi mdi-check"></span></button>
         <button class="rk-icon-btn" aria-label="Cancel" @click="creatingFolder = false"><span class="mdi mdi-close"></span></button>
       </div>
-      <button v-else class="rk-btn gallery-action-btn" @click="startNewFolder">
+      <button v-else-if="allowFolders" class="rk-btn gallery-action-btn" @click="startNewFolder">
         <span class="mdi mdi-folder-plus-outline"></span> New folder
       </button>
       <slot name="actions" />
@@ -176,7 +176,9 @@ const props = defineProps({
   rootIcon: { type: String, default: 'mdi-home-outline' },
   loadingText: { type: String, default: 'Loading...' },
   emptyIcon: { type: String, default: 'mdi-folder-open-outline' },
-  emptyText: { type: String, default: 'Nothing here yet.' }
+  emptyText: { type: String, default: 'Nothing here yet.' },
+  // Kinds whose items don't live in folders (saved characters) have no "New folder".
+  allowFolders: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([

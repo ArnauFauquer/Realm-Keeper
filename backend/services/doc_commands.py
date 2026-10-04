@@ -90,8 +90,18 @@ def adjust_resource(
     """Adds `by` to a counter, stopping at its min and max. A relative change,
     not a new value, so two people changing the same counter at once both
     count."""
-    entity = _find(_entities(doc, doctype, collection), entity_id)
-    counter = (entity.get("resources") or {}).get(resource)
+    _adjust((_find(_entities(doc, doctype, collection), entity_id).get("resources") or {}), resource, by)
+
+
+def adjust_own_resource(doc: Dict[str, Any], doctype: DocType, resource: str, by: int) -> None:
+    """adjust_resource, for a document's own counters (a character's)."""
+    if not doctype.resources_field:
+        raise ValueError("This kind of document has no counters of its own")
+    _adjust(doc.get(doctype.resources_field) or {}, resource, by)
+
+
+def _adjust(resources: Dict[str, Any], resource: str, by: int) -> None:
+    counter = resources.get(resource)
     if counter is None:
         raise ValueError(f"No resource '{resource}'")
     counter["current"] = max(counter.get("min", 0), min(counter["max"], counter["current"] + by))

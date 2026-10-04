@@ -7,7 +7,7 @@ const encounter = {
     { id: 'c2', type: 'character', sheet: 'aria', resources: {} }
   ]
 }
-const characters = { characters: [{ id: 'aria', resources: { HP: { current: 9, max: 12, min: 0 } } }] }
+const characters = { aria: { id: 'aria', resources: { HP: { current: 9, max: 12, min: 0 } } } }
 const token = (over) => ({ id: 't', combatant: 'c1', show_bars: true, bars: ['HP'], ...over })
 
 describe('metersFor', () => {

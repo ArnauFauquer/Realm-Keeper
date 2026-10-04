@@ -21,7 +21,7 @@ vi.mock('@/composables/useSyncedDoc', async () => {
 })
 vi.mock('@/composables/useCharacters', async () => {
   const helper = await import('./helpers/fakeSyncedDoc')
-  return { useCharacters: () => ({ ...helper.characters, doc: ref(null) }) }
+  return { useCharacters: () => ({ ...helper.characters, docs: ref({}) }) }
 })
 vi.mock('@/composables/syncSocket', () => ({ syncStatus: ref('open') }))
 vi.mock('@/api/docs', () => ({ battlemapsApi: { commands }, encountersApi: { fetchAll, fetch: vi.fn() } }))

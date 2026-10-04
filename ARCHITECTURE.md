@@ -45,7 +45,7 @@ Two ideas shape most of the code:
 | Vistas                        | S3    | `vistas/<folders>/<id>/vista.json`               |
 | Encounters                    | S3    | `encounters/<folders>/<id>/encounter.json`       |
 | Battlemaps                    | S3    | `battlemaps/<folders>/<id>/battlemap.json`       |
-| Characters' saved values      | S3    | `characters/all/characters.json` (one document)  |
+| Characters' saved values      | S3    | `characters/<sheet id>/character.json`           |
 | Audio                         | S3    | `player/<album>/<track>`                         |
 | Images                        | S3    | `asset-library/<folders>/<uuid>-<file>`          |
 
@@ -187,12 +187,26 @@ at once.
 
 ### Characters
 
-The saved state of every `character` sheet is one live document
-(`characters/all`), keyed by sheet `id`: its current counters, shared by its
-note, every encounter and every map it appears in. A counter's *definition*
-(max, min, colour) is copied from the sheet when the state is created and
-brought up to date when the sheet changes (`useCharacters().reconcile`); the
-current value is kept, clamped to the new range.
+Each `character` sheet's saved values are one live document of their own,
+`characters/<sheet id>/character.json`: its name and current counters, shared by
+its note, every encounter and every map it appears in. A counter's *definition*
+(max, min, colour) and the name are copied from the sheet when the character is
+first saved and brought up to date when the sheet changes
+(`useCharacters().reconcile`); the current value is kept, clamped to the new range.
+
+Characters are a **keyed** kind (`DocType.id_pattern`): a document is named by the
+sheet it belongs to, not made from a name. `POST /api/characters/ensure {id,
+fields}` makes one if there is none (asking twice is harmless),
+`POST /api/characters/<id>/adjust` changes one of its own counters, and
+`POST /api/characters/<id>/reassign {id}` gives it another id — the encounters and
+map tokens that named the old one follow. They have no folders.
+
+Deleting or renaming a note leaves its character's values where they are; a new
+sheet with the same id picks them up again. The **Characters** gallery lists every
+saved character and marks the ones no sheet in the vault has any more, so they
+can be deleted or given to the id their sheet has now. On the client,
+`useSyncedDocs` follows any number of documents of a kind at once (an encounter's
+characters), and `useCharacters(ids)` is built on it.
 
 ### Encounters
 

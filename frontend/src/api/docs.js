@@ -16,12 +16,14 @@ export function encodePath(id) {
  * utils/applyEvent.js), which the caller applies at once without waiting for
  * it to come round on the socket.
  *
- * A kind with exactly one document (`singleton`) has no ids in its URLs.
+ * A keyed kind (characters) has documents named by what they belong to:
+ * `ensure(id, fields)` makes one if there is none, `reassign(id, newId)` gives
+ * it another id.
  */
-export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = {}) {
+export function createDocApi(prefix, { itemsKey = prefix } = {}) {
   const base = `${apiUrl}/api/${prefix}`
   const client = axios.create({ withCredentials: true })
-  const docUrl = (id) => (singleton ? base : `${base}/${encodePath(id)}`)
+  const docUrl = (id) => `${base}/${encodePath(id)}`
   const data = (res) => res.data
 
   return {
@@ -45,6 +47,8 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
     removeFolder: (path) => client.delete(`${base}/folders/${encodePath(path)}`).then(data),
     moveFolder: (path, destParentPath) =>
       client.post(`${base}/folders/move`, { path, dest_parent_path: destParentPath }).then(data),
+    ensure: (id, fields) => client.post(`${base}/ensure`, { id, fields }).then(data),
+    reassign: (id, newId) => client.post(`${docUrl(id)}/reassign`, { id: newId }).then(data),
 
     commands: {
       patch: (id, fields) => client.patch(docUrl(id), fields).then(data),
@@ -56,7 +60,9 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
         client.delete(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}`).then(data),
       orderItems: (id, collection, ids) => client.post(`${docUrl(id)}/${collection}/order`, { ids }).then(data),
       adjust: (id, collection, entityId, resource, by) =>
-        client.post(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}/adjust`, { resource, by }).then(data)
+        client.post(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}/adjust`, { resource, by }).then(data),
+      // A document's own counters (a character's).
+      adjustOwn: (id, resource, by) => client.post(`${docUrl(id)}/adjust`, { resource, by }).then(data)
     }
   }
 }
@@ -64,10 +70,10 @@ export function createDocApi(prefix, { itemsKey = prefix, singleton = false } = 
 export const chartsApi = createDocApi('charts')
 export const vistasApi = createDocApi('vistas')
 export const encountersApi = createDocApi('encounters')
-export const charactersApi = createDocApi('characters', { singleton: true })
+export const charactersApi = createDocApi('characters')
 export const battlemapsApi = createDocApi('battlemaps')
 
-const apis = { chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi }
+const apis = { chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi, character: charactersApi }
 
 /** The client of a kind of document (utils/docTypes.js). */
 export const docApi = (type) => apis[type]

@@ -65,7 +65,7 @@ const sheet = computed(() => result.value.sheet)
 const warnings = computed(() => result.value.warnings || [])
 
 // Only a signed-in reader of a character's sheet follows the saved counters.
-const characters = props.canInteract && sheet.value?.type === 'character' ? useCharacters() : null
+const characters = props.canInteract && sheet.value?.type === 'character' ? useCharacters(() => [sheet.value?.id]) : null
 
 const resourceList = computed(() =>
   Object.entries(sheet.value?.resources || {}).map(([name, spec]) => ({

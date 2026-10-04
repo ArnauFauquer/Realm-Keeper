@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 const { encountersApi, charactersApi, openModal } = vi.hoisted(() => ({
   encountersApi: { fetchAll: vi.fn(), fetch: vi.fn(), commands: { addItems: vi.fn() } },
-  charactersApi: { commands: { addItems: vi.fn() } },
+  charactersApi: { ensure: vi.fn() },
   openModal: vi.fn()
 }))
 vi.mock('@/api/docs', () => ({ encountersApi, charactersApi }))
@@ -19,7 +19,7 @@ async function opened(sheet = BUGBOAR, current = { combatants: [] }) {
   encountersApi.fetchAll.mockResolvedValue([{ id: 'goblins/cave', name: 'Cave' }, { id: 'ambush', name: 'Ambush' }])
   encountersApi.fetch.mockResolvedValue(current)
   encountersApi.commands.addItems.mockResolvedValue({})
-  charactersApi.commands.addItems.mockResolvedValue({})
+  charactersApi.ensure.mockResolvedValue({ created: true })
   const wrapper = mount(AddToEncounter, { props: { sheet, noteId: 'Bestiary/Bugboar' } })
   await wrapper.find('button').trigger('click')
   await flushPromises()
@@ -58,7 +58,7 @@ describe('AddToEncounter', () => {
     expect([id, collection]).toEqual(['goblins/cave', 'combatants'])
     expect(items.map((i) => i.name)).toEqual(['Bugboar 2', 'Bugboar 3', 'Bugboar 4'])
     expect(items[0]).toMatchObject({ type: 'adversary', sheet: 'Bestiary/Bugboar#bugboar', resources: { HP: { current: 6, max: 6 } } })
-    expect(charactersApi.commands.addItems).not.toHaveBeenCalled()
+    expect(charactersApi.ensure).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('3 copies added')
   })
 
@@ -67,9 +67,8 @@ describe('AddToEncounter', () => {
     expect(wrapper.find('input[type="number"]').exists()).toBe(false)
     await wrapper.findAll('button')[1].trigger('click')
     await flushPromises()
-    expect(charactersApi.commands.addItems).toHaveBeenCalledWith(
-      null, 'characters', [expect.objectContaining({ id: 'aria', resources: { HP: expect.objectContaining({ current: 12, max: 12 }) } })],
-      { ignoreExisting: true }
+    expect(charactersApi.ensure).toHaveBeenCalledWith(
+      'aria', expect.objectContaining({ name: 'Aria', resources: { HP: expect.objectContaining({ current: 12, max: 12 }) } })
     )
     const [, , items] = encountersApi.commands.addItems.mock.calls[0]
     expect(items).toEqual([{ name: 'Aria', type: 'character', sheet: 'aria', image_url: null }])

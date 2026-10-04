@@ -56,8 +56,12 @@ describe('the document clients', () => {
     expect(client.post).toHaveBeenLastCalledWith(
       'https://api.test/api/encounters/fight/combatants/orc%201/adjust', { resource: 'HP', by: -2 }
     )
-    await charactersApi.commands.patchItem('all', 'characters', 'aria', { notes: 'hi' })
-    expect(client.patch).toHaveBeenLastCalledWith('https://api.test/api/characters/characters/aria', { notes: 'hi' })
+    await charactersApi.commands.adjustOwn('aria', 'HP', 3)
+    expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/aria/adjust', { resource: 'HP', by: 3 })
+    await charactersApi.ensure('aria', { name: 'Aria' })
+    expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/ensure', { id: 'aria', fields: { name: 'Aria' } })
+    await charactersApi.reassign('aria', 'aria-la-roja')
+    expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/aria/reassign', { id: 'aria-la-roja' })
   })
 
   it('gives the client of a kind by its name', () => {

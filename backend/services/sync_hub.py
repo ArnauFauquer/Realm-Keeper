@@ -1,6 +1,6 @@
 """Live documents: the ones several people edit at once and watch change.
 
-A live document (an encounter, the characters' state) is held in memory while
+A live document (an encounter, a map, a character's saved values) is held in memory while
 anybody is using it. It changes only through `mutate`, which applies an edit to
 a copy, validates the result, bumps the document's `rev`, and tells every
 connected client what changed; clients never write a whole document, so two
@@ -178,9 +178,7 @@ class DocHub:
         doctype = collection.doctype
         raw = await asyncio.to_thread(collection.read_raw, doc_id)
         if raw is None:
-            if doctype.singleton != doc_id:
-                raise DocNotFound(f"{kind.capitalize()} not found: {doc_id}")
-            raw = {"id": doc_id}
+            raise DocNotFound(f"{kind.capitalize()} not found: {doc_id}")
         data = doctype.model.model_validate(raw).model_dump(mode="json")
         room = Room(doctype, doc_id, data)
         self._rooms[(kind, doc_id)] = room

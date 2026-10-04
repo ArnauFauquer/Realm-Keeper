@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from models.battlemap import Battlemap, BattlemapMetadata
-from models.characters import CHARACTERS_DOC_ID, CharactersDoc, CharactersMetadata
+from models.characters import CHARACTER_ID_PATTERN, Character, CharacterMetadata
 from models.chart import Chart, ChartMetadata
 from models.encounter import Encounter, EncounterMetadata
 from models.vista import Vista, VistaMetadata
@@ -48,23 +48,25 @@ BATTLEMAP = DocType(
     live=True, collections=("tokens",), patchable=("name", "description", "image_url", "grid", "encounter"),
 )
 
-# The saved state of every `character` sheet: one document, there is no list of them.
-CHARACTERS = DocType(
-    kind="characters", prefix="characters", item_filename="characters.json",
-    model=CharactersDoc, metadata_model=CharactersMetadata, items_key="characters",
-    live=True, collections=("characters",), singleton=CHARACTERS_DOC_ID,
+# The saved values of each `character` sheet, one document per character, under
+# the sheet's id (characters/<id>/character.json).
+CHARACTER = DocType(
+    kind="character", prefix="characters", item_filename="character.json",
+    model=Character, metadata_model=CharacterMetadata, items_key="characters",
+    live=True, patchable=("name", "resources"), resources_field="resources",
+    id_pattern=CHARACTER_ID_PATTERN,
 )
 
 doc_backend = default_doc_backend()
 chart_collection = DocCollection(CHART, doc_backend)
 vista_collection = DocCollection(VISTA, doc_backend)
 encounter_collection = DocCollection(ENCOUNTER, doc_backend)
-characters_collection = DocCollection(CHARACTERS, doc_backend)
+characters_collection = DocCollection(CHARACTER, doc_backend)
 battlemap_collection = DocCollection(BATTLEMAP, doc_backend)
 
 hub = DocHub({
     ENCOUNTER.kind: encounter_collection,
-    CHARACTERS.kind: characters_collection,
+    CHARACTER.kind: characters_collection,
     BATTLEMAP.kind: battlemap_collection,
 })
 

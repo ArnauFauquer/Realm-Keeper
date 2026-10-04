@@ -160,7 +160,7 @@ and deleted from the UI.
 | Vistas                    | `vistas/<folders>/<id>/vista.json` in the bucket            |
 | Encounters                | `encounters/<folders>/<id>/encounter.json` in the bucket    |
 | Battlemaps                | `battlemaps/<folders>/<id>/battlemap.json` in the bucket    |
-| Characters' saved values  | `characters/all/characters.json` in the bucket              |
+| Characters' saved values  | `characters/<sheet id>/character.json` in the bucket        |
 
 The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …) with one
 top-level prefix per kind of thing, and nothing else at the top.

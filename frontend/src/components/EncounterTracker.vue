@@ -174,7 +174,8 @@ const props = defineProps({
 const id = props.encounterId
 const { commands } = encountersApi
 const { doc, status, error, commit } = useSyncedDoc('encounter', id, () => encountersApi.fetch(id))
-const characters = useCharacters()
+// The saved values of the characters in it: one live document each.
+const characters = useCharacters(() => (doc.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
 const adding = ref(false)
 const actionError = ref('')

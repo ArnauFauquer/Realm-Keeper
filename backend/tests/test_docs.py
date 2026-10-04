@@ -10,7 +10,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from models.characters import CharactersDoc, CharactersMetadata
+from models.characters import CHARACTER_ID_PATTERN, Character, CharacterMetadata
 from models.encounter import Encounter, EncounterMetadata
 from routes import sync as sync_routes
 from routes.auth import require_auth
@@ -27,10 +27,11 @@ ENCOUNTER = DocType(
     image_fields=("combatants[].image_url",),
     live=True, collections=("combatants",), patchable=("name", "description"),
 )
-CHARACTERS = DocType(
-    kind="characters", prefix="characters", item_filename="characters.json",
-    model=CharactersDoc, metadata_model=CharactersMetadata, items_key="characters",
-    live=True, collections=("characters",), singleton="all",
+CHARACTER = DocType(
+    kind="character", prefix="characters", item_filename="character.json",
+    model=Character, metadata_model=CharacterMetadata, items_key="characters",
+    live=True, patchable=("name", "resources"), resources_field="resources",
+    id_pattern=CHARACTER_ID_PATTERN,
 )
 LIBRARY_IMAGE = "/api/asset-library/assets/asset-library/Maps/1a2b3c4d-orc.png"
 
@@ -303,9 +304,9 @@ def hub_and_collections(tmp_path, monkeypatch):
     monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 0.05)
     backend = LocalDocBackend(tmp_path)
     encounters = DocCollection(ENCOUNTER, backend)
-    characters = DocCollection(CHARACTERS, backend)
+    characters = DocCollection(CHARACTER, backend)
     encounters.create("Fight")
-    return DocHub({"encounter": encounters, "characters": characters}), encounters, characters
+    return DocHub({"encounter": encounters, "character": characters}), encounters, characters
 
 
 def run(coro):
@@ -517,20 +518,38 @@ def test_an_idle_saved_document_leaves_memory(hub_and_collections, monkeypatch):
     run(scenario())
 
 
-def test_the_characters_document_exists_before_anyone_saved_it(hub_and_collections):
+def test_a_character_is_made_once_from_its_sheet_and_changed_like_any_live_document(hub_and_collections):
     hub, _, characters = hub_and_collections
+    counter = {"HP": {"current": 8, "max": 12, "min": 0}}
 
     async def scenario():
-        assert (await hub.snapshot("characters", "all"))["characters"] == []
-        counter = {"HP": {"current": 8, "max": 12, "min": 0}}
-        add = lambda d: doc_commands.add_items(d, CHARACTERS, "characters", [{"id": "aria", "resources": counter}], True)  # noqa: E731
-        first = await hub.mutate("characters", "all", add)
-        assert first["upsert"]["characters"][0]["id"] == "aria"
-        assert await hub.mutate("characters", "all", add) is None      # asking twice is harmless
+        with pytest.raises(DocNotFound):
+            await hub.snapshot("character", "aria")               # nobody saved it yet
+        doc, created = characters.ensure("aria", {"name": "Aria", "resources": counter})
+        assert created and doc.rev == 0
+        again, created = characters.ensure("aria", {"name": "Other", "resources": {}})
+        assert not created and again.name == "Aria"                # asking twice is harmless
+        event = await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -3))
+        assert event["set"]["resources"]["HP"]["current"] == 5 and event["doc"] == "character:aria"
+        await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -99))
         await hub.flush_all()
-        assert characters.read_raw("all")["characters"][0]["resources"]["HP"]["current"] == 8
+        assert characters.read_raw("aria")["resources"]["HP"]["current"] == 0   # stops at the min
+        assert characters.backend.exists("characters/aria/character.json")
 
     run(scenario())
+
+
+def test_each_character_is_its_own_document(hub_and_collections):
+    _, _, characters = hub_and_collections
+    for name in ("aria", "bram"):
+        characters.ensure(name, {"name": name.capitalize()})
+    assert sorted(m.id for m in characters.list_all()) == ["aria", "bram"]
+    characters.change_id("bram", "bram-the-bold")
+    assert sorted(m.id for m in characters.list_all()) == ["aria", "bram-the-bold"]
+    with pytest.raises(ValueError, match="already"):
+        characters.change_id("aria", "bram-the-bold")
+    characters.delete("aria")
+    assert [m.id for m in characters.list_all()] == ["bram-the-bold"]
 
 
 # ── routes ──────────────────────────────────────────────────────────────────
@@ -540,7 +559,7 @@ def api(hub_and_collections, monkeypatch):
     hub, encounters, characters = hub_and_collections
     app = FastAPI()
     app.include_router(make_doc_router(ENCOUNTER, encounters, hub, viewer=lambda request, doc_id: None))
-    app.include_router(make_doc_router(CHARACTERS, characters, hub, viewer=lambda request, doc_id: None))
+    app.include_router(make_doc_router(CHARACTER, characters, hub, viewer=lambda request, doc_id: None))
     app.include_router(sync_routes.router)
     app.dependency_overrides[require_auth] = lambda: {"email": "gm@example.com", "name": "GM"}
     monkeypatch.setattr(sync_routes, "hub", hub)
@@ -603,14 +622,39 @@ def test_a_character_cannot_be_in_an_encounter_twice_nor_carry_counters(api):
     assert api.post("/api/encounters/fight/combatants", json={"items": [with_counters]}).status_code == 400
 
 
-def test_the_characters_document_has_no_id_in_its_urls(api):
+def test_characters_over_http(api):
     assert api.get("/api/characters").json()["characters"] == []
-    counter = {"HP": {"current": 12, "max": 12}}
-    body = {"items": [{"id": "aria", "resources": counter}], "ignore_existing": True}
-    assert api.post("/api/characters/characters", json=body).json()["rev"] == 1
-    assert api.post("/api/characters/characters", json=body).json() == {"type": "noop"}
-    api.post("/api/characters/characters/aria/adjust", json={"resource": "HP", "by": -5})
-    assert api.get("/api/characters").json()["characters"][0]["resources"]["HP"]["current"] == 7
+    assert api.get("/api/characters/aria").status_code == 404
+    body = {"id": "aria", "fields": {"name": "Aria", "resources": {"HP": {"current": 12, "max": 12}}}}
+    made = api.post("/api/characters/ensure", json=body).json()
+    assert made["created"] and made["doc"]["resources"]["HP"]["current"] == 12
+    assert api.post("/api/characters/ensure", json=body).json()["created"] is False
+    assert api.post("/api/characters/aria/adjust", json={"resource": "HP", "by": -5}).json()["rev"] == 1
+    assert api.get("/api/characters/aria").json()["resources"]["HP"]["current"] == 7
+    patched = api.patch("/api/characters/aria", json={"resources": {"HP": {"max": 15}}}).json()
+    assert patched["set"]["resources"]["HP"] == {"current": 7, "max": 15, "min": 0, "color": None, "style": None}
+    assert [c["id"] for c in api.get("/api/characters").json()["characters"]] == ["aria"]
+    assert api.get("/api/characters/all").json()["characters"][0]["name"] == "Aria"
+
+
+def test_a_character_id_is_a_sheet_id(api):
+    for bad in ("Aria", "a/b", "../x", "", "all", "ensure"):
+        assert api.post("/api/characters/ensure", json={"id": bad, "fields": {}}).status_code == 400, bad
+    # and a keyed kind has no folders, nor documents made from a name
+    assert api.post("/api/characters", json={"name": "Aria"}).status_code == 405
+    assert api.post("/api/characters/folders", json={"path": "x"}).status_code in (404, 405)
+
+
+def test_a_character_given_another_id_keeps_its_values(api):
+    api.post("/api/characters/ensure", json={"id": "aria", "fields": {"name": "Aria", "resources": {"HP": {"current": 3, "max": 12}}}})
+    api.post("/api/characters/ensure", json={"id": "bram", "fields": {"name": "Bram"}})
+    assert api.post("/api/characters/aria/reassign", json={"id": "bram"}).status_code == 400   # taken
+    assert api.post("/api/characters/aria/reassign", json={"id": "Aria Nueva"}).status_code == 400
+    assert api.post("/api/characters/aria/reassign", json={"id": "aria-nueva"}).json() == {"status": "success", "id": "aria-nueva"}
+    assert api.get("/api/characters/aria").status_code == 404
+    assert api.get("/api/characters/aria-nueva").json()["resources"]["HP"]["current"] == 3
+    assert api.delete("/api/characters/bram").json() == {"status": "success"}
+    assert [c["id"] for c in api.get("/api/characters/all").json()["characters"]] == ["aria-nueva"]
 
 
 def test_every_client_hears_the_change_on_the_socket(api):
