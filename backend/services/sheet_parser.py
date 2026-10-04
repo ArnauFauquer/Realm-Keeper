@@ -18,7 +18,7 @@ SHEET_TYPES = ("character", "adversary")
 # A sheet is a few dozen lines. The limit keeps a block pasted by mistake (or a
 # hostile one) from being parsed, and from taking the whole catalog with it.
 MAX_SOURCE_LENGTH = 100_000
-KNOWN_FIELDS = {"id", "name", "type", "subtitle", "image", "tags", "resources", "stats", "sections", "columns", "text"}
+KNOWN_FIELDS = {"id", "name", "type", "subtitle", "image", "tags", "stats", "sections", "columns", "text"}
 # How many columns a layout may ask for (the sheet's sections, a section's
 # items, a group of stats). Narrow screens fall back to fewer on their own.
 MAX_COLUMNS = 12
@@ -86,33 +86,32 @@ def _integer(value: Any, what: str) -> int:
     return int(value)
 
 
-def _resource(name: str, raw: Any) -> ResourceSpec:
+def _counter(name: str, raw: Any) -> ResourceSpec:
     if isinstance(raw, dict):
         if "max" not in raw:
-            raise SheetParseError(f"resource '{name}' needs a max")
+            raise SheetParseError(f"counter '{name}' needs a max")
         spec = {
-            "max": _integer(raw["max"], f"resource '{name}' max"),
-            "min": _integer(raw.get("min", 0), f"resource '{name}' min"),
+            "max": _integer(raw["max"], f"counter '{name}' max"),
+            "min": _integer(raw.get("min", 0), f"counter '{name}' min"),
             "color": _text(raw.get("color")),
             "style": _text(raw.get("style")),
-            "group": _text(raw.get("group")),
         }
         if raw.get("start") is not None:
-            spec["start"] = _integer(raw["start"], f"resource '{name}' start")
+            spec["start"] = _integer(raw["start"], f"counter '{name}' start")
     else:
-        spec = {"max": _integer(raw, f"resource '{name}'")}
-    resource = ResourceSpec(**spec)
-    if resource.min > resource.max:
-        raise SheetParseError(f"resource '{name}' has a min above its max")
-    return resource
+        spec = {"max": _integer(raw, f"counter '{name}'")}
+    counter = ResourceSpec(**spec)
+    if counter.min > counter.max:
+        raise SheetParseError(f"counter '{name}' has a min above its max")
+    return counter
 
 
-def _resources(raw: Any) -> dict:
+def _counters(raw: Any) -> dict:
     if raw is None:
         return {}
     if not isinstance(raw, dict):
-        raise SheetParseError("resources must be a mapping of name to maximum, e.g. HP: 6")
-    return {str(name): _resource(str(name), value) for name, value in raw.items()}
+        raise SheetParseError("a section's counters must be a mapping of name to maximum, e.g. HP: 6")
+    return {str(name): _counter(str(name), value) for name, value in raw.items()}
 
 
 def _columns(value: Any, what: str) -> Optional[int]:
@@ -169,21 +168,30 @@ def _item(raw: Any) -> SheetItem:
     return SheetItem(text=_text(raw))
 
 
-def _sections(raw: Any) -> List[SheetSection]:
+def _sections(raw: Any) -> Tuple[List[SheetSection], dict]:
+    """(sections, resources): each section names its counters, and every
+    counter of the sheet is also in `resources` (by name, in order), which is
+    what encounters and saved characters go by."""
     if raw is None:
-        return []
+        return [], {}
     if not isinstance(raw, list) or not all(isinstance(section, dict) for section in raw):
         raise SheetParseError("sections must be a list, each with a title and its items")
-    sections = []
+    sections, resources = [], {}
     for section in raw:
         items = section.get("items")
         if items is not None and not isinstance(items, list):
             raise SheetParseError("a section's items must be a list")
+        own = _counters(section.get("counters"))
+        for name, spec in own.items():
+            if name in resources:
+                raise SheetParseError(f"counter '{name}' is defined twice: counter names must be unique in a sheet")
+            resources[name] = spec
         sections.append(SheetSection(
             title=_text(section.get("title")), columns=_columns(section.get("columns"), "a section's columns"),
-            wide=section.get("wide") is True, collapsed=section.get("collapsed") is True, items=[_item(i) for i in items or []],
+            wide=section.get("wide") is True, collapsed=section.get("collapsed") is True,
+            counters=list(own), stats=_stats(section.get("stats")), items=[_item(i) for i in items or []],
         ))
-    return sections
+    return sections, resources
 
 
 def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
@@ -197,7 +205,9 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")
     if not isinstance(data, dict):
-        raise SheetParseError("A sheet must be a YAML mapping (name: ..., resources: ...)")
+        raise SheetParseError("A sheet must be a YAML mapping (name: ..., sections: ...)")
+    if "resources" in data:
+        raise SheetParseError("'resources' is gone: counters go in a section, as its `counters` (the same name: max mapping)")
 
     name = _text(data.get("name"))
     if not name:
@@ -216,12 +226,13 @@ def parse_sheet_source(source: str) -> Tuple[SheetSpec, List[str]]:
     image, image_warning = normalize_image(data.get("image"))
     if image_warning:
         warnings.append(image_warning)
+    sections, resources = _sections(data.get("sections"))
 
     try:
         spec = SheetSpec(
             id=sheet_id, name=name, type=sheet_type, subtitle=_text(data.get("subtitle")), image=image,
-            tags=_tags(data.get("tags")), resources=_resources(data.get("resources")),
-            stats=_stats(data.get("stats")), sections=_sections(data.get("sections")),
+            tags=_tags(data.get("tags")), resources=resources,
+            stats=_stats(data.get("stats")), sections=sections,
             columns=_columns(data.get("columns"), "columns"), text=_text(data.get("text")),
         )
     except ValidationError as e:

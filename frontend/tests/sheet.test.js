@@ -34,7 +34,7 @@ describe('limits', () => {
   })
 
   it('does not mind an anchor nothing refers to', () => {
-    expect(parseSheetSource('name: A\nresources:\n  HP: &hp 6\n').sheet.resources.HP.max).toBe(6)
+    expect(parseSheetSource('name: A\nsections:\n  - counters:\n      HP: &hp 6\n').sheet.resources.HP.max).toBe(6)
   })
 
   it('does not parse a sheet that is far too long', () => {

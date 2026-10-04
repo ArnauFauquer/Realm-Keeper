@@ -20,19 +20,38 @@
       </li>
     </ul>
 
-    <!-- Counters gathered by their `group`, in columns once there is room.
-         Whoever shows the sheet may draw each one live instead (the `counter`
-         slot: a character's saved values). -->
-    <div v-if="!compact && resourceGroups.length" class="sheet-resources">
-      <div
-        v-for="group in resourceGroups"
-        :key="group.title ?? ''"
-        class="sheet-resource-group"
-        :style="{ '--rc-label-width': group.labelWidth }"
+    <!-- Everything below the header is sections: the sheet's own `stats`
+         come first, as an untitled one taking the whole row. -->
+    <div
+      v-if="displaySections.length"
+      class="sheet-sections"
+      :class="{ 'sheet-grid--fixed': sheet.columns }"
+      :style="columnsStyle(sheet.columns)"
+    >
+      <!-- A titled section folds (`collapsed` starts it folded); one without a
+           title has nothing to fold under. -->
+      <component
+        :is="section.title ? 'details' : 'section'"
+        v-for="(section, index) in displaySections"
+        :key="index"
+        class="sheet-section"
+        :class="{ 'sheet-section--wide': section.wide }"
+        :open="section.title ? !section.collapsed : undefined"
       >
-        <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
-        <div class="sheet-resource-grid">
-          <slot v-for="r in group.resources" :key="r.name" name="counter" :resource="r">
+        <summary v-if="section.title" class="sheet-section-title">
+          <span class="mdi mdi-chevron-right sheet-fold-icon" aria-hidden="true"></span>{{ section.title }}
+        </summary>
+
+        <!-- The section's counters, in columns once there is room, their
+             labels one width so the pips line up. Whoever shows the sheet may
+             draw each one live instead (the `counter` slot: a character's
+             saved values). -->
+        <div
+          v-if="section.counterList.length"
+          class="sheet-counters"
+          :style="{ '--rc-label-width': section.labelWidth }"
+        >
+          <slot v-for="r in section.counterList" :key="r.name" name="counter" :resource="r">
             <ResourceCounter
               :name="r.name"
               :current="r.start ?? r.max"
@@ -43,54 +62,38 @@
             />
           </slot>
         </div>
-      </div>
-    </div>
 
-    <!-- Each group of stats is its own grid; `columns` fixes how many go in a
-         row once there is room for them. -->
-    <div v-if="sheet.stats.length" class="sheet-stat-groups">
-      <div v-for="(group, g) in sheet.stats" :key="g" class="sheet-stat-group">
-        <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
-        <dl class="sheet-stats" :class="{ 'sheet-grid--fixed': group.columns }" :style="columnsStyle(group.columns)">
-          <div v-for="stat in group.stats" :key="stat.label" class="sheet-stat">
-            <dt>{{ stat.label }}</dt>
-            <dd>
-              <button
-                v-if="canInteract && isRollable(stat.roll)"
-                type="button"
-                class="sheet-roll"
-                :title="`Roll ${stat.roll}`"
-                @click="rollFormula(stat.roll, stat.label)"
-              >
-                <span class="mdi mdi-dice-multiple"></span>{{ statText(stat) }}
-              </button>
-              <span v-else>{{ statText(stat) }}</span>
-            </dd>
+        <!-- Each group of stats is its own grid; `columns` fixes how many go
+             in a row once there is room for them. -->
+        <div v-if="section.stats.length" class="sheet-stat-groups">
+          <div v-for="(group, g) in section.stats" :key="g" class="sheet-stat-group">
+            <div v-if="group.title" class="sheet-group-title">{{ group.title }}</div>
+            <dl class="sheet-stats" :class="{ 'sheet-grid--fixed': group.columns }" :style="columnsStyle(group.columns)">
+              <div v-for="stat in group.stats" :key="stat.label" class="sheet-stat">
+                <dt>{{ stat.label }}</dt>
+                <dd>
+                  <button
+                    v-if="canInteract && isRollable(stat.roll)"
+                    type="button"
+                    class="sheet-roll"
+                    :title="`Roll ${stat.roll}`"
+                    @click="rollFormula(stat.roll, stat.label)"
+                  >
+                    <span class="mdi mdi-dice-multiple"></span>{{ statText(stat) }}
+                  </button>
+                  <span v-else>{{ statText(stat) }}</span>
+                </dd>
+              </div>
+            </dl>
           </div>
-        </dl>
-      </div>
-    </div>
+        </div>
 
-    <div
-      v-if="sheet.sections.length"
-      class="sheet-sections"
-      :class="{ 'sheet-grid--fixed': sheet.columns }"
-      :style="columnsStyle(sheet.columns)"
-    >
-      <!-- A titled section folds (`collapsed` starts it folded); one without a
-           title has nothing to fold under. -->
-      <component
-        :is="section.title ? 'details' : 'section'"
-        v-for="(section, index) in sheet.sections"
-        :key="index"
-        class="sheet-section"
-        :class="{ 'sheet-section--wide': section.wide }"
-        :open="section.title ? !section.collapsed : undefined"
-      >
-        <summary v-if="section.title" class="sheet-section-title">
-          <span class="mdi mdi-chevron-right sheet-fold-icon" aria-hidden="true"></span>{{ section.title }}
-        </summary>
-        <ul class="sheet-items" :class="{ 'sheet-grid--fixed': section.columns }" :style="columnsStyle(section.columns)">
+        <ul
+          v-if="section.items.length"
+          class="sheet-items"
+          :class="{ 'sheet-grid--fixed': section.columns }"
+          :style="columnsStyle(section.columns)"
+        >
           <li
             v-for="(item, i) in section.items"
             :key="i"
@@ -155,20 +158,26 @@ const router = useRouter()
 const { roll } = useDiceRoller()
 const md = createMarkdown({ refKinds: ['dice'] })
 
-// Groups in the order they first appear; counters without one form an
-// untitled group of their own. Each group's labels share one width (its
-// longest, within reason) so the pips line up.
-const resourceGroups = computed(() => {
-  const groups = new Map()
-  for (const [name, spec] of Object.entries(props.sheet.resources || {})) {
-    const key = spec.group ?? null
-    if (!groups.has(key)) groups.set(key, { title: key, resources: [] })
-    groups.get(key).resources.push({ name, ...spec })
-  }
-  return [...groups.values()].map((group) => ({
-    ...group,
-    labelWidth: `${Math.min(16, Math.max(4.5, ...group.resources.map((r) => r.name.length * 0.55 + 0.5)))}em`
-  }))
+// What the template draws: the sheet's own stats as a first, untitled,
+// whole-row section, then its sections, each with its counters' specs (the
+// encounter tracker, `compact`, has its own counters). A catalog entry made
+// before sections had counters or stats lacks them.
+const displaySections = computed(() => {
+  const head = props.sheet.stats.length ? [{ title: null, wide: true, stats: props.sheet.stats }] : []
+  return [...head, ...props.sheet.sections].map((section) => {
+    const counterList = props.compact
+      ? []
+      : (section.counters || []).map((name) => ({ name, ...props.sheet.resources[name] }))
+    return {
+      collapsed: false,
+      columns: null,
+      items: [],
+      ...section,
+      stats: section.stats || [],
+      counterList,
+      labelWidth: `${Math.min(16, Math.max(4.5, ...counterList.map((r) => r.name.length * 0.55 + 0.5)))}em`
+    }
+  })
 })
 
 // An item that is only a name and a roll (a skill, a save) reads as one row,
@@ -317,20 +326,14 @@ function onKeydown(e) {
   margin-right: var(--space-1);
 }
 
-.sheet-resources {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.sheet-resource-grid {
+.sheet-counters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
   gap: var(--space-1) var(--space-5);
 }
 
-/* One label width per group, so its pips and bars start in line. */
-.sheet-resource-group :deep(.rc-name) {
+/* One label width per section, so its pips and bars start in line. */
+.sheet-counters :deep(.rc-name) {
   flex: none;
   width: var(--rc-label-width);
   min-width: 0;
@@ -364,9 +367,9 @@ function onKeydown(e) {
   margin: 0;
 }
 
-/* `columns` in the sheet: as many as asked once the card is wide enough to
-   fit them, the automatic layout below that. */
-@container sheet (min-width: 40rem) {
+/* `columns` in the sheet: as many as asked once their section is wide enough
+   to fit them, the automatic layout below that. */
+@container sheet-section (min-width: 40rem) {
   .sheet-stats.sheet-grid--fixed {
     grid-template-columns: repeat(var(--sheet-columns), minmax(0, 1fr));
   }
@@ -394,6 +397,14 @@ function onKeydown(e) {
 .sheet-section {
   min-width: 0;
   container: sheet-section / inline-size;
+}
+
+.sheet-section > * + :not(summary) {
+  margin-top: var(--space-3);
+}
+
+.sheet-section > summary + * {
+  margin-top: var(--space-2);
 }
 
 .sheet-stat {

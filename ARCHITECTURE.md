@@ -87,7 +87,9 @@ with: the app reads and writes only this layout.
 A ` ```sheet ` block in a note is YAML describing a character or an adversary
 (counters, stats, sections, free text). `sheet_parser.py` normalizes it into a
 `SheetSpec` (stats always come out as a list of groups, however they were
-written; `columns` and `wide` are layout only); `routes/sheets.py` serves the catalog (`GET /api/sheets`,
+written; counters are written in sections, and gathered by name into
+`resources` for everything that uses them; `columns`, `wide` and `collapsed`
+are layout only); `routes/sheets.py` serves the catalog (`GET /api/sheets`,
 `/api/sheets/detail?ref=`), as public as the notes themselves.
 
 - A **`character`** is an individual: it has a global `id`, and its current

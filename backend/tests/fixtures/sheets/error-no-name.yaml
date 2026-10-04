@@ -1,3 +1,4 @@
 type: adversary
-resources:
-  HP: 4
+sections:
+  - counters:
+      HP: 4

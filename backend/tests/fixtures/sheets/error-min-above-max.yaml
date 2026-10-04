@@ -1,3 +1,5 @@
 name: Imp
-resources:
-  HP: { max: 2, min: 3 }
+sections:
+  - counters:
+      HP: { max: 2, min: 3 }
+

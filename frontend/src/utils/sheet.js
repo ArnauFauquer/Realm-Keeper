@@ -10,7 +10,7 @@ export const SHEET_TYPES = ['character', 'adversary']
 // same reason: a few nested ones expand to gigabytes.
 const MAX_SOURCE_LENGTH = 100_000
 
-const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'resources', 'stats', 'sections', 'columns', 'text'])
+const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'stats', 'sections', 'columns', 'text'])
 // How many columns a layout may ask for (the sheet's sections, a section's
 // items, a group of stats). Narrow screens fall back to fewer on their own.
 const MAX_COLUMNS = 12
@@ -60,29 +60,28 @@ function integer(value, what) {
   return value
 }
 
-function resource(name, raw) {
+function counter(name, raw) {
   let spec
   if (isMapping(raw)) {
-    if (!('max' in raw)) throw new SheetParseError(`resource '${name}' needs a max`)
+    if (!('max' in raw)) throw new SheetParseError(`counter '${name}' needs a max`)
     spec = {
-      max: integer(raw.max, `resource '${name}' max`),
-      min: integer(raw.min ?? 0, `resource '${name}' min`),
-      start: raw.start === null || raw.start === undefined ? null : integer(raw.start, `resource '${name}' start`),
+      max: integer(raw.max, `counter '${name}' max`),
+      min: integer(raw.min ?? 0, `counter '${name}' min`),
+      start: raw.start === null || raw.start === undefined ? null : integer(raw.start, `counter '${name}' start`),
       color: text(raw.color),
-      style: text(raw.style),
-      group: text(raw.group)
+      style: text(raw.style)
     }
   } else {
-    spec = { max: integer(raw, `resource '${name}'`), min: 0, start: null, color: null, style: null, group: null }
+    spec = { max: integer(raw, `counter '${name}'`), min: 0, start: null, color: null, style: null }
   }
-  if (spec.min > spec.max) throw new SheetParseError(`resource '${name}' has a min above its max`)
+  if (spec.min > spec.max) throw new SheetParseError(`counter '${name}' has a min above its max`)
   return spec
 }
 
-function resources(raw) {
+function counters(raw) {
   if (raw === null || raw === undefined) return {}
-  if (!isMapping(raw)) throw new SheetParseError('resources must be a mapping of name to maximum, e.g. HP: 6')
-  return Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, resource(name, value)]))
+  if (!isMapping(raw)) throw new SheetParseError("a section's counters must be a mapping of name to maximum, e.g. HP: 6")
+  return Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, counter(name, value)]))
 }
 
 function columns(value, what) {
@@ -126,23 +125,35 @@ function item(raw) {
   return { name: null, text: text(raw), roll: null, tags: [], cost: null }
 }
 
+/** { sections, resources }: each section names its counters, and every
+ * counter of the sheet is also in `resources` (by name, in order), which is
+ * what encounters and saved characters go by. */
 function sections(raw) {
-  if (raw === null || raw === undefined) return []
+  if (raw === null || raw === undefined) return { sections: [], resources: {} }
   if (!Array.isArray(raw) || !raw.every(isMapping)) {
     throw new SheetParseError('sections must be a list, each with a title and its items')
   }
-  return raw.map((section) => {
+  const resources = {}
+  const list = raw.map((section) => {
     if (section.items !== null && section.items !== undefined && !Array.isArray(section.items)) {
       throw new SheetParseError("a section's items must be a list")
+    }
+    const own = counters(section.counters)
+    for (const [name, spec] of Object.entries(own)) {
+      if (name in resources) throw new SheetParseError(`counter '${name}' is defined twice: counter names must be unique in a sheet`)
+      resources[name] = spec
     }
     return {
       title: text(section.title),
       columns: columns(section.columns, "a section's columns"),
       wide: section.wide === true,
       collapsed: section.collapsed === true,
+      counters: Object.keys(own),
+      stats: stats(section.stats),
       items: (section.items || []).map(item)
     }
   })
+  return { sections: list, resources }
 }
 
 /** { sheet, warnings } for a block's YAML. Throws SheetParseError, whose
@@ -155,7 +166,10 @@ export function parseSheetSource(source) {
   } catch (e) {
     throw new SheetParseError(`Invalid YAML: ${e.message.split('\n')[0]}`)
   }
-  if (!isMapping(data)) throw new SheetParseError('A sheet must be a YAML mapping (name: ..., resources: ...)')
+  if (!isMapping(data)) throw new SheetParseError('A sheet must be a YAML mapping (name: ..., sections: ...)')
+  if ('resources' in data) {
+    throw new SheetParseError("'resources' is gone: counters go in a section, as its `counters` (the same name: max mapping)")
+  }
 
   const name = text(data.name)
   if (!name) throw new SheetParseError('A sheet needs a name')
@@ -171,6 +185,7 @@ export function parseSheetSource(source) {
   }
   const [image, imageWarning] = normalizeImage(data.image)
   if (imageWarning) warnings.push(imageWarning)
+  const parts = sections(data.sections)
 
   return {
     sheet: {
@@ -180,9 +195,9 @@ export function parseSheetSource(source) {
       subtitle: text(data.subtitle),
       image,
       tags: tags(data.tags),
-      resources: resources(data.resources),
+      resources: parts.resources,
       stats: stats(data.stats),
-      sections: sections(data.sections),
+      sections: parts.sections,
       columns: columns(data.columns, 'columns'),
       text: text(data.text)
     },
@@ -200,12 +215,12 @@ export const SHEET_TEMPLATES = {
     'subtitle:',
     'image:                   # URL of an asset library image',
     'tags: []',
-    'resources:               # counters, by name: HP: 6',
-    '  HP: 6',
-    '  Stress: { max: 3, start: 0 }',
-    'stats:',
-    '  Difficulty: 12',
     'sections:',
+    '  - counters:            # counters, by name: HP: 6 (a section without a title opens the sheet)',
+    '      HP: 6',
+    '      Stress: { max: 3, start: 0 }',
+    '    stats:',
+    '      Difficulty: 12',
     '  - title: Actions',
     '    items:',
     '      - name: Attack',
@@ -220,12 +235,12 @@ export const SHEET_TEMPLATES = {
     'type: character          # one individual: its current values persist',
     'subtitle:',
     'image:                   # URL of an asset library image',
-    'resources:',
-    '  HP: 10',
-    '  Stress: { max: 5, start: 0 }',
-    'stats:',
-    '  Defense: 10',
     'sections:',
+    '  - counters:',
+    '      HP: 10',
+    '      Stress: { max: 5, start: 0 }',
+    '    stats:',
+    '      Defense: 10',
     '  - title: Actions',
     '    items:',
     '      - name: Attack',

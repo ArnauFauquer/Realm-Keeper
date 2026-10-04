@@ -46,14 +46,15 @@ type: adversary            # character | adversary (default: adversary)
 subtitle: Tier 1 · Bruiser
 image:                     # URL of an asset library image, as copied from the library
 tags: [goblinoid]
-resources:                 # counters: HP: 6, or { max, min, start, color, style, group }
-  HP: 6
-  Stress: { max: 3, start: 0 }   # `start` = where it begins (default: the max)
-stats:                     # label: value, or { value, roll } for a dice button
-  Difficulty: 14
-  Attack: { value: "+2", roll: "hf+2" }
 columns: 2                 # optional: sections side by side on a wide sheet
-sections:
+sections:                  # everything below the header is sections
+  - wide: true             # an untitled one opens the sheet; `wide` takes the whole row
+    counters:              # HP: 6, or { max, min, start, color, style }
+      HP: 6
+      Stress: { max: 3, start: 0 }   # `start` = where it begins (default: the max)
+    stats:                 # label: value, or { value, roll } for a dice button
+      Difficulty: 14
+      Attack: { value: "+2", roll: "hf+2" }
   - title: Actions
     items:
       - name: Gore
@@ -74,8 +75,12 @@ text: |                    # free markdown
   on a section takes the whole row), and on a section lays its items out in a
   grid. Narrow sheets (a phone, the encounter tracker) fall back to fewer
   columns on their own.
-- Counters sharing a `group` (`Level 1: { max: 4, group: Spell slots }`) are
-  drawn together under that heading; counters sit in columns on a wide sheet.
+- **Sections** hold everything: each draws its `counters`, then its `stats`,
+  then its `items`, so spell slots can sit with their spells. Counter names are
+  unique in the sheet (saved characters and encounters go by them); a
+  top-level `resources` is refused with a message saying where counters went.
+  `stats` may also stay at the top level: they are drawn as a first,
+  whole-row section.
 - A titled section folds with a click; `collapsed: true` starts it folded (a
   spell list, the equipment). An item that is only a name and a roll (a skill,
   a save) is drawn as one row, the roll at its end.

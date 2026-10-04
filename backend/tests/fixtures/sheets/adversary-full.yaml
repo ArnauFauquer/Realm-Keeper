@@ -3,14 +3,14 @@ type: adversary
 subtitle: Tier 1 · Bruiser
 image: /api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png
 tags: [goblinoid, brute]
-resources:
-  HP: { max: 6, color: red }
-  Stress: { max: 3, style: pips, start: 0 }
 stats:
   Difficulty: 14
   Thresholds: 7 / 13
   Attack: { value: "+2", roll: "hf+2" }
 sections:
+  - counters:
+      HP: { max: 6, color: red }
+      Stress: { max: 3, style: pips, start: 0 }
   - title: Actions
     items:
       - name: Gore
