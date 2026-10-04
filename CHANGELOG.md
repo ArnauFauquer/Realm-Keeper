@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.0...v0.2.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* **sheets:** stat labels on one line, a visible leader, counters that fit a phone ([#34](https://github.com/ArnauFauquer/Realm-Keeper/issues/34)) ([da60c49](https://github.com/ArnauFauquer/Realm-Keeper/commit/da60c49a6c8df8468f492ee3d2dea29ef2b1c923))
+
 ## [0.2.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.84...v0.2.0) (2026-10-04)
 
 
