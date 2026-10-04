@@ -137,11 +137,11 @@
               @change="patchCombatant(c, { notes: $event.target.value })"
             ></textarea>
             <template v-if="c.sheet">
-              <p v-if="sheets[c.sheet]?.status === 'loading'" class="sheet-note">Loading sheet…</p>
-              <p v-else-if="sheets[c.sheet]?.status === 'missing'" class="sheet-note">
-                Its sheet is no longer in the vault ({{ c.sheet }}); the counters above still work.
+              <p v-if="sheets[sheetKey(c)]?.status === 'loading'" class="sheet-note">Loading sheet…</p>
+              <p v-else-if="sheets[sheetKey(c)]?.status === 'missing'" class="sheet-note">
+                Its sheet is gone ({{ sheetKey(c) }}): it was moved or deleted. The counters above still work.
               </p>
-              <SheetView v-else-if="sheets[c.sheet]?.sheet" :sheet="sheets[c.sheet].sheet" :can-interact="canInteract" compact />
+              <SheetView v-else-if="sheets[sheetKey(c)]?.sheet" :sheet="sheets[sheetKey(c)].sheet" :can-interact="canInteract" compact />
             </template>
           </details>
         </li>
@@ -292,24 +292,23 @@ function addCondition(c, event) {
 const removeCondition = (c, condition) =>
   patchCombatant(c, { conditions: c.conditions.filter((item) => item.id !== condition.id) })
 
-async function addFromSheet(sheet, count) {
-  const items = combatantsFromSheet(sheet, count, doc.value.combatants)
-  // A character's saved counters have to exist before the encounter can show them.
-  if (sheet.type === 'character' && !(await attempt(characters.ensure(sheet)))) return
-  await send(commands.addItems(id, 'combatants', items))
-}
+const addFromSheet = (sheet, count) => send(commands.addItems(id, 'combatants', combatantsFromSheet(sheet, count, doc.value.combatants)))
 
 const addCustom = (name) => send(commands.addItems(id, 'combatants', [customCombatant(name)]))
 
-// A combatant's sheet is fetched when its details are opened, once.
+// A combatant's sheet is fetched when its details are opened, once. A
+// character and an adversary may share an id, so the type is part of the key.
+const sheetKey = (c) => `${c.type || 'adversary'}:${c.sheet}`
+
 async function loadSheet(c) {
-  if (!c.sheet || sheets[c.sheet]) return
-  sheets[c.sheet] = { status: 'loading' }
+  const key = sheetKey(c)
+  if (!c.sheet || sheets[key]) return
+  sheets[key] = { status: 'loading' }
   try {
-    const entry = await fetchSheet(c.sheet)
-    sheets[c.sheet] = { status: 'ready', sheet: entry.sheet }
+    const entry = await fetchSheet(c.type || 'adversary', c.sheet)
+    sheets[key] = { status: 'ready', sheet: entry.sheet }
   } catch {
-    sheets[c.sheet] = { status: 'missing' }
+    sheets[key] = { status: 'missing' }
   }
 }
 </script>

@@ -163,7 +163,7 @@ import { resolveUrl } from '@/utils/resolveUrl'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 
 // A sheet, drawn: `sheet` is the normalized shape from utils/sheet.js (or the
-// backend's catalog). SheetBlock draws one written in a note; the encounter
+// backend's catalog). SheetEmbed draws one a note shows, SheetEditor its preview; the encounter
 // tracker draws a combatant's, `compact` (no header, counters or description:
 // the tracker has its own counters).
 const props = defineProps({

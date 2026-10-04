@@ -327,15 +327,15 @@ describe('DocumentModal — creating', () => {
   })
 })
 
-describe('DocumentModal — a keyed kind (saved characters)', () => {
+describe('DocumentModal — characters', () => {
   beforeEach(() => { api = fakeApi('characters') })
 
-  it('has no New button and no folders: its documents are made from their sheets', async () => {
+  it('are made and kept in folders like any other kind, and give the link that shows one in a note', async () => {
     const { wrapper } = mountModal(DOC_TYPES.character)
     modal.open()
     await flushPromises()
-    expect(buttonByText(wrapper, 'New character')).toBeUndefined()
-    expect(buttonByText(wrapper, 'New folder')).toBeUndefined()
+    expect(buttonByText(wrapper, 'New character')).toBeDefined()
+    expect(buttonByText(wrapper, 'New folder')).toBeDefined()
   })
 
   it('lets its editor go back to the gallery', async () => {

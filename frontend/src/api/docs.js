@@ -15,10 +15,6 @@ export function encodePath(id) {
  * documents, and each one returns the event the server announced (see
  * utils/applyEvent.js), which the caller applies at once without waiting for
  * it to come round on the socket.
- *
- * A keyed kind (characters) has documents named by what they belong to:
- * `ensure(id, fields)` makes one if there is none, `reassign(id, newId)` gives
- * it another id.
  */
 export function createDocApi(prefix, { itemsKey = prefix } = {}) {
   const base = `${apiUrl}/api/${prefix}`
@@ -47,8 +43,6 @@ export function createDocApi(prefix, { itemsKey = prefix } = {}) {
     removeFolder: (path) => client.delete(`${base}/folders/${encodePath(path)}`).then(data),
     moveFolder: (path, destParentPath) =>
       client.post(`${base}/folders/move`, { path, dest_parent_path: destParentPath }).then(data),
-    ensure: (id, fields) => client.post(`${base}/ensure`, { id, fields }).then(data),
-    reassign: (id, newId) => client.post(`${docUrl(id)}/reassign`, { id: newId }).then(data),
 
     commands: {
       patch: (id, fields) => client.patch(docUrl(id), fields).then(data),
@@ -71,9 +65,13 @@ export const chartsApi = createDocApi('charts')
 export const vistasApi = createDocApi('vistas')
 export const encountersApi = createDocApi('encounters')
 export const charactersApi = createDocApi('characters')
+export const adversariesApi = createDocApi('adversaries')
 export const battlemapsApi = createDocApi('battlemaps')
 
-const apis = { chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi, character: charactersApi }
+const apis = {
+  chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi,
+  character: charactersApi, adversary: adversariesApi
+}
 
 /** The client of a kind of document (utils/docTypes.js). */
 export const docApi = (type) => apis[type]

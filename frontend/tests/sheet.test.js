@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { parseSheetSource, slugify, normalizeImage, SheetParseError, SHEET_TEMPLATES } from '@/utils/sheet'
+import { parseSheetDoc, parseSheetSource, slugify, normalizeImage, SheetParseError, SHEET_TEMPLATES } from '@/utils/sheet'
 
 // The same files backend/tests/test_sheets.py checks: the two normalizers
 // must agree, or a sheet would show one thing in a note and another in the
@@ -67,9 +67,24 @@ describe('normalizeImage', () => {
 
 describe('the editor templates', () => {
   it.each(Object.keys(SHEET_TEMPLATES))('the %s template is a valid sheet', (type) => {
-    const body = SHEET_TEMPLATES[type].split('\n').slice(1, -1).join('\n')
-    const { sheet, warnings } = parseSheetSource(body)
+    const { sheet, warnings } = parseSheetDoc({ id: 'new', name: 'New', source: SHEET_TEMPLATES[type] }, type)
     expect(sheet.type).toBe(type)
     expect(warnings).toEqual([])
+  })
+})
+
+describe('a sheet kept as a document', () => {
+  it("takes its name, id and type from the document, and says the YAML's are ignored", () => {
+    const source = 'name: Old name\nid: old\ntype: adversary\nsubtitle: Ranger\n'
+    const { sheet, warnings } = parseSheetDoc({ id: 'party/aria', name: 'Aria', source }, 'character')
+    expect([sheet.id, sheet.name, sheet.type, sheet.subtitle]).toEqual(['party/aria', 'Aria', 'character', 'Ranger'])
+    expect(warnings).toHaveLength(3)
+    expect(warnings.every((w) => w.includes('ignored'))).toBe(true)
+  })
+
+  it('is an empty sheet while its source is empty', () => {
+    const { sheet, warnings } = parseSheetDoc({ id: 'imp', name: 'Imp', source: '' }, 'adversary')
+    expect([sheet.name, sheet.sections, warnings]).toEqual(['Imp', [], []])
+    expect(() => parseSheetDoc({ id: 'imp', name: 'Imp', source: '- a list' }, 'adversary')).toThrow(SheetParseError)
   })
 })

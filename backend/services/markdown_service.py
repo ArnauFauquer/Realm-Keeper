@@ -5,10 +5,7 @@ from pathlib import Path
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from models.note import Note, NoteMetadata
-from models.sheet import SheetCatalogEntry
-from services.fences import extract_fenced_blocks
 from services.markdown_parser import MarkdownParser
-from services.sheet_parser import SheetParseError, parse_sheet_source
 from services.git_sync_utils import commit_and_push, GitCommitError
 from config.logging import get_logger
 
@@ -31,9 +28,6 @@ class MarkdownService:
 
         self._all_notes_cache: Optional[List[NoteMetadata]] = None
         self._all_notes_cached_at: Optional[datetime] = None
-        # Built in the same pass as _all_notes_cache, so it shares its TTL and
-        # is dropped wherever that one is.
-        self._sheet_catalog: Optional[List[SheetCatalogEntry]] = None
 
         self._git_lock = threading.Lock()
 
@@ -110,7 +104,45 @@ class MarkdownService:
 
         self.invalidate_cache()
         return is_new
-    
+
+    def follow_moved_documents(self, kind: str, moves: Dict[str, str], author_name: str, author_email: str) -> List[str]:
+        """Points the notes' links to moved documents (`chart:<id>`,
+        `character:<id>`...) at their new ids, in one commit. Returns the ids
+        of the notes it changed. Raises NoteSaveError on git failure (the
+        files are already rewritten on disk by then)."""
+        if not moves:
+            return []
+        link = re.compile(rf"`(\s*)({re.escape(kind)}):([^`\n]+?)(\s*)`", re.IGNORECASE)
+
+        def follow(match: re.Match) -> str:
+            new_id = moves.get(match.group(3).strip("/"))
+            return f"`{match.group(1)}{match.group(2)}:{new_id}{match.group(4)}`" if new_id else match.group(0)
+
+        changed = []
+        for path in self.parser.iter_note_files():
+            text = path.read_text(encoding='utf-8')
+            if f"{kind}:" not in text.lower():
+                continue
+            followed = link.sub(follow, text)
+            if followed != text:
+                path.write_text(followed, encoding='utf-8')
+                changed.append(path)
+        if not changed:
+            return []
+
+        vault = self.vault_path.resolve()
+        rel_paths = [str(path.resolve().relative_to(vault)) for path in changed]
+        what = next(iter(moves.items())) if len(moves) == 1 else None
+        message = f"Follow moved {kind}: {what[0]} -> {what[1]}" if what else f"Follow {len(moves)} moved {kind}s"
+        try:
+            commit_and_push(self.vault_path, self._git_lock, rel_paths, message=message,
+                            author_name=author_name, author_email=author_email)
+        except GitCommitError as e:
+            raise NoteSaveError(str(e))
+        finally:
+            self.invalidate_cache()
+        return [Path(rel).with_suffix('').as_posix() for rel in rel_paths]
+
     def get_all_notes(self, search: Optional[str] = None, tags: Optional[str] = None) -> List[NoteMetadata]:
         # Simple caching for unfiltered notes
         if not search and not tags:
@@ -121,9 +153,6 @@ class MarkdownService:
         notes = []
         hidden_ids = set()
         tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
-        # Only the unfiltered pass is cached, so only it builds the catalog
-        # (a search-as-you-type call would otherwise parse every sheet again).
-        sheet_found: List[tuple] = [] if not search and not tags else None
 
         for md_file in self.parser.iter_note_files():
             relative_path = md_file.relative_to(self.vault_path)
@@ -138,8 +167,6 @@ class MarkdownService:
                     continue
 
                 title = fm.get('title', md_file.stem)
-                if sheet_found is not None and 'sheet' in parsed.raw_body:
-                    sheet_found.append((note_id, title, parsed.raw_body))
 
                 # Search filter
                 if search:
@@ -176,43 +203,9 @@ class MarkdownService:
         if not search and not tags:
             self._all_notes_cache = sorted_notes
             self._all_notes_cached_at = datetime.now()
-            self._sheet_catalog = self._build_sheet_catalog(sheet_found)
 
         return sorted_notes
 
-    def _build_sheet_catalog(self, found: List[tuple]) -> List[SheetCatalogEntry]:
-        """Every valid ```sheet block of the (visible) notes. A ref is unique
-        in the vault: when two sheets claim one, the first by note path keeps
-        it and the other is left out, with the reason on the one kept. An
-        invalid block is skipped here; its note shows the problem."""
-        catalog: Dict[str, SheetCatalogEntry] = {}
-        for note_id, note_title, raw_body in sorted(found):
-            for source in extract_fenced_blocks(raw_body, 'sheet'):
-                try:
-                    sheet, warnings = parse_sheet_source(source)
-                except SheetParseError as e:
-                    logger.debug(f"Skipping invalid sheet in {note_id}: {e}")
-                    continue
-                ref = sheet.id if sheet.type == 'character' else f"{note_id}#{sheet.id}"
-                if ref in catalog:
-                    catalog[ref].warnings.append(f"'{ref}' is also declared in {note_id}; only this one is used")
-                    continue
-                catalog[ref] = SheetCatalogEntry(
-                    ref=ref, note_id=note_id, note_title=note_title, sheet=sheet, warnings=warnings,
-                )
-        return list(catalog.values())
-
-    def get_sheets(self) -> List[SheetCatalogEntry]:
-        self.get_all_notes()
-        if self._sheet_catalog is None:
-            # The notes cache was warm but this wasn't built alongside it.
-            self._all_notes_cache = None
-            self.get_all_notes()
-        return self._sheet_catalog or []
-
-    def get_sheet(self, ref: str) -> Optional[SheetCatalogEntry]:
-        return next((entry for entry in self.get_sheets() if entry.ref == ref), None)
-    
     def _is_cache_valid(self, cached_at: datetime) -> bool:
         return datetime.now() - cached_at < self._cache_ttl
     
@@ -267,11 +260,9 @@ class MarkdownService:
             note_id_normalized = note_id.replace('/', os.sep)
             self._cache.pop(note_id_normalized, None)
             self._all_notes_cache = None
-            self._sheet_catalog = None
         else:
             self._cache.clear()
             self._all_notes_cache = None
-            self._sheet_catalog = None
             self.parser.invalidate_index()
     
     def get_all_tags(self) -> List[str]:

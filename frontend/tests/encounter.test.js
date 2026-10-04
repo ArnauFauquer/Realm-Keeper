@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  characterStateFromSheet, combatantsFromSheet, counterFromSpec, customCombatant, moveBefore
+  combatantsFromSheet, counterFromSpec, customCombatant, moveBefore
 } from '@/utils/encounter'
 
 const BUGBOAR = {
-  ref: 'Bestiary/Bugboar#bugboar', id: 'bugboar', name: 'Bugboar', type: 'adversary',
+  ref: 'Bestiary/bugboar', id: 'Bestiary/bugboar', name: 'Bugboar', type: 'adversary',
   image: '/api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png',
   resources: {
     HP: { max: 6, min: 0, start: null, color: 'red', style: null },
@@ -28,7 +28,7 @@ describe('combatantsFromSheet', () => {
     expect(one.resources.HP).toEqual({ current: 6, max: 6, min: 0, color: 'red', style: null })
     expect(one.resources.Stress.current).toBe(0)
     expect(one.resources).not.toBe(two.resources)
-    expect(one).toMatchObject({ type: 'adversary', sheet: 'Bestiary/Bugboar#bugboar', image_url: BUGBOAR.image })
+    expect(one).toMatchObject({ type: 'adversary', sheet: 'Bestiary/bugboar', image_url: BUGBOAR.image })
   })
 
   it('does not number a lone copy, and continues the numbering when adding more', () => {
@@ -36,22 +36,12 @@ describe('combatantsFromSheet', () => {
     const existing = [{ sheet: BUGBOAR.ref }, { sheet: BUGBOAR.ref }]
     expect(combatantsFromSheet(BUGBOAR, 2, existing).map((c) => c.name)).toEqual(['Bugboar 3', 'Bugboar 4'])
     expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref }])[0].name).toBe('Bugboar 2')
+    // a character that happens to share the id is not a copy
+    expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, type: 'character' }])[0].name).toBe('Bugboar')
   })
 
   it('adds a character once, with no counters, and no image the screen could not load', () => {
     expect(combatantsFromSheet(ARIA, 5)).toEqual([{ name: 'Aria', type: 'character', sheet: 'aria', image_url: null }])
-  })
-})
-
-describe('characterStateFromSheet', () => {
-  it('is its name and its counters, starting where the sheet says', () => {
-    expect(characterStateFromSheet({ id: 'aria', name: 'Aria', resources: { HP: { max: 12 }, Hope: { max: 6, start: 2 } } })).toEqual({
-      name: 'Aria',
-      resources: {
-        HP: { current: 12, max: 12, min: 0, color: null, style: null },
-        Hope: { current: 2, max: 6, min: 0, color: null, style: null }
-      }
-    })
   })
 })
 

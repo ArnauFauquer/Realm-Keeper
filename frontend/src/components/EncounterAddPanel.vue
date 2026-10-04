@@ -1,7 +1,7 @@
 <template>
   <section class="add-panel" aria-label="Add to the encounter">
     <div class="add-controls">
-      <input v-model="query" class="rk-input add-search" type="search" placeholder="Search sheets by name, tag or note…" aria-label="Search sheets" />
+      <input v-model="query" class="rk-input add-search" type="search" placeholder="Search by name, tag or folder…" aria-label="Search sheets" />
       <div class="add-filter" role="group" aria-label="Show">
         <button
           v-for="option in FILTERS"
@@ -18,17 +18,17 @@
     <p v-if="loading" class="add-note">Loading sheets…</p>
     <p v-else-if="loadError" class="add-note add-error" role="alert">{{ loadError }}</p>
     <p v-else-if="!sheets.length" class="add-note">
-      No sheets found. Write a <code>```sheet</code> block in a note (the note editor has Insert buttons for one).
+      No characters or adversaries yet: create them from the sidebar's Characters and Adversaries tools.
     </p>
     <p v-else-if="!shown.length" class="add-note">No sheet matches.</p>
 
     <ul v-else class="add-list">
-      <li v-for="sheet in shown" :key="sheet.ref" class="add-row">
+      <li v-for="sheet in shown" :key="`${sheet.type}:${sheet.ref}`" class="add-row">
         <div class="add-info">
           <span class="add-name">{{ sheet.name }}</span>
           <span class="add-type" :class="`add-type--${sheet.type}`">{{ sheet.type }}</span>
           <span v-if="sheet.subtitle" class="add-sub">{{ sheet.subtitle }}</span>
-          <span class="add-sub add-where">{{ sheet.note_title }}</span>
+          <span v-if="sheet.folder" class="add-sub add-where">{{ sheet.folder }}</span>
           <span class="add-counters">{{ countersText(sheet) }}</span>
         </div>
         <label v-if="sheet.type === 'adversary'" class="add-count">
@@ -57,7 +57,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { fetchSheets } from '@/api/sheets'
 
-// The sheet picker of an encounter: search the vault's sheets and add them. It
+// The sheet picker of an encounter: search the characters and adversaries and add them. It
 // only says what to add (`add`, `add-custom`); the tracker does the adding.
 const props = defineProps({
   // The sheet refs of the characters already in the encounter (a character can't be in it twice).
@@ -87,7 +87,7 @@ const shown = computed(() => {
   return sheets.value.filter((sheet) => {
     if (filter.value !== 'all' && sheet.type !== filter.value) return false
     if (!needle) return true
-    return [sheet.name, sheet.subtitle || '', sheet.note_title, ...sheet.tags].some((text) => text.toLowerCase().includes(needle))
+    return [sheet.name, sheet.subtitle || '', sheet.folder, ...sheet.tags].some((text) => text.toLowerCase().includes(needle))
   })
 })
 

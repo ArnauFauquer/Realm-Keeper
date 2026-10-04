@@ -1,6 +1,6 @@
 """The documents of one DocType, in folders, over a DocBackend: list a level of
 the tree, create with a unique slug, save, rename, move, delete, and the same
-for folders. Written once for charts, vistas, encounters and battlemaps.
+for folders. Written once for every kind.
 
 A document is a folder named by its slug that holds one JSON file:
     <prefix>/<folders...>/<slug>/<item_filename>
@@ -132,7 +132,12 @@ class DocCollection:
         self.backend.put(self._item_key(doc_id), json.dumps(data, indent=2, ensure_ascii=False))
         return data
 
-    def _validated(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _validated(self, data: Dict[str, Any], previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """`data` as it will be stored (see DocType.prepare: `previous` is what
+        is stored now, None for a new document)."""
+        if self.doctype.prepare:
+            data = dict(data)
+            self.doctype.prepare(data, previous)
         try:
             model = self.doctype.model.model_validate(data)
         except ValidationError as e:
@@ -164,28 +169,6 @@ class DocCollection:
         data = self._validated({"id": doc_id, "name": name, "description": description})
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
-    def ensure(self, doc_id: str, fields: Dict[str, Any]) -> "tuple[BaseModel, bool]":
-        """The document `doc_id`, made from `fields` if there isn't one yet.
-        Returns it and whether it was made now. For keyed kinds, whose ids are
-        given rather than made from a name."""
-        doc_id = sanitize_id(doc_id)
-        existing = self.read_raw(doc_id)
-        if existing is not None:
-            return self.doctype.model.model_validate(existing), False
-        data = self._validated({**fields, "id": doc_id, "rev": 0})
-        return self.doctype.model.model_validate(self.write_raw(doc_id, data)), True
-
-    def change_id(self, doc_id: str, new_id: str) -> None:
-        """Gives a document another id (its folder another name). Refused if
-        that id is taken."""
-        doc_id, new_id = sanitize_id(doc_id), sanitize_id(new_id)
-        self._require(doc_id)
-        if new_id == doc_id:
-            return
-        if self.backend.exists(self._item_key(new_id)):
-            raise ValueError(f"There is already a {self.doctype.kind} with the id '{new_id}'")
-        self.backend.move_prefix(self._item_prefix(doc_id), self._item_prefix(new_id))
-
     def _require(self, doc_id: str) -> Dict[str, Any]:
         raw = self.read_raw(doc_id)
         if raw is None:
@@ -198,12 +181,12 @@ class DocCollection:
         data = {**fields, "id": existing["id"]}
         for name in self.doctype.locked_fields:
             data[name] = existing.get(name)
-        data = self._validated(data)
+        data = self._validated(data, existing)
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def set_field(self, doc_id: str, field_name: str, value: Any) -> BaseModel:
         existing = self._require(doc_id)
-        data = self._validated({**existing, field_name: value})
+        data = self._validated({**existing, field_name: value}, existing)
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def rename(self, doc_id: str, name: str) -> BaseModel:

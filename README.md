@@ -7,7 +7,7 @@ a 3D dice roller, a music player, and a second screen to show things to your
 players.
 
 There is no database. Notes live as files in a Git repository; everything else
-(charts, vistas, encounters, battlemaps, characters' saved values, images and
+(charts, vistas, characters, adversaries, encounters, battlemaps, images and
 audio) lives in S3-compatible object storage.
 
 ## Features
@@ -34,15 +34,40 @@ audio) lives in S3-compatible object storage.
 | `` `Action/01 Beyond Distant Lands.mp3` `` | A button that plays that track           |
 | `` `chart:regions/tavern-map` ``           | The chart embedded in the note           |
 | `` `vista:tavern/night` ``                 | The vista embedded in the note           |
+| `` `character:party/aria` ``               | The character's sheet, its counters live |
+| `` `adversary:bestiary/bugboar` ``         | The adversary's sheet                    |
 
-**Sheets** — a ` ```sheet ` block in a note (YAML) becomes a character or
-adversary sheet: counters, stats, actions with dice buttons. It knows nothing
-about any rules system: counters, stats and tags are named by you.
+**Sheets** — characters and adversaries, each a document of its own (in
+folders, like charts and vistas): counters, stats, actions with dice buttons.
+A sheet knows nothing about any rules system: counters, stats and tags are
+named by you.
 
-````markdown
-```sheet
-name: Bugboar
-type: adversary            # character | adversary (default: adversary)
+- A **character** is one individual (a player character, a recurring NPC):
+  its counters keep their values wherever it shows — on every note, in every
+  encounter and on every map — and between sessions. Its counters change live,
+  like an encounter's; the sheet itself is saved with the editor's **Save**.
+  An **adversary** is a template: each copy in an encounter will have its own
+  values. It is edited whole and saved with a button, like a chart.
+- Create one from the sidebar's **Characters** or **Adversaries** tool
+  (**New character**, **New adversary**). The editor is the sheet's YAML beside
+  a live preview, which keeps showing the last valid version while you type;
+  an empty sheet offers **Start from a template**, and Tab indents.
+- To show one in a note, write its link, `` `character:<id>` `` or
+  `` `adversary:<id>` `` (see the table above): the note editor's **Sheet**
+  button finds one and inserts it, and the gallery's copy button gives it too.
+  A character's counters there are live and can be played from the note. Under
+  the sheet, **Edit** opens it in its gallery and **Add to encounter**
+  puts it into one without leaving the note. A sheet named like its note's
+  title or one of its headings doesn't repeat the name in its header (screen
+  readers still get it).
+- **Moving** a character or adversary — or renaming or moving its folder —
+  changes its id: the links in the notes that show it are rewritten (in one
+  commit), and the encounters and map tokens that use it follow. Renaming it
+  only changes the name it shows.
+
+A sheet is YAML:
+
+```yaml
 subtitle: Tier 1 · Bruiser
 image:                     # URL of an asset library image, as copied from the library
 tags: [goblinoid]
@@ -63,12 +88,11 @@ sections:                  # everything below the header is sections
 text: |                    # free markdown
   A tusked brute.
 ```
-````
 
-- **`character`** is one individual (a player character, a recurring NPC):
-  give it a stable `id` — whatever it saves is kept under that id, so renaming
-  or moving its note loses nothing. **`adversary`** is a template: each copy
-  in an encounter will have its own values.
+- **Name, id and type are the document's**, not the YAML's: the name is the one
+  given in the gallery (rename it there), the id is where it is stored, and the
+  type is whether it is a character or an adversary. A `name`, `id` or `type`
+  left in the YAML is ignored, with a warning. An empty sheet is allowed.
 - **Layout**: `stats` can also be a list of groups, each drawn apart: a plain
   mapping, or `{ title, columns, stats }` to give it a heading and a fixed number
   per row. `columns` on the sheet puts its sections side by side (`wide: true`
@@ -77,15 +101,16 @@ text: |                    # free markdown
   columns on their own.
 - **Sections** hold everything: each draws its `counters`, then its `stats`,
   then its `items`, so spell slots can sit with their spells. Counter names are
-  unique in the sheet (saved characters and encounters go by them); a
-  top-level `resources` is refused with a message saying where counters went.
-  `stats` may also stay at the top level: they are drawn as a first,
-  whole-row section.
+  unique in the sheet (characters and encounters go by them); a top-level
+  `resources` is refused with a message saying where counters went. `stats` may
+  also stay at the top level: they are drawn as a first, whole-row section.
+- **Counters follow the sheet.** When a character's sheet is saved, each counter
+  keeps its current value (within its new range), a new one starts where the
+  sheet says, and one the sheet no longer has is dropped — so renaming a counter
+  starts it again.
 - **Tabs**: sections sharing a `tab` (`tab: Spells`) are shown one tab at a
   time, under a tab bar placed after the sections without one. A long sheet
   (a caster's spell lists) stays one screen tall.
-- A sheet named like its note's title or one of its headings doesn't repeat
-  the name in its header (screen readers still get it).
 - A titled section folds with a click; `collapsed: true` starts it folded (a
   spell list, the equipment). An item that is only a name and a roll (a skill,
   a save) is drawn as one row, the roll at its end.
@@ -99,28 +124,28 @@ text: |                    # free markdown
   ```
 - Texts are markdown (tables included); an inline dice formula (`` `1d8+2` ``) is a button. Quote
   a text that starts with a `[[link]]`, or YAML reads it as a list.
-- A sheet with a mistake shows what is wrong, in the note, instead of the sheet.
-  The editor's **Insert** buttons drop a ready-made template at the cursor.
-  A sheet is plain YAML: no aliases (`*name`, which can expand to gigabytes) and
-  at most 100 KB.
-- Sheets work inside callouts too. `GET /api/sheets` lists every sheet in the
-  vault (hidden notes excluded).
+- A sheet with a mistake can't be saved: the editor says what is wrong, and the
+  preview keeps the last valid version. A sheet is plain YAML: no aliases
+  (`*name`, which can expand to gigabytes) and at most 100 KB.
+- `GET /api/sheets` lists every character and adversary (signed in), and
+  `GET /api/sheets/detail?type=&ref=` returns one, read.
 
 **Encounters** — who is in a fight, live for everyone at the table. Add
-adversaries and characters from their sheets; each one gets counters (HP,
-Stress... whatever the sheet defines) with ± buttons, free-text conditions,
-notes, defeated, and its sheet's actions with dice buttons. There are no
+adversaries and characters; each one gets counters (HP, Stress... whatever its
+sheet defines) with ± buttons, free-text conditions, notes, defeated, and its
+sheet's actions with dice buttons. There are no
 rounds, turns or initiative, since how a fight is ordered is a rule of the
 system being played: drag the combatants (or use the arrows) into whatever
 order suits your table.
 - Add **3 Bugboars** and each has its own copy of the sheet's counters, starting
   alike and then diverging. A **character** is added once and has no counters of
-  its own: its saved values are the same on its note and in every encounter, and
-  persist between sessions.
+  its own: its counters are the character's, the same on its notes and in every
+  encounter, and persist between sessions.
 - Everyone signed in can change everything, and sees every change as it is
   made (a WebSocket announces them; there is no Save button). Lose the
   connection and it reloads from the server on reconnecting.
-- A sheet's **Add to encounter** button puts it into one without leaving the note.
+- **Add to encounter**, under a sheet shown in a note, puts it into one without
+  leaving the note.
 
 **Battlemaps** — a tactical map to play a fight out on, shared live like an
 encounter. Pick a map image from the asset library and lay a grid over it
@@ -131,7 +156,7 @@ say what one cell is worth (5 ft, 1.5 m, 1 square…) and whether a diagonal
 costs one cell or its length.
 - Attach an **encounter** and *Place combatants* puts a token for each one. A
   token can show some of its combatant's counters as bars (an adversary's own,
-  or a character's saved ones), and they follow the encounter as it changes.
+  or a character's), and they follow the encounter as it changes.
 - **Hidden** tokens are dimmed for everyone signed in and **never sent to the
   screen**: *Show on the screen* sends the server's view of the map, made
   without them (and without which sheet or combatant a token stands for). The
@@ -166,12 +191,14 @@ costs one cell or its length.
   is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
   A battlemap shown on the screen is always live, without its hidden tokens.
 
-Charts, vistas, folders, assets and tracks can all be created, renamed, moved
-and deleted from the UI.
+Charts, vistas, characters, adversaries, folders, assets and tracks can all be
+created, renamed, moved and deleted from the UI.
 
 **Access control**
-- Reading notes (and the sheets written in them) is public.
-- Everything else — charts, vistas, encounters, battlemaps, the asset library,
+- Reading notes is public. The characters and adversaries a note shows are not:
+  a reader who isn't signed in sees "Sign in to see this character" in their place.
+- Everything else — charts, vistas, characters, adversaries, encounters,
+  battlemaps, the asset library,
   the music player, writing and screen control — requires Google login, limited
   to an allow-list of emails. Sessions are signed cookies, no user database.
 - A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
@@ -190,7 +217,8 @@ and deleted from the UI.
 | Vistas                    | `vistas/<folders>/<id>/vista.json` in the bucket            |
 | Encounters                | `encounters/<folders>/<id>/encounter.json` in the bucket    |
 | Battlemaps                | `battlemaps/<folders>/<id>/battlemap.json` in the bucket    |
-| Characters' saved values  | `characters/<sheet id>/character.json` in the bucket        |
+| Characters                | `characters/<folders>/<id>/character.json` in the bucket    |
+| Adversaries               | `adversaries/<folders>/<id>/adversary.json` in the bucket   |
 
 The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …) with one
 top-level prefix per kind of thing, and nothing else at the top.
@@ -202,9 +230,9 @@ keep editing the same vault in Obsidian — both sides stay in sync through Git.
 Everything else is not in Git: the vault is a throwaway clone that a redeploy
 replaces, and a map or a fight changes while people play. Those documents are
 JSON objects in the bucket, one `PUT` per save, with no lock and no commit.
-Charts and vistas are edited whole and saved with a button; encounters,
-battlemaps and characters are *live*: held in memory while someone is using them
-and written a couple of seconds after the last change (and when the app shuts
+Charts, vistas and adversaries are edited whole and saved with a button;
+encounters, battlemaps and characters are *live*: held in memory while someone
+is using them and written a couple of seconds after the last change (and when the app shuts
 down). Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead (the
 same prefixes, as folders), for local development. Don't redeploy in the middle of a session: the new pod would
 load the last saved copy.
@@ -218,6 +246,18 @@ safe to repeat. Once you have checked the charts and vistas in the app, delete
 Git is gone from the app's point of view: to keep an undo trail for the bucket,
 turn on **bucket versioning** (`aws s3api put-bucket-versioning --bucket <bucket>
 --versioning-configuration Status=Enabled`, if your Ceph RGW or MinIO supports it).
+
+**Coming from a vault that wrote sheets in notes** (` ```sheet ` blocks, how
+earlier versions kept them): on its first start the backend makes a document of
+each valid block, once (the marker `adversaries/.imported-from-notes` stops it
+running again). A character goes to `characters/<its sheet id>`, joining the
+counters it had saved; an adversary goes to `adversaries/<its note's
+folder>/<its sheet id>` (`-2`, `-3`… if two would collide), and the encounters
+and maps that named it as `<note id>#<sheet id>` are pointed at it. Nothing in
+the vault is changed. Once the deployed app has imported them (its log says
+so), run `python backend/scripts/sheets_to_documents.py <vault>` on a checkout
+of the vault: it replaces each block with the link to its document. Commit and
+push the vault, and delete the script.
 
 **Moving a bucket that has the older layout** (albums at the top level, documents
 under `docs/`, and `charts/`/`vistas/` holding images): `backend/scripts/migrate_storage_layout.py`
@@ -287,7 +327,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
 | `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
-| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where charts, vistas, encounters, battlemaps and characters are kept when there is no `S3_ENDPOINT_URL` |
+| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where charts, vistas, characters, adversaries, encounters and battlemaps are kept when there is no `S3_ENDPOINT_URL` |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
 | `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
@@ -351,15 +391,15 @@ Realm-Keeper/
 ├── backend/            FastAPI app
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
-│   ├── models/         Pydantic models (notes, sheets, charts, vistas, encounters, battlemaps)
-│   ├── routes/         notes, sheets, encounters, battlemaps, characters, sync, charts, vistas, asset-library, player, screen, auth
-│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub)
-│   ├── scripts/        One-time tools (migrate_storage_layout.py)
+│   ├── models/         Pydantic models (notes, sheets, charts, vistas, characters, adversaries, encounters, battlemaps)
+│   ├── routes/         notes, sheets, charts, vistas, characters, adversaries, encounters, battlemaps, sync, asset-library, player, screen, auth
+│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub, sheet_*)
+│   ├── scripts/        One-time tools (migrate_storage_layout.py, sheets_to_documents.py)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/
 │       ├── views/      Home, NoteView, ScreenView
-│       ├── components/ Sidebar, document modal (charts, vistas, encounters, battlemaps), graph, assets, player, dice
+│       ├── components/ Sidebar, document modal (charts, vistas, characters, adversaries, encounters, battlemaps), sheets, graph, assets, player, dice
 │       ├── composables/
 │       ├── dice/       three.js + cannon-es dice simulation
 │       └── api/

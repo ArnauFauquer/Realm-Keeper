@@ -35,8 +35,8 @@ const HP = (current) => ({ current, max: 6, min: 0, color: null, style: null })
 const encounter = (overrides = {}) => ({
   id: 'fight', name: 'Fight', rev: 1,
   combatants: [
-    { id: 'a', name: 'Bugboar 1', type: 'adversary', sheet: 'n#bugboar', resources: { HP: HP(4) }, conditions: [], notes: '', defeated: false },
-    { id: 'b', name: 'Bugboar 2', type: 'adversary', sheet: 'n#bugboar', resources: { HP: HP(6) }, conditions: [{ id: 'c1', name: 'Prone' }], notes: 'hi', defeated: false },
+    { id: 'a', name: 'Bugboar 1', type: 'adversary', sheet: 'Bestiary/bugboar', resources: { HP: HP(4) }, conditions: [], notes: '', defeated: false },
+    { id: 'b', name: 'Bugboar 2', type: 'adversary', sheet: 'Bestiary/bugboar', resources: { HP: HP(6) }, conditions: [{ id: 'c1', name: 'Prone' }], notes: 'hi', defeated: false },
     { id: 'c', name: 'Aria', type: 'character', sheet: 'aria', resources: {}, conditions: [], notes: '', defeated: false }
   ],
   ...overrides
@@ -215,7 +215,7 @@ describe('EncounterTracker', () => {
     details.element.open = true
     await details.trigger('toggle')
     await flushPromises()
-    expect(fetchSheet).toHaveBeenCalledWith('n#bugboar')
+    expect(fetchSheet).toHaveBeenCalledWith('adversary', 'Bestiary/bugboar')
     expect(cards(wrapper)[0].text()).toContain('Difficulty')
     const second = cards(wrapper)[1].find('details')
     second.element.open = true
@@ -223,20 +223,20 @@ describe('EncounterTracker', () => {
     expect(fetchSheet).toHaveBeenCalledTimes(1) // the same sheet
   })
 
-  it('says when a sheet is gone from the vault', async () => {
+  it('says when a sheet is gone', async () => {
     fetchSheet.mockRejectedValue({ response: { status: 404 } })
     const wrapper = mountTracker()
     const details = cards(wrapper)[0].find('details')
     details.element.open = true
     await details.trigger('toggle')
     await flushPromises()
-    expect(cards(wrapper)[0].text()).toContain('no longer in the vault')
+    expect(cards(wrapper)[0].text()).toContain('moved or deleted')
   })
 
   it('adds adversaries and characters from their sheets', async () => {
     fetchSheets.mockResolvedValue([
-      { ref: 'n#imp', id: 'imp', name: 'Imp', type: 'adversary', tags: [], note_title: 'Callout', resources: { HP: { max: 3, min: 0, start: null } } },
-      { ref: 'bram', id: 'bram', name: 'Bram', type: 'character', tags: [], note_title: 'Party', resources: { HP: { max: 8, min: 0, start: null } } }
+      { ref: 'imp', id: 'imp', name: 'Imp', type: 'adversary', tags: [], folder: '', resources: { HP: { max: 3, min: 0, start: null } } },
+      { ref: 'party/bram', id: 'party/bram', name: 'Bram', type: 'character', tags: [], folder: 'party', resources: { HP: { max: 8, min: 0, start: null } } }
     ])
     const wrapper = mountTracker()
     await wrapper.find('.tracker-bar > .rk-btn:last-child').trigger('click')
@@ -251,24 +251,11 @@ describe('EncounterTracker', () => {
 
     await rows[1].find('button').trigger('click')
     await flushPromises()
-    expect(fake.characters.ensure).toHaveBeenCalledWith(expect.objectContaining({ id: 'bram' }))
-    expect(commands.addItems.mock.calls[1][2]).toEqual([{ name: 'Bram', type: 'character', sheet: 'bram', image_url: null }])
+    expect(commands.addItems.mock.calls[1][2]).toEqual([{ name: 'Bram', type: 'character', sheet: 'party/bram', image_url: null }])
 
     await wrapper.find('.add-custom input').setValue('Guard')
     await wrapper.find('.add-custom').trigger('submit')
     expect(commands.addItems.mock.calls[2][2]).toEqual([{ name: 'Guard', type: 'adversary', resources: {} }])
-  })
-
-  it('does not add a character whose saved counters could not be created', async () => {
-    fetchSheets.mockResolvedValue([{ ref: 'bram', id: 'bram', name: 'Bram', type: 'character', tags: [], note_title: 'Party', resources: {} }])
-    fake.characters.ensure.mockRejectedValue(new Error('no storage'))
-    const wrapper = mountTracker()
-    await wrapper.find('.tracker-bar > .rk-btn:last-child').trigger('click')
-    await flushPromises()
-    await wrapper.find('.add-row button').trigger('click')
-    await flushPromises()
-    expect(commands.addItems).not.toHaveBeenCalled()
-    expect(wrapper.find('.rk-alert').text()).toContain('no storage')
   })
 
   it('shows what the server refused', async () => {

@@ -1,6 +1,5 @@
-// What goes into an encounter, and into a character's saved state, when a
-// sheet is added: the same copy whether the sheet is a catalog entry
-// (GET /api/sheets) or one just read from a note.
+// What goes into an encounter when a sheet is added: the same copy whether the
+// sheet is a catalog entry (GET /api/sheets) or one a note is showing.
 
 const LIBRARY_PREFIX = '/api/asset-library/assets/'
 
@@ -23,14 +22,9 @@ function counters(resources) {
 // on a screen's behalf); a sheet's image can be any URL.
 const libraryImage = (image) => (image && image.startsWith(LIBRARY_PREFIX) ? image : null)
 
-/** What to save for a `character` sheet the first time it is used (its id is the sheet's). */
-export function characterStateFromSheet(sheet) {
-  return { name: sheet.name, resources: counters(sheet.resources) }
-}
-
 /**
  * `count` combatants for an encounter, from a sheet ({ ref, id, name, type,
- * image, resources }). Each copy of an adversary has its own counters,
+ * image, resources }; `ref`, or else `id`, is its document's id). Each copy of an adversary has its own counters,
  * starting where the sheet says; they are named "Bugboar 1", "Bugboar 2"...
  * continuing from the ones already there. A character is added once, and has
  * no counters of its own: they are the character's saved ones.
@@ -41,11 +35,12 @@ export function combatantsFromSheet(sheet, count, existing = []) {
   if (sheet.type === 'character') {
     return [{ name: sheet.name, type: 'character', sheet: sheet.ref ?? sheet.id, image_url }]
   }
-  const taken = existing.filter((c) => c.sheet === sheet.ref).length
+  const ref = sheet.ref ?? sheet.id
+  const taken = existing.filter((c) => c.type !== 'character' && c.sheet === ref).length
   return Array.from({ length: count }, (_, i) => ({
     name: taken === 0 && count === 1 ? sheet.name : `${sheet.name} ${taken + i + 1}`,
     type: 'adversary',
-    sheet: sheet.ref,
+    sheet: ref,
     resources: counters(sheet.resources),
     image_url
   }))

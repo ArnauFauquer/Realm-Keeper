@@ -10,7 +10,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from models.characters import CHARACTER_ID_PATTERN, Character, CharacterMetadata
+from models.characters import Character
+from models.sheet_doc import SheetDocMetadata
 from models.encounter import Encounter, EncounterMetadata
 from routes import sync as sync_routes
 from routes.auth import require_auth
@@ -19,6 +20,7 @@ from services import doc_commands, sync_hub
 from services.doc_backend import DocBackendError, LocalDocBackend
 from services.doc_collection import DocCollection, DocNotFound
 from services.doc_type import DocType
+from services.sheet_docs import sheet_preparer
 from services.sync_hub import DocHub, diff_docs
 
 ENCOUNTER = DocType(
@@ -29,10 +31,11 @@ ENCOUNTER = DocType(
 )
 CHARACTER = DocType(
     kind="character", prefix="characters", item_filename="character.json",
-    model=Character, metadata_model=CharacterMetadata, items_key="characters",
-    live=True, patchable=("name", "resources"), resources_field="resources",
-    id_pattern=CHARACTER_ID_PATTERN,
+    model=Character, metadata_model=SheetDocMetadata, items_key="characters",
+    live=True, patchable=("name", "description", "source"), resources_field="resources",
+    prepare=sheet_preparer("character"),
 )
+ARIA_SHEET = "sections:\n  - counters:\n      HP: 12\n      Hope: { max: 6, start: 2 }\n"
 LIBRARY_IMAGE = "/api/asset-library/assets/asset-library/Maps/1a2b3c4d-orc.png"
 
 
@@ -518,38 +521,45 @@ def test_an_idle_saved_document_leaves_memory(hub_and_collections, monkeypatch):
     run(scenario())
 
 
-def test_a_character_is_made_once_from_its_sheet_and_changed_like_any_live_document(hub_and_collections):
+def test_a_character_follows_its_sheet_and_is_played_like_any_live_document(hub_and_collections):
     hub, _, characters = hub_and_collections
-    counter = {"HP": {"current": 8, "max": 12, "min": 0}}
 
     async def scenario():
         with pytest.raises(DocNotFound):
-            await hub.snapshot("character", "aria")               # nobody saved it yet
-        doc, created = characters.ensure("aria", {"name": "Aria", "resources": counter})
-        assert created and doc.rev == 0
-        again, created = characters.ensure("aria", {"name": "Other", "resources": {}})
-        assert not created and again.name == "Aria"                # asking twice is harmless
-        event = await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -3))
-        assert event["set"]["resources"]["HP"]["current"] == 5 and event["doc"] == "character:aria"
-        await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -99))
+            await hub.snapshot("character", "aria")
+        made = characters.create("Aria", folder_path="party")
+        assert made.id == "party/aria" and made.resources == {}
+        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": ARIA_SHEET}))
+        doc = await hub.snapshot("character", "party/aria")
+        assert {k: v["current"] for k, v in doc["resources"].items()} == {"HP": 12, "Hope": 2}  # where the sheet says
+        event = await hub.mutate("character", "party/aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -3))
+        assert event["set"]["resources"]["HP"]["current"] == 9 and event["doc"] == "character:party/aria"
+        # The sheet changes: a max that shrinks keeps the value within it, a
+        # counter it no longer has goes, a new one starts where it says.
+        smaller = "sections:\n  - counters:\n      HP: 8\n      Armor: { max: 3, start: 0 }\n"
+        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": smaller}))
+        doc = await hub.snapshot("character", "party/aria")
+        assert {k: (v["current"], v["max"]) for k, v in doc["resources"].items()} == {"HP": (8, 8), "Armor": (0, 3)}
+        with pytest.raises(ValueError, match="whole number"):
+            await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": "sections:\n  - counters: { HP: x }"}))
         await hub.flush_all()
-        assert characters.read_raw("aria")["resources"]["HP"]["current"] == 0   # stops at the min
-        assert characters.backend.exists("characters/aria/character.json")
+        assert characters.read_raw("party/aria")["resources"]["HP"]["current"] == 8
 
     run(scenario())
 
 
-def test_each_character_is_its_own_document(hub_and_collections):
-    _, _, characters = hub_and_collections
-    for name in ("aria", "bram"):
-        characters.ensure(name, {"name": name.capitalize()})
-    assert sorted(m.id for m in characters.list_all()) == ["aria", "bram"]
-    characters.change_id("bram", "bram-the-bold")
-    assert sorted(m.id for m in characters.list_all()) == ["aria", "bram-the-bold"]
-    with pytest.raises(ValueError, match="already"):
-        characters.change_id("aria", "bram-the-bold")
-    characters.delete("aria")
-    assert [m.id for m in characters.list_all()] == ["bram-the-bold"]
+def test_a_character_keeps_its_values_when_renamed(hub_and_collections):
+    hub, _, characters = hub_and_collections
+    characters.create("Aria")
+
+    async def scenario():
+        await hub.mutate("character", "aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": ARIA_SHEET}))
+        await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -5))
+        await hub.mutate("character", "aria", lambda d: d.update(name="Aria la Roja"))
+        doc = await hub.snapshot("character", "aria")
+        assert (doc["name"], doc["resources"]["HP"]["current"]) == ("Aria la Roja", 7)
+
+    run(scenario())
 
 
 # ── routes ──────────────────────────────────────────────────────────────────
@@ -625,36 +635,36 @@ def test_a_character_cannot_be_in_an_encounter_twice_nor_carry_counters(api):
 def test_characters_over_http(api):
     assert api.get("/api/characters").json()["characters"] == []
     assert api.get("/api/characters/aria").status_code == 404
-    body = {"id": "aria", "fields": {"name": "Aria", "resources": {"HP": {"current": 12, "max": 12}}}}
-    made = api.post("/api/characters/ensure", json=body).json()
-    assert made["created"] and made["doc"]["resources"]["HP"]["current"] == 12
-    assert api.post("/api/characters/ensure", json=body).json()["created"] is False
-    assert api.post("/api/characters/aria/adjust", json={"resource": "HP", "by": -5}).json()["rev"] == 1
-    assert api.get("/api/characters/aria").json()["resources"]["HP"]["current"] == 7
-    patched = api.patch("/api/characters/aria", json={"resources": {"HP": {"max": 15}}}).json()
-    assert patched["set"]["resources"]["HP"] == {"current": 7, "max": 15, "min": 0, "color": None, "style": None}
-    assert [c["id"] for c in api.get("/api/characters").json()["characters"]] == ["aria"]
-    assert api.get("/api/characters/all").json()["characters"][0]["name"] == "Aria"
+    made = api.post("/api/characters", json={"name": "Aria", "folder_path": "party"}).json()
+    assert made["id"] == "party/aria"
+    patched = api.patch("/api/characters/party/aria", json={"source": ARIA_SHEET + "subtitle: Ranger\n"}).json()
+    assert patched["set"]["resources"]["HP"] == {"current": 12, "max": 12, "min": 0, "color": None, "style": None}
+    assert api.post("/api/characters/party/aria/adjust", json={"resource": "HP", "by": -5}).json()["rev"] == 2
+    assert api.get("/api/characters/party/aria").json()["resources"]["HP"]["current"] == 7
+    assert api.patch("/api/characters/party/aria", json={"resources": {}}).status_code == 400   # they follow the sheet
+    assert api.patch("/api/characters/party/aria", json={"source": "- not a mapping"}).status_code == 400
+    assert api.get("/api/characters/party/aria").json()["subtitle"] == "Ranger"   # what its card shows
+    assert [c["id"] for c in api.get("/api/characters", params={"path": "party"}).json()["characters"]] == ["party/aria"]
 
 
-def test_a_character_id_is_a_sheet_id(api):
-    for bad in ("Aria", "a/b", "../x", "", "all", "ensure"):
-        assert api.post("/api/characters/ensure", json={"id": bad, "fields": {}}).status_code == 400, bad
-    # and a keyed kind has no folders, nor documents made from a name
-    assert api.post("/api/characters", json={"name": "Aria"}).status_code == 405
-    assert api.post("/api/characters/folders", json={"path": "x"}).status_code in (404, 405)
+def test_moving_characters_tells_whoever_names_them(hub_and_collections):
+    hub, _, characters = hub_and_collections
+    moves = []
 
+    async def follow(moved, user):
+        moves.append(moved)
 
-def test_a_character_given_another_id_keeps_its_values(api):
-    api.post("/api/characters/ensure", json={"id": "aria", "fields": {"name": "Aria", "resources": {"HP": {"current": 3, "max": 12}}}})
-    api.post("/api/characters/ensure", json={"id": "bram", "fields": {"name": "Bram"}})
-    assert api.post("/api/characters/aria/reassign", json={"id": "bram"}).status_code == 400   # taken
-    assert api.post("/api/characters/aria/reassign", json={"id": "Aria Nueva"}).status_code == 400
-    assert api.post("/api/characters/aria/reassign", json={"id": "aria-nueva"}).json() == {"status": "success", "id": "aria-nueva"}
-    assert api.get("/api/characters/aria").status_code == 404
-    assert api.get("/api/characters/aria-nueva").json()["resources"]["HP"]["current"] == 3
-    assert api.delete("/api/characters/bram").json() == {"status": "success"}
-    assert [c["id"] for c in api.get("/api/characters/all").json()["characters"]] == ["aria-nueva"]
+    app = FastAPI()
+    app.include_router(make_doc_router(CHARACTER, characters, hub, on_moved=follow))
+    app.dependency_overrides[require_auth] = lambda: {"email": "gm@example.com"}
+    with TestClient(app) as api:
+        api.post("/api/characters", json={"name": "Aria", "folder_path": "party"})
+        api.post("/api/characters", json={"name": "Bram", "folder_path": "party/old"})
+        assert api.post("/api/characters/move", json={"id": "party/aria", "folder_path": ""}).json()["id"] == "aria"
+        api.put("/api/characters/folders/party", json={"name": "heroes"})
+        api.post("/api/characters/folders/move", json={"path": "heroes/old", "dest_parent_path": ""})
+        api.post("/api/characters/move", json={"id": "aria", "folder_path": ""})   # stays: nothing to tell
+    assert moves == [{"party/aria": "aria"}, {"party/old/bram": "heroes/old/bram"}, {"heroes/old/bram": "old/bram"}]
 
 
 def test_every_client_hears_the_change_on_the_socket(api):

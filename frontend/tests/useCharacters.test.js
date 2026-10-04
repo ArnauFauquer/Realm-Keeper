@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, ref } from 'vue'
 
-const { commands, ensure, docs, statuses, commit, reload, followed } = vi.hoisted(() => ({
+const { commands, docs, statuses, commit, reload, followed } = vi.hoisted(() => ({
   commands: { adjustOwn: vi.fn(), patch: vi.fn() },
-  ensure: vi.fn(),
   docs: { value: {} },
   statuses: {},
   commit: vi.fn((id, command) => Promise.resolve(command)),
@@ -11,7 +10,7 @@ const { commands, ensure, docs, statuses, commit, reload, followed } = vi.hoiste
   followed: { ids: null }
 }))
 
-vi.mock('@/api/docs', () => ({ charactersApi: { fetch: vi.fn(), ensure, commands } }))
+vi.mock('@/api/docs', () => ({ charactersApi: { fetch: vi.fn(), commands } }))
 vi.mock('@/composables/useSyncedDoc', () => ({
   useSyncedDocs: (kind, ids) => {
     followed.ids = ids
@@ -28,7 +27,6 @@ const use = () => useCharacters(() => ids.value)
 
 beforeEach(() => {
   Object.values(commands).forEach((command) => command.mockReset().mockResolvedValue({}))
-  ensure.mockReset().mockResolvedValue({ created: true })
   commit.mockClear()
   reload.mockClear()
   docs.value = { aria: { id: 'aria', name: 'Aria', resources: { HP: counter() } } }
@@ -52,48 +50,15 @@ describe('useCharacters', () => {
     expect(status.value).toBe('loading')
   })
 
-  it('saves a character from its sheet under the sheet id, and loads it once made', async () => {
-    await use().ensure({ id: 'aria', name: 'Aria', resources: { HP: { max: 12 }, Hope: { max: 6, start: 2 } } })
-    expect(ensure).toHaveBeenCalledWith('aria', {
-      name: 'Aria', resources: { HP: counter({ current: 12 }), Hope: counter({ current: 2, max: 6 }) }
-    })
-    expect(reload).toHaveBeenCalledWith('aria')
-
-    ensure.mockResolvedValue({ created: false })
-    reload.mockClear()
-    await use().ensure({ id: 'aria', name: 'Aria', resources: {} })
-    expect(reload).not.toHaveBeenCalled()                     // it was there already
-  })
-
   it('changes a counter of the character itself', async () => {
     await use().adjust('aria', 'HP', -2)
     expect(commands.adjustOwn).toHaveBeenCalledWith('aria', 'HP', -2)
     expect(commit).toHaveBeenCalledWith('aria', expect.anything())
   })
 
-  describe('reconcile', () => {
-    it('does nothing when the sheet and the saved values agree, or there are none yet', async () => {
-      const { reconcile } = use()
-      expect(await reconcile({ id: 'aria', name: 'Aria', resources: { HP: { max: 12 } } })).toBeNull()
-      expect(await reconcile({ id: 'nobody', name: 'X', resources: { HP: { max: 12 } } })).toBeNull()
-      expect(commands.patch).not.toHaveBeenCalled()
-    })
-
-    it('takes what changed in the sheet and keeps the current value within its new range', async () => {
-      await use().reconcile({ id: 'aria', name: 'Aria', resources: { HP: { max: 4, color: 'red' } } })
-      expect(commands.patch).toHaveBeenCalledWith('aria', {
-        resources: { HP: { max: 4, min: 0, color: 'red', style: null, current: 4 } }
-      })
-    })
-
-    it('adds a counter the sheet gained, and leaves the others alone', async () => {
-      await use().reconcile({ id: 'aria', name: 'Aria', resources: { HP: { max: 12 }, Mana: { max: 3, start: 1 } } })
-      expect(commands.patch).toHaveBeenCalledWith('aria', { resources: { Mana: counter({ current: 1, max: 3 }) } })
-    })
-
-    it('follows the sheet when it is renamed', async () => {
-      await use().reconcile({ id: 'aria', name: 'Aria la Roja', resources: { HP: { max: 12 } } })
-      expect(commands.patch).toHaveBeenCalledWith('aria', { name: 'Aria la Roja' })
-    })
+  it('saves its sheet; the counters follow it on the server', async () => {
+    await use().patch('aria', { source: 'sections: []' })
+    expect(commands.patch).toHaveBeenCalledWith('aria', { source: 'sections: []' })
+    expect(commit).toHaveBeenCalledWith('aria', expect.anything())
   })
 })

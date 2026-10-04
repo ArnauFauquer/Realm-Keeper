@@ -40,12 +40,12 @@ describe('what a save and a screen are sent', () => {
 
 describe('the kinds', () => {
   it('has one entry for each, under the key it is looked up by', () => {
-    expect(Object.keys(DOC_TYPES)).toEqual(['chart', 'vista', 'encounter', 'character', 'battlemap'])
+    expect(Object.keys(DOC_TYPES)).toEqual(['chart', 'vista', 'encounter', 'character', 'adversary', 'battlemap'])
     for (const [key, docType] of Object.entries(DOC_TYPES)) expect(docType.type).toBe(key)
   })
 
   it('names the resource each lives under: what the backend serves', () => {
-    expect(Object.values(DOC_TYPES).map((t) => t.resource)).toEqual(['charts', 'vistas', 'encounters', 'characters', 'battlemaps'])
+    expect(Object.values(DOC_TYPES).map((t) => t.resource)).toEqual(['charts', 'vistas', 'encounters', 'characters', 'adversaries', 'battlemaps'])
   })
 
   it('has the screen and a picture only for the ones that can be shown', () => {
@@ -60,7 +60,7 @@ describe('the kinds', () => {
 
 describe('what a note can embed', () => {
   it('is what the kinds say', () => {
-    expect(EMBEDDABLE_TYPES).toEqual(['chart', 'vista'])
+    expect(EMBEDDABLE_TYPES).toEqual(['chart', 'vista', 'character', 'adversary'])
   })
 
   it('reads `chart:` and `vista:` references, with folders and spaces in the id', () => {

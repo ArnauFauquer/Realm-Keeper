@@ -57,6 +57,10 @@
             <span class="mdi mdi-account-heart-outline" aria-hidden="true"></span>
             <span>Characters</span>
           </button>
+          <button class="tool-btn" @click="openAdversaries">
+            <span class="mdi mdi-skull-outline" aria-hidden="true"></span>
+            <span>Adversaries</span>
+          </button>
         </div>
       </nav>
 
@@ -226,6 +230,7 @@
     <EncountersModal />
     <BattlemapsModal />
     <CharactersModal />
+    <AdversariesModal />
     <AssetLibraryModal :is-open="isAssetLibraryOpen" @close="closeAssetLibrary" />
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
@@ -275,6 +280,7 @@ import VistasModal from './VistasModal.vue'
 import EncountersModal from './EncountersModal.vue'
 import BattlemapsModal from './BattlemapsModal.vue'
 import CharactersModal from './CharactersModal.vue'
+import AdversariesModal from './AdversariesModal.vue'
 import AssetLibraryModal from './AssetLibraryModal.vue'
 import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
@@ -310,6 +316,7 @@ const { open: openVistas } = useDocModal('vista')
 const { open: openEncounters } = useDocModal('encounter')
 const { open: openBattlemaps } = useDocModal('battlemap')
 const { open: openCharacters } = useDocModal('character')
+const { open: openAdversaries } = useDocModal('adversary')
 const { isOpen: isAssetLibraryOpen, open: openAssetLibrary, close: closeAssetLibrary } = useAssetLibraryModal()
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,

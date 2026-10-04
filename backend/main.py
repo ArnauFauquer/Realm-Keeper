@@ -13,6 +13,7 @@ from routes.sheets import router as sheets_router
 from routes.encounters import router as encounters_router
 from routes.battlemaps import router as battlemaps_router
 from routes.characters import router as characters_router
+from routes.adversaries import router as adversaries_router
 from routes.sync import router as sync_router
 from routes.screen import router as screen_router
 from routes.player import router as player_router
@@ -26,6 +27,7 @@ from config.cache import CacheControlMiddleware
 from config.csrf import OriginCheckMiddleware
 from services.doc_registry import hub as doc_hub, import_legacy_documents
 from services.git_sync_utils import redact_credentials
+from services.sheet_import import import_note_sheets
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
@@ -129,6 +131,8 @@ async def lifespan(app: FastAPI):
     # Charts and vistas used to be kept in the vault: bring in any that haven't
     # been (once; nothing in the vault is touched).
     await asyncio.to_thread(import_legacy_documents, settings.VAULT_PATH)
+    # Sheets used to be ```sheet blocks in notes: make documents of them (once).
+    await asyncio.to_thread(import_note_sheets, settings.VAULT_PATH)
     task = asyncio.create_task(_periodic_sync())
     housekeeping = asyncio.create_task(doc_hub.run_housekeeping())
     yield
@@ -174,9 +178,10 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(notes_router)  # reading/searching notes stays public; writes are gated per-route
-app.include_router(sheets_router)  # the sheets written in notes: as public as the notes themselves
+app.include_router(sheets_router)  # every character's and adversary's sheet, read: login required
 app.include_router(encounters_router)  # live documents: login required throughout
 app.include_router(characters_router)
+app.include_router(adversaries_router)  # login required, like charts
 app.include_router(battlemaps_router)
 app.include_router(sync_router)  # the socket that announces their changes: login required
 app.include_router(screen_router)  # the socket needs login or a paired screen; posting to it needs login
