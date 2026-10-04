@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.83](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.82...v0.1.83) (2026-10-04)
+
+
+### Features
+
+* **sheets:** full-width sheets with groups of stats, columns and tables ([#27](https://github.com/ArnauFauquer/Realm-Keeper/issues/27)) ([19088b1](https://github.com/ArnauFauquer/Realm-Keeper/commit/19088b13b63d2f2be430f62cad8405874ecbf8e9))
+
 ## [0.1.82](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.1.81...v0.1.82) (2026-10-04)
 
 
