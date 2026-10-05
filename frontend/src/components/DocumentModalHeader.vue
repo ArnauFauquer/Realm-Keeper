@@ -8,6 +8,10 @@
       <span class="title-text">{{ view === 'editor' && itemTitle ? itemTitle : galleryTitle }}</span>
     </h2>
     <div class="header-actions">
+      <span v-if="view === 'editor' && saveError" class="save-error" role="alert" :title="saveError">
+        <span class="mdi mdi-alert-circle-outline" aria-hidden="true"></span>
+        <span class="save-error-text">{{ saveError }}</span>
+      </span>
       <button
         v-if="view === 'editor' && canEdit && showSave"
         class="rk-btn rk-btn--primary header-btn"
@@ -70,6 +74,8 @@ defineProps({
   showSave: { type: Boolean, default: true },
   hasUnsavedChanges: { type: Boolean, default: false },
   saving: { type: Boolean, default: false },
+  // Why the last save failed; shown beside Save until one works.
+  saveError: { type: String, default: null },
   // Documents with nothing to show on the screen hide the button altogether.
   showSendToScreen: { type: Boolean, default: true },
   canSendToScreen: { type: Boolean, default: false },
@@ -134,9 +140,26 @@ defineEmits(['back', 'save', 'send-to-screen', 'toggle-live', 'close'])
   margin-left: var(--space-1);
 }
 
+.save-error {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 22rem;
+  font-size: var(--text-xs);
+  color: var(--status-error);
+}
+
+.save-error-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   /* Icon-only actions on phones so the title keeps its room. */
-  .header-btn span:not(.mdi) {
+  .header-btn span:not(.mdi),
+  .save-error-text {
     display: none;
   }
 
