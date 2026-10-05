@@ -125,9 +125,21 @@
                 @dragstart="startDrag(track)"
                 @dragend="endDrag"
               >
-                <button class="track-play-btn" :aria-label="`Play ${track.name}`" @click="playTrackAt(idx)">
-                  <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
-                </button>
+                <div class="track-play-group">
+                  <button class="track-play-btn" :title="`Play ${track.name}`" :aria-label="`Play ${track.name}`" @click="playTrackAt(idx)">
+                    <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
+                  </button>
+                  <button
+                    class="track-play-btn sfx-play-btn"
+                    :class="{ 'is-sounding': sfxPlaying[track.key] }"
+                    :title="sfxPlaying[track.key] ? 'Stop effect' : 'Play as effect, over the music'"
+                    :aria-label="sfxPlaying[track.key] ? `Stop effect ${track.name}` : `Play ${track.name} as effect`"
+                    :aria-pressed="!!sfxPlaying[track.key]"
+                    @click="toggleSfx(track.key)"
+                  >
+                    <span class="mdi" :class="sfxPlaying[track.key] ? 'mdi-stop' : 'mdi-waveform'"></span>
+                  </button>
+                </div>
                 <input
                   v-if="renamingTrack === track.key"
                   v-model="trackRenameValue"
@@ -140,15 +152,31 @@
                 />
                 <span v-else class="track-name">{{ track.name }}</span>
                 <span class="track-size">{{ formatSize(track.size) }}</span>
-                <button
-                  v-if="renamingTrack !== track.key"
-                  class="rk-icon-btn rk-icon-btn--sm"
-                  :title="copiedTrack === track.key ? 'Copied!' : 'Copy track reference'"
-                  :aria-label="copiedTrack === track.key ? 'Copied' : 'Copy track reference'"
-                  @click="copyTrackKey(track)"
-                >
-                  <span class="mdi" :class="copiedTrack === track.key ? 'mdi-check' : 'mdi-content-copy'"></span>
-                </button>
+                <div v-if="renamingTrack !== track.key" class="copy-menu-anchor">
+                  <button
+                    class="rk-icon-btn rk-icon-btn--sm"
+                    :class="{ 'is-active': copyMenuFor === track.key }"
+                    :title="copiedTrack === track.key ? 'Copied!' : 'Copy reference for a note'"
+                    :aria-label="copiedTrack === track.key ? 'Copied' : 'Copy reference for a note'"
+                    aria-haspopup="menu"
+                    :aria-expanded="copyMenuFor === track.key"
+                    @click.stop="copyMenuFor = copyMenuFor === track.key ? null : track.key"
+                  >
+                    <span class="mdi" :class="copiedTrack === track.key ? 'mdi-check' : 'mdi-content-copy'"></span>
+                  </button>
+                  <div v-if="copyMenuFor === track.key" class="copy-menu" role="menu" @click.stop>
+                    <button class="copy-menu-item" role="menuitem" @click="copyTrackRef(track, 'song')">
+                      <span class="mdi mdi-play-circle-outline"></span>
+                      <span>As music</span>
+                      <code>{{ track.key }}</code>
+                    </button>
+                    <button class="copy-menu-item" role="menuitem" @click="copyTrackRef(track, 'sfx')">
+                      <span class="mdi mdi-waveform"></span>
+                      <span>As effect</span>
+                      <code>sfx:{{ track.key }}</code>
+                    </button>
+                  </div>
+                </div>
                 <button
                   v-if="renamingTrack !== track.key"
                   class="rk-icon-btn rk-icon-btn--sm"
@@ -219,16 +247,38 @@
             @input="setVolume($event.target.valueAsNumber)"
           />
         </div>
+
+        <div class="volume-row sfx-row" :class="{ 'is-sounding': sfxPlayingKeys.length }">
+          <span class="mdi mdi-waveform" title="Effects volume" aria-hidden="true"></span>
+          <input
+            type="range" min="0" max="1" step="0.01"
+            :value="sfxVolume"
+            class="volume-bar"
+            aria-label="Effects volume"
+            @input="setSfxVolume($event.target.valueAsNumber)"
+          />
+          <button
+            class="rk-icon-btn rk-icon-btn--sm"
+            :disabled="!sfxPlayingKeys.length"
+            title="Stop all effects"
+            aria-label="Stop all effects"
+            @click="stopAllSfx"
+          >
+            <span class="mdi mdi-stop"></span>
+          </button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { nextTick, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { usePlayer } from '@/composables/usePlayer'
 import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
+import { useSoundEffects } from '@/composables/useSoundEffects'
+import { sfxRefMarkdown } from '@/utils/audioLink'
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true }
@@ -243,6 +293,10 @@ const {
   toggleShuffle, toggleRepeat, seek, setVolume,
   createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack, moveTrack, renameTrack
 } = usePlayer()
+const {
+  playing: sfxPlaying, playingKeys: sfxPlayingKeys, volume: sfxVolume,
+  toggle: toggleEffect, stopAll: stopAllSfx, setVolume: setSfxVolume
+} = useSoundEffects()
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
 
 async function onMove(track, destAlbum) {
@@ -331,8 +385,36 @@ async function submitRenameAlbum(oldName) {
   }
 }
 
-function copyTrackKey(track) {
-  copy(track.key)
+// A note turns `Album/track.mp3` into a music link and `sfx:Album/track.mp3`
+// into a sound-effect button (utils/inlineRefs.js).
+const copyMenuFor = ref(null)
+
+function copyTrackRef(track, as) {
+  copyMenuFor.value = null
+  copy(as === 'sfx' ? sfxRefMarkdown(track.key) : '`' + track.key + '`', track.key)
+}
+
+function closeCopyMenu(e) {
+  if (e.type === 'keydown' && e.key !== 'Escape') return
+  copyMenuFor.value = null
+}
+
+watch(copyMenuFor, (key) => {
+  const method = key ? 'addEventListener' : 'removeEventListener'
+  document[method]('click', closeCopyMenu)
+  document[method]('keydown', closeCopyMenu)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', closeCopyMenu)
+  document.removeEventListener('keydown', closeCopyMenu)
+})
+
+async function toggleSfx(key) {
+  try {
+    await toggleEffect(key)
+  } catch {
+    error.value = 'Could not play the effect.'
+  }
 }
 
 async function deleteTrack(track) {
@@ -680,6 +762,77 @@ function formatTime(seconds) {
   transform: scale(0.92);
 }
 
+/* Play as music / play as effect: the two ways a track sounds, side by side. */
+.track-play-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.sfx-play-btn {
+  color: var(--text-muted);
+}
+
+.sfx-play-btn:hover {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fcd34d;
+}
+
+.sfx-play-btn.is-sounding {
+  background: rgba(251, 191, 36, 0.22);
+  color: #fcd34d;
+}
+
+.copy-menu-anchor {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.copy-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 240px;
+  padding: var(--space-1);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--surface-overlay);
+  box-shadow: var(--shadow-md);
+}
+
+.copy-menu-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: var(--space-2);
+  align-items: center;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.copy-menu-item:hover,
+.copy-menu-item:focus-visible {
+  background: var(--hover-tint);
+}
+
+.copy-menu-item code {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
 .track-name {
   flex: 1;
   min-width: 0;
@@ -794,6 +947,18 @@ function formatTime(seconds) {
 
 .volume-bar {
   width: 80px;
+}
+
+.sfx-row {
+  width: auto;
+}
+
+.sfx-row.is-sounding > .mdi-waveform {
+  color: #fcd34d;
+}
+
+.sfx-row .volume-bar {
+  accent-color: #fbbf24;
 }
 
 @media (max-width: 768px) {

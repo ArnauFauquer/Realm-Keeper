@@ -34,6 +34,7 @@ audio) lives in S3-compatible object storage.
 | `` `adv+5` `` / `` `dis+5` ``             | A d20 with advantage / disadvantage      |
 | `` `roll:hf` ``                           | Any formula, made explicit with `roll:` — needed when it's only `hf` / `adv` / `dis` |
 | `` `Action/01 Beyond Distant Lands.mp3` `` | A button that plays that track           |
+| `` `sfx:Effects/door creak.mp3` ``         | A sound effect played over the music (press again to cut it) |
 | `` `chart:regions/tavern-map` ``           | The chart embedded in the note           |
 | `` `vista:tavern/night` ``                 | The vista embedded in the note           |
 | `` `character:party/aria` ``               | The character's sheet, its counters live |
