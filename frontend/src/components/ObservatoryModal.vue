@@ -239,7 +239,9 @@ function copyText(item) {
   return DOC_TYPES[item.kind]?.embeddable ? docRefMarkdown(item.kind, item.id) : null
 }
 
-watch(() => props.isOpen, (open) => {
+// Opened, or asked for another folder or kind while open (useObservatoryModal's
+// open(path) / openKind(kind) over the one on screen).
+watch(() => [props.isOpen, props.startPath, props.startKind], ([open]) => {
   if (!open) return
   view.value = 'gallery'
   activeImage.value = null

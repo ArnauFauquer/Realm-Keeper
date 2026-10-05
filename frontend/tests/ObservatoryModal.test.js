@@ -94,6 +94,17 @@ describe('ObservatoryModal — one tree for everything', () => {
     expect(wrapper.find('.kind-chip.active').text()).toBe('Charts')
   })
 
+  it('goes where it is asked to while already open', async () => {
+    const wrapper = await opened({ startPath: 'act 2' })
+    await wrapper.setProps({ startPath: 'act 3' }) // useObservatoryModal().open('act 3') over it
+    await flushPromises()
+    expect(observatoryApi.list).toHaveBeenLastCalledWith('act 3')
+    observatoryApi.listKind.mockResolvedValue({ folders: [], items: [] })
+    await wrapper.setProps({ startPath: '', startKind: 'vista' })
+    await flushPromises()
+    expect(observatoryApi.listKind).toHaveBeenCalledWith('vista')
+  })
+
   it('offers to copy what a note can show: a document it embeds, an image', async () => {
     const wrapper = await opened()
     expect(cards(wrapper).map((card) => card.find('[aria-label="Copy reference"]').exists())).toEqual([true, false, true, true])
