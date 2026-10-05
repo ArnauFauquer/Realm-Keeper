@@ -11,6 +11,7 @@ import {
   renameTrack as apiRenameTrack,
   streamUrl
 } from '@/api/player'
+import { errorMessage } from '@/api/http'
 
 // Module-level (singleton) state: playback survives closing the player modal
 // or navigating away, since the same <audio> element keeps running.
@@ -121,7 +122,7 @@ async function loadAlbums() {
     albums.value = result
   } catch (e) {
     if (token !== loadAlbumsToken) return
-    error.value = e.response?.data?.detail || 'Could not load albums.'
+    error.value = errorMessage(e, 'Could not load albums.')
   } finally {
     if (token === loadAlbumsToken) loadingAlbums.value = false
   }
@@ -146,7 +147,7 @@ async function selectAlbum(name) {
     generateShuffleOrder()
   } catch (e) {
     if (token !== selectAlbumToken) return
-    error.value = e.response?.data?.detail || 'Could not load tracks.'
+    error.value = errorMessage(e, 'Could not load tracks.')
     tracks.value = []
   } finally {
     if (token === selectAlbumToken) loadingTracks.value = false

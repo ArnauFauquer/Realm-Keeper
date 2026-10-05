@@ -8,14 +8,17 @@ export function useCopyToClipboard(resetMs = 1500) {
   const copiedKey = ref(null)
   let timeout = null
 
-  // Resolves to whether the copy worked: the Clipboard API is missing on
-  // plain-HTTP origins (e.g. the app opened via a LAN IP) and can refuse
-  // once the click's user activation has lapsed.
-  async function copy(text, key = text) {
+  // Resolves to whether the copy worked. The Clipboard API is missing on
+  // plain-HTTP origins (e.g. the app opened via a LAN IP) and can refuse once
+  // the click's user activation has lapsed (Safari, after an awaited request):
+  // then the text is handed over in a prompt to copy by hand, with `label`
+  // saying what it is, rather than the button silently doing nothing.
+  async function copy(text, key = text, label = 'Copy it from here:') {
     if (!text) return false
     try {
       await navigator.clipboard.writeText(text)
     } catch {
+      window.prompt(label, text)
       return false
     }
     copiedKey.value = key

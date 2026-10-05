@@ -7,8 +7,9 @@ import { ref } from 'vue'
 //
 // `open(itemId)` can also ask the modal to jump straight to one item (e.g. a
 // chart embedded in a note) instead of its gallery; the modal reads and
-// clears `targetId` when it opens. Anything that isn't a string (such as the
-// click event from a plain `@click="open"`) is ignored.
+// clears `targetId` when it opens, and when it changes while it is open (a
+// second item asked for over the first). Anything that isn't a string (such
+// as the click event from a plain `@click="open"`) is ignored.
 export function createModalState() {
   const isOpen = ref(false)
   const targetId = ref(null)

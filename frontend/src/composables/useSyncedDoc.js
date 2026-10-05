@@ -1,6 +1,7 @@
 import { ref, computed, shallowRef, watch, onBeforeUnmount } from 'vue'
 import { applyEvent } from '@/utils/applyEvent'
 import { listenToSync } from './syncSocket'
+import { errorMessage } from '@/api/http'
 
 // A live document (see backend services/sync_hub.py) held in the page and kept
 // up to date: loaded once, then changed by the events the server announces.
@@ -11,22 +12,53 @@ import { listenToSync } from './syncSocket'
 
 const entries = new Map()
 
+// An event can overtake the one before it: a command's HTTP reply (rev 6) may
+// arrive before the socket has brought rev 5. One that comes early waits this
+// long for the ones before it; only if they don't come is the document loaded
+// again.
+const GAP_WAIT_MS = 300
+// A note's preview mounts its embeds again on every keystroke: a document no
+// one holds any more is kept (and listened to) a moment, so that doesn't close
+// the socket and fetch the document again each time.
+const RELEASE_GRACE_MS = 3000
+
 function createEntry(key, fetchDoc) {
   const doc = ref(null)
   const status = ref('loading') // 'loading' | 'ready' | 'error' | 'gone'
   const error = ref(null)
-  let early = [] // events that arrived while the first copy was still on its way
+  let early = [] // events that arrived while a copy was still on its way
+  const ahead = new Map() // rev -> event that came before the ones it follows
+  let aheadTimer = null
   let loading = null
+  let reloadAgain = false
   let users = 0
   let stopListening = null
+  let listening = false
+  let releaseTimer = null
+
+  // Asked to load again while a copy was on its way (the socket reopened, a
+  // reset, a gap): that copy may be older than what was asked for, so it is
+  // fetched once more when it arrives.
+  async function fetchLatest() {
+    let snapshot
+    do {
+      reloadAgain = false
+      snapshot = await fetchDoc()
+    } while (reloadAgain)
+    return snapshot
+  }
 
   function load() {
-    if (loading) return loading
+    if (loading) {
+      reloadAgain = true
+      return loading
+    }
     loading = (async () => {
       try {
-        const snapshot = await fetchDoc()
-        const pending = early.filter((event) => event.rev > snapshot.rev).sort((a, b) => a.rev - b.rev)
+        const snapshot = await fetchLatest()
+        const pending = [...early, ...ahead.values()].filter((event) => event.rev > snapshot.rev).sort((a, b) => a.rev - b.rev)
         early = []
+        forgetAhead()
         doc.value = snapshot
         // Let go before replaying: apply() holds events back while loading.
         loading = null
@@ -35,12 +67,18 @@ function createEntry(key, fetchDoc) {
         error.value = null
       } catch (err) {
         status.value = err.response?.status === 404 ? 'gone' : 'error'
-        error.value = err.response?.data?.detail || err.message
+        error.value = errorMessage(err)
       } finally {
         loading = null
       }
     })()
     return loading
+  }
+
+  function forgetAhead() {
+    ahead.clear()
+    clearTimeout(aheadTimer)
+    aheadTimer = null
   }
 
   function apply(event) {
@@ -59,10 +97,25 @@ function createEntry(key, fetchDoc) {
     }
     if (event.rev <= doc.value.rev) return // already seen
     if (event.rev !== doc.value.rev + 1) {
-      load() // one was missed: start again from the server's copy
+      // Ahead of one not seen yet: wait a moment for it, then, if it never
+      // came, start again from the server's copy.
+      ahead.set(event.rev, event)
+      aheadTimer ||= setTimeout(() => {
+        aheadTimer = null
+        ahead.clear()
+        load()
+      }, GAP_WAIT_MS)
       return
     }
     applyEvent(doc.value, event)
+    // The ones that came early, now in order.
+    let next
+    while ((next = ahead.get(doc.value.rev + 1))) {
+      ahead.delete(next.rev)
+      applyEvent(doc.value, next)
+    }
+    for (const rev of ahead.keys()) if (rev <= doc.value.rev) ahead.delete(rev)
+    if (!ahead.size) forgetAhead()
   }
 
   /** Waits for a command's event and applies it. */
@@ -75,18 +128,35 @@ function createEntry(key, fetchDoc) {
 
   function acquire() {
     users += 1
+    if (releaseTimer) {
+      // Let go of a moment ago, and still listened to: nothing was missed.
+      clearTimeout(releaseTimer)
+      releaseTimer = null
+      if (status.value === 'error' || status.value === 'gone') load()
+      return
+    }
     if (users === 1) {
-      stopListening = listenToSync({ onEvent: apply, onOpen: () => { if (doc.value) load() } })
+      // Changes made while the socket was down were missed: (re)load whenever
+      // it (re)opens, even with the first copy still on its way. Not when it
+      // is already open as this starts listening: the load below is enough.
+      listening = false
+      stopListening = listenToSync({ onEvent: apply, onOpen: () => { if (listening) load() } })
+      listening = true
       load()
     }
   }
 
   function release() {
     users -= 1
-    if (users === 0) {
+    if (users > 0) return
+    releaseTimer = setTimeout(() => {
+      releaseTimer = null
+      if (users > 0) return
+      listening = false
       stopListening()
+      forgetAhead()
       entries.delete(key)
-    }
+    }, RELEASE_GRACE_MS)
   }
 
   return { doc, status, error, load, apply, commit, acquire, release }

@@ -131,7 +131,7 @@
 <script>
 import * as d3 from 'd3'
 import { markRaw, shallowRef, computed } from 'vue'
-import { getCached } from '@/api/http'
+import { getCached, errorMessage } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
 import { drawStarfield } from '@/composables/useConstellationGraph'
@@ -259,7 +259,7 @@ export default {
           this.initGraph()
         })
       } catch (err) {
-        this.error = err.response?.data?.detail || err.message
+        this.error = errorMessage(err)
         this.loading = false
       }
     },

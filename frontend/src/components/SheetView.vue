@@ -160,6 +160,7 @@ import { createMarkdown } from '@/utils/markdown'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { parseDiceFormula } from '@/utils/diceNotation'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { OBSERVATORY_IMAGE_PREFIX } from '@/utils/docTypes'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 
 // A sheet, drawn: `sheet` is the normalized shape from utils/sheet.js (or the
@@ -226,7 +227,7 @@ const isRow = (item) => !item.text && !!item.name && !!item.roll
 const imageSrc = computed(() => {
   const image = props.sheet.image
   if (!image) return null
-  return image.startsWith('/api/observatory/') && !props.canInteract ? null : resolveUrl(image)
+  return image.startsWith(OBSERVATORY_IMAGE_PREFIX) && !props.canInteract ? null : resolveUrl(image)
 })
 
 const isRollable = (formula) => !!formula && !!parseDiceFormula(formula)

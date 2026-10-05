@@ -21,6 +21,7 @@ import { chartsApi } from '@/api/docs'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
 import { DOC_TYPES } from '@/utils/docTypes'
+import { noteRoute } from '@/utils/paths'
 
 // What is a chart's own is only its canvas: the gallery, saving, the screen and
 // the rest are DocumentModal's.
@@ -38,6 +39,6 @@ const modal = useDocModal('chart')
 function openNote(notePath, close) {
   close()
   if (modal.isOpen.value) return
-  router.push(`/note/${notePath.split('/').map(encodeURIComponent).join('/')}`)
+  router.push(noteRoute(notePath))
 }
 </script>

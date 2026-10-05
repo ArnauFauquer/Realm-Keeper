@@ -1,13 +1,13 @@
-import axios from 'axios'
 import { apiUrl } from '@/config/env'
+import { httpClient } from './http'
 
 export async function getCurrentUser() {
-  const res = await axios.get(`${apiUrl}/api/auth/me`, { withCredentials: true })
+  const res = await httpClient.get(`${apiUrl}/api/auth/me`)
   return res.data
 }
 
 export async function logout() {
-  await axios.post(`${apiUrl}/api/auth/logout`, {}, { withCredentials: true })
+  await httpClient.post(`${apiUrl}/api/auth/logout`, {})
 }
 
 export function loginUrl() {

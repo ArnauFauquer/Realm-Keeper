@@ -279,6 +279,7 @@ import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { useSoundEffects } from '@/composables/useSoundEffects'
 import { sfxRefMarkdown } from '@/utils/audioLink'
+import { errorMessage } from '@/api/http'
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true }
@@ -304,7 +305,7 @@ async function onMove(track, destAlbum) {
   try {
     await moveTrack(track, destAlbum)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not move the track.'
+    error.value = errorMessage(e, 'Could not move the track.')
   }
 }
 
@@ -346,7 +347,7 @@ async function submitNewAlbum() {
     newAlbumName.value = ''
     showNewAlbumInput.value = false
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not create the album.'
+    error.value = errorMessage(e, 'Could not create the album.')
   }
 }
 
@@ -359,7 +360,7 @@ async function confirmDeleteAlbum(album) {
   try {
     await deleteAlbum(album)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not delete the album.'
+    error.value = errorMessage(e, 'Could not delete the album.')
   }
 }
 
@@ -381,7 +382,7 @@ async function submitRenameAlbum(oldName) {
   try {
     await renameAlbum(oldName, newName)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not rename the album.'
+    error.value = errorMessage(e, 'Could not rename the album.')
   }
 }
 
@@ -421,7 +422,7 @@ async function deleteTrack(track) {
   try {
     await removeTrack(track)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not delete the track.'
+    error.value = errorMessage(e, 'Could not delete the track.')
   }
 }
 
@@ -443,7 +444,7 @@ async function submitRenameTrack(track) {
   try {
     await renameTrack(track, newName)
   } catch (e) {
-    error.value = e.response?.data?.detail || 'Could not rename the track.'
+    error.value = errorMessage(e, 'Could not rename the track.')
   }
 }
 
@@ -459,7 +460,7 @@ async function onFilesSelected(event) {
     try {
       await uploadTrack(file, (p) => { entry.progress = p })
     } catch (e) {
-      error.value = e.response?.data?.detail || `Error uploading ${file.name}.`
+      error.value = errorMessage(e, `Error uploading ${file.name}.`)
     } finally {
       uploading.value = uploading.value.filter(u => u.id !== id)
     }
