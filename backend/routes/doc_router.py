@@ -6,45 +6,29 @@ services/sync_hub.py). Its folders are the Observatory's (routes/observatory.py)
 Every route needs a signed-in user, except reading a document, which `viewer`
 decides (a paired screen may read what is on screen).
 """
-import asyncio
-import functools
+import contextlib
 import logging
 from typing import Any, Awaitable, Callable, Dict, List, Optional
 
-from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from routes.auth import current_user, require_auth
-from routes.errors import storage_unavailable
+from routes.errors import blocking, guarded
 from services import doc_commands
 from services.doc_collection import DocCollection, DocNotFound
+from services.doc_paths import sanitize_id
 from services.doc_type import DocType
 from services.sync_hub import DocHub
 
 logger = logging.getLogger(__name__)
 
+OnMoved = Callable[[Dict[str, str], dict], Awaitable[None]]
+
 
 def login_only(request: Request, doc_id: str) -> None:
     if not current_user(request):
         raise HTTPException(status_code=401, detail="Not authenticated")
-
-
-def guarded(handler):
-    """Turns what a handler raises into the HTTP error it means."""
-    @functools.wraps(handler)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await handler(*args, **kwargs)
-        except DocNotFound as e:
-            raise HTTPException(status_code=404, detail=str(e))
-        except PermissionError:
-            raise HTTPException(status_code=403, detail="Not allowed")
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except (ClientError, BotoCoreError) as e:
-            raise storage_unavailable(logger, e)
-    return wrapper
 
 
 class CreateBody(BaseModel):
@@ -85,7 +69,7 @@ class AdjustBody(BaseModel):
 def make_doc_router(
     doctype: DocType, collection: DocCollection, hub: DocHub,
     viewer: Callable[[Request, str], None] = login_only,
-    on_moved: Optional[Callable[[Dict[str, str], dict], Awaitable[None]]] = None,
+    on_moved: Optional[OnMoved] = None,
 ) -> APIRouter:
     """`on_moved({old_id: new_id}, user)` is awaited once a document has been
     given another id (moved): whatever refers to it by id follows. (Moving a
@@ -94,9 +78,6 @@ def make_doc_router(
     kind = doctype.kind
     # Ahead of every route that belongs to one document.
     on = "/{doc_id:path}"
-
-    async def blocking(fn, *args):
-        return await asyncio.to_thread(fn, *args)
 
     async def change(doc_id: str, user: dict, command: str, fn: Callable[[Dict[str, Any]], None]) -> Dict[str, Any]:
         event = await hub.mutate(kind, doc_id, fn, user=user, command=command)
@@ -107,12 +88,11 @@ def make_doc_router(
         if on_moved and moves:
             await on_moved(moves, user)
 
-    def discard(ids: List[str]) -> None:
-        """Once the documents are moved or deleted: a command that arrived in
-        between has loaded them again from where they were, and must not save
-        them back there."""
-        for doc_id in ids:
-            hub.discard(kind, doc_id)
+    def released(ids: List[str]):
+        """Around moving or deleting live documents: what is in memory is saved
+        and let go of first, and nothing saves it back where it was (see
+        DocHub.released)."""
+        return hub.released(kind, ids) if doctype.live else contextlib.nullcontext()
 
     # Declared ahead of the "/{doc_id:path}" routes below: those would
     # otherwise swallow "/all" as a document id.
@@ -140,12 +120,9 @@ def make_doc_router(
     @router.post("/move")
     @guarded
     async def move_item(body: MoveBody, user: dict = Depends(require_auth)):
-        old_id = body.id.strip("/")
-        if doctype.live:
-            await hub.forget(kind, old_id)
-        new_id = await blocking(collection.move_item, body.id, body.folder_path)
-        if doctype.live:
-            discard([old_id])
+        old_id = sanitize_id(body.id)
+        async with released([old_id]):
+            new_id = await blocking(collection.move_item, old_id, body.folder_path)
         await moved({old_id: new_id}, user)
         return {"status": "success", "id": new_id}
 
@@ -224,18 +201,20 @@ def make_doc_router(
     @router.delete(on)
     @guarded
     async def delete(doc_id: str, user: dict = Depends(require_auth)):
-        doc_id = doc_id.strip("/")
-        if doctype.live:
-            await hub.forget(kind, doc_id)
-        await blocking(collection.delete, doc_id)
-        if doctype.live:
-            discard([doc_id])
+        doc_id = sanitize_id(doc_id)
+        async with released([doc_id]):
+            await blocking(collection.delete, doc_id)
         return {"status": "success"}
 
     def add_asset_route(route: str, field_name: str) -> None:
         @router.post(f"{on}/{route}", name=f"set_{route}")
         @guarded
         async def set_asset(doc_id: str, body: UrlBody, user: dict = Depends(require_auth)):
+            if doctype.live:
+                # Through the hub, like every change to a live document: written
+                # straight to storage, the next save of what is in memory would
+                # put the old value back.
+                return await change(doc_id, user, "set_asset", lambda d: d.update({field_name: body.url}))
             return await blocking(collection.set_field, doc_id, field_name, body.url)
 
     for route_name, field in doctype.asset_routes.items():

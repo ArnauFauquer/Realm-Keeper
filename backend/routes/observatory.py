@@ -8,10 +8,10 @@ opened, saved, renamed, moved and deleted through its own kind's routes
 (routes/doc_router.py); what moving or deleting a folder does to the documents
 in it (the live ones let go, the notes that link to them followed) is done here.
 """
-import asyncio
+import contextlib
 import logging
 import tempfile
-from typing import Awaitable, Callable, Dict, List, Mapping, Optional
+from typing import Callable, Dict, List, Mapping, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -19,7 +19,8 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from routes.auth import require_auth
-from routes.doc_router import guarded
+from routes.doc_router import OnMoved
+from routes.errors import blocking, guarded
 from services.observatory import Observatory
 from services.sync_hub import DocHub
 
@@ -35,8 +36,6 @@ UPLOADED_FILE_HEADERS = {
 }
 # A backup is written to memory up to this size, then to a temporary file.
 EXPORT_SPOOL_BYTES = 64 * 1024 * 1024
-
-OnMoved = Callable[[Dict[str, str], dict], Awaitable[None]]
 
 
 class FolderBody(BaseModel):
@@ -62,10 +61,6 @@ class ImageRenameBody(BaseModel):
     name: str
 
 
-async def blocking(fn, *args):
-    return await asyncio.to_thread(fn, *args)
-
-
 def _ascii(name: str) -> str:
     return "".join(c if c.isascii() and c.isprintable() and c not in '"\\' else "_" for c in name)
 
@@ -82,30 +77,29 @@ def make_observatory_router(
     def live(kind: str) -> bool:
         return observatory.collections[kind].doctype.live
 
-    async def let_go(ids_by_kind: Dict[str, List[str]]) -> None:
-        """Before the documents inside a folder move or go: the live ones are
-        saved and let go of, so what is in memory doesn't outlive them."""
-        for kind, ids in ids_by_kind.items():
-            if live(kind):
-                for doc_id in ids:
-                    await hub.forget(kind, doc_id)
-
-    def discard(ids_by_kind: Dict[str, List[str]]) -> None:
-        """Once they are moved or deleted: a command that arrived in between has
-        loaded them again from where they were, and must not save them back there."""
-        for kind, ids in ids_by_kind.items():
-            if live(kind):
-                for doc_id in ids:
-                    hub.discard(kind, doc_id)
+    @contextlib.asynccontextmanager
+    async def released(path: str):
+        """Around moving or deleting a folder: the live documents inside are
+        saved and let go of first, and nothing saves them back where they were
+        (see DocHub.released)."""
+        inside = await blocking(observatory.ids_under, path)
+        async with contextlib.AsyncExitStack() as stack:
+            for kind, ids in inside.items():
+                if ids and live(kind):
+                    await stack.enter_async_context(hub.released(kind, ids))
+            yield
 
     async def move(path: str, user: dict, parent: Optional[str] = None, name: Optional[str] = None) -> None:
-        inside = await blocking(observatory.ids_under, path)
-        await let_go(inside)
-        moves = await blocking(observatory.move_folder, path, parent, name)
-        discard(inside)
+        async with released(path):
+            moves = await blocking(observatory.move_folder, path, parent, name)
         for kind, kind_moves in moves.items():
             if kind in on_moved:
-                await on_moved[kind](kind_moves, user)
+                # Each kind on its own: the folder has moved already, and what
+                # one kind failed to follow mustn't stop the next (see doc_follow).
+                try:
+                    await on_moved[kind](kind_moves, user)
+                except Exception:
+                    logger.exception(f"Could not follow the {kind}s moved with '{path}'")
 
     # ── folders ─────────────────────────────────────────────────────────
 
@@ -147,10 +141,8 @@ def make_observatory_router(
     @router.delete("/folders/{path:path}")
     @guarded
     async def delete_folder(path: str, user: dict = Depends(require_auth)):
-        inside = await blocking(observatory.ids_under, path)
-        await let_go(inside)
-        await blocking(observatory.delete_folder, path)
-        discard(inside)
+        async with released(path):
+            await blocking(observatory.delete_folder, path)
         return {"status": "success"}
 
     # ── images ──────────────────────────────────────────────────────────
@@ -168,7 +160,8 @@ def make_observatory_router(
     @router.get("/images/{name}")
     @guarded
     async def get_image(name: str, request: Request):
-        image_viewer(request, name)
+        # A paired screen's check may read the document on screen from storage.
+        await blocking(image_viewer, request, name)
         chunks, length, content_type = await blocking(observatory.open_image, name)
         return StreamingResponse(
             chunks, media_type=content_type, headers={"Content-Length": str(length), **UPLOADED_FILE_HEADERS},
