@@ -46,12 +46,13 @@ function dismissToast(id) {
   if (idx !== -1) state.toasts.splice(idx, 1)
 }
 
-function pushToast(formula, result, label) {
+function pushToast(formula, result, label, outcome = null) {
   const id = ++toastSeq
   state.toasts.push({
     id,
     formula,
     label,
+    outcome,
     groups: result.groups,
     flatModifier: result.flatModifier,
     total: result.total,
@@ -78,8 +79,10 @@ function broadcastToScreen(formula, result, label) {
  * formula or while another roll is still in flight. Returns the result, or
  * null if the roll didn't happen. `label` says who rolls and what for
  * ("Bugboar · Gore") and is shown with it, here and on the screen; without
- * one, the player's name is shown instead. */
-async function roll(formulaText, { label = null } = {}) {
+ * one, the player's name is shown instead. `outcome(result)` names what the
+ * roll landed on (a roll table's row); only the local toast shows it, so a
+ * table the players shouldn't read stays off the screen. */
+async function roll(formulaText, { label = null, outcome = null } = {}) {
   const parsed = parseDiceFormula(formulaText)
   if (!parsed || state.isRolling) return null
 
@@ -99,7 +102,7 @@ async function roll(formulaText, { label = null } = {}) {
     const formula = formatDiceFormula(parsed)
     // A roll without a sheet behind it is the player's own: name them. The
     // screen gets the name from the session instead (routes/screen.py).
-    pushToast(formula, result, label || user.value?.name || null)
+    pushToast(formula, result, label || user.value?.name || null, outcome?.(result) ?? null)
     broadcastToScreen(formula, result, label)
     return result
   } finally {
@@ -110,6 +113,12 @@ async function roll(formulaText, { label = null } = {}) {
       hideTimer = null
     }, 2200)
   }
+}
+
+/** Shows a roll made without physical dice (a roll table's d7) in the same
+ * toast as any other, locally only. */
+function showRoll(formula, result, { outcome = null } = {}) {
+  pushToast(formula, result, user.value?.name || null, outcome)
 }
 
 function openPanel() { state.isPanelOpen = true }
@@ -132,6 +141,7 @@ export function useDiceRoller() {
     registerCanvas,
     resizeWorld,
     roll,
+    showRoll,
     openPanel,
     closePanel,
     togglePanel,

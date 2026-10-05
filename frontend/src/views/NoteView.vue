@@ -152,6 +152,7 @@ import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
 import { renderCallouts } from '@/utils/callouts'
 import { defineAsyncComponent, h, render } from 'vue'
 import { createMarkdown } from '@/utils/markdown'
+import { findRangeIndex, readRowRanges, rollVirtual, rowOutcome } from '@/utils/rollTables'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { usePlayer } from '@/composables/usePlayer'
 import { useSoundEffects } from '@/composables/useSoundEffects'
@@ -475,6 +476,65 @@ export default {
     setupDiceRolls() {
       const { roll } = useDiceRoller()
       this.wireInlineActions('data-dice-formula', (el, formula) => roll(formula))
+      this.wireInlineActions('data-roll-table', (el, formula) => this.rollOnTable(el, formula))
+    },
+    // A roll table's header die: throws it (or draws the number, for a die
+    // with no physical body like a d7), then marks the row it landed on.
+    async rollOnTable(die, formula) {
+      const table = die.closest('table')
+      if (!table || table.hasAttribute('data-rolling')) return
+      const rows = [...table.querySelectorAll('tbody tr[data-roll-min]')]
+      const ranges = readRowRanges(rows)
+      const rowFor = (total) => rows[findRangeIndex(ranges, total)] || null
+      const outcome = (result) => rowOutcome(rowFor(result.total), result.total)
+      const { roll, showRoll } = useDiceRoller()
+
+      table.setAttribute('data-rolling', '')
+      try {
+        let result
+        if (table.hasAttribute('data-roll-virtual')) {
+          result = rollVirtual(formula)
+          await this.scanRows(rows)
+          // Written like a physical roll's toast: "1d7", not "d7".
+          showRoll(formula.replace(/^d/, '1d'), result, { outcome: outcome(result) })
+        } else {
+          result = await roll(formula, { outcome })
+        }
+        if (result) this.markRolledRow(table, die, rowFor(result.total), result.total)
+      } finally {
+        table.removeAttribute('data-rolling')
+      }
+    },
+    // A drawn number has no dice to watch, so the highlight runs down a few
+    // rows first, slowing as it goes: the table itself is what's rolling.
+    async scanRows(rows) {
+      if (rows.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+      let last = -1
+      for (let step = 0; step < 9; step++) {
+        let next = Math.floor(Math.random() * rows.length)
+        if (next === last) next = (next + 1) % rows.length
+        rows[last]?.classList.remove('roll-scan')
+        rows[next].classList.add('roll-scan')
+        last = next
+        await new Promise(resolve => setTimeout(resolve, 45 + step * 14))
+      }
+      rows[last].classList.remove('roll-scan')
+    },
+    markRolledRow(table, die, row, total) {
+      table.querySelectorAll('tr.roll-hit').forEach(tr => tr.classList.remove('roll-hit'))
+      let badge = die.querySelector('.roll-table-last')
+      if (!badge) {
+        badge = document.createElement('span')
+        badge.className = 'roll-table-last'
+        die.appendChild(badge)
+      }
+      badge.textContent = String(total)
+      if (!row) return
+      // Restart the landing flash when the same row comes up twice.
+      void row.offsetWidth
+      row.classList.add('roll-hit')
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      row.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
     },
     setupSongLinks() {
       const { playByKey } = usePlayer()
@@ -1401,6 +1461,91 @@ export default {
 
 .markdown-content :deep(tbody tr:hover) {
   background: var(--accent-a08);
+}
+
+/* Roll tables: the header die rolls, the row it lands on stays marked. */
+.markdown-content :deep(.roll-table th:first-child),
+.markdown-content :deep(.roll-table td:first-child) {
+  width: 1%;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.markdown-content :deep(.roll-table td:first-child) {
+  color: var(--text-secondary);
+}
+
+.markdown-content :deep(.roll-table-die) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1em 0.45em;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a20);
+  border: 1px solid var(--accent-a45);
+  color: var(--accent-soft);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.markdown-content :deep(.roll-table-die:hover) {
+  background: var(--accent-a45);
+  border-color: var(--accent);
+}
+
+.markdown-content :deep(.roll-table-die:active) {
+  transform: translateY(1px);
+}
+
+.markdown-content :deep(.roll-table-die:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.markdown-content :deep(.roll-table[data-rolling] .roll-table-die) {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.markdown-content :deep(.roll-table-last) {
+  margin-left: 0.1rem;
+  padding: 0 0.4em;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.markdown-content :deep(.roll-table tr.roll-scan) {
+  background: var(--accent-a12);
+}
+
+.markdown-content :deep(.roll-table tr.roll-hit) {
+  background: var(--accent-a20);
+  animation: roll-land 700ms var(--ease-out);
+}
+
+.markdown-content :deep(.roll-table tr.roll-hit td:first-child) {
+  box-shadow: inset 3px 0 0 var(--accent);
+  color: var(--accent-soft);
+  font-weight: 700;
+}
+
+@keyframes roll-land {
+  from { background: var(--accent-a45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-content :deep(.roll-table tr.roll-hit) {
+    animation: none;
+  }
 }
 
 /* Obsidian-style callouts. Type colours are content, kept literal. */

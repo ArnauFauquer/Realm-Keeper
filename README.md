@@ -40,6 +40,24 @@ audio) lives in S3-compatible object storage.
 | `` `character:party/aria` ``               | The character's sheet, its counters live |
 | `` `adversary:bestiary/bugboar` ``         | The adversary's sheet                    |
 
+**Roll tables**: a table whose first header cell is a die rolls on itself.
+Press the die to throw it; the row it lands on is highlighted, and the toast
+says what it reads (only on your screen: the player screen shows the dice).
+
+```markdown
+| d6  | Weather          |
+| --- | ---------------- |
+| 1-3 | Rain             |
+| 4-5 | Fog              |
+| 6   | Clear skies      |
+```
+
+- The first column holds each row's numbers: `7`, a range `2-3`, `96-00`
+  for a `d%`, or `11+`. Rows without numbers are counted from 1.
+- Any die works: `d20`, `2d6`, `d%`. A bare `d` sizes the die to the table:
+  a 20-row table rolls a d20.
+- A die there's no real die for (a 7-row table, `d3`) picks a row at random.
+
 **Sheets** — characters and adversaries, each a document of its own (in
 folders, like charts and vistas): counters, stats, actions with dice buttons.
 A sheet knows nothing about any rules system: counters, stats and tags are
