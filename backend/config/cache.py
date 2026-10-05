@@ -41,62 +41,33 @@ class CacheControlMiddleware:
 
         await self.app(scope, receive, send_wrapper)
 
+    # The public reads of the vault: a browser (and the service worker, for
+    # reading offline) may keep them, but asks again every time, so a note
+    # just saved, created or pulled shows at once rather than minutes later.
+    PUBLIC_NOTE_READS = ("/api/note/", "/api/notes", "/api/tags", "/api/graph", "/api/container-folders")
+
     @staticmethod
     def _get_cache_control(path: str, method: str) -> str:
         if method in ["POST", "PUT", "DELETE", "PATCH"]:
             return "no-cache, no-store, must-revalidate"
-            
+
         if method == "GET":
             if path.startswith("/assets/"):
                 return "public, max-age=31536000, immutable"
-            if path.startswith("/api/note-raw/"):
-                # Login-only editor source (can include hidden notes): keep it
-                # out of the browser and service-worker caches entirely.
-                return "private, no-store"
-            if path.startswith("/api/notes"):
-                return "public, max-age=300"
-            if path.startswith("/api/tags"):
-                return "public, max-age=600"
-            if path.startswith("/api/graph"):
-                return "public, max-age=600"
-            if path.startswith("/api/player/"):
-                # Player state (albums/tracks) is mutated by the user (upload,
-                # delete, create/delete album) and must never be served stale
-                # from the browser's HTTP cache after such a change.
-                return "no-store, must-revalidate"
-            if path.startswith("/api/auth/"):
-                # Login state must never be cached (stale /me would show a
-                # logged-out user as logged in, or vice versa).
-                return "no-store, must-revalidate"
             if path.startswith("/api/observatory/images/"):
                 # The binary image itself, found by a uid no other upload ever
                 # gets — safe to cache hard like /assets/, but only in the
                 # viewer's own browser: it's behind login (or a paired screen),
                 # so shared caches must not keep it, and the service worker skips it.
                 return "private, max-age=31536000, immutable"
-            if path.startswith("/api/sheets") or path.startswith("/api/adversaries"):
-                # A sheet just saved must show up in the next picker and in the
-                # notes that show it, not 60s later.
-                return "no-store, must-revalidate"
-            if (
-                path.startswith("/api/encounters")
-                or path.startswith("/api/characters")
-                or path.startswith("/api/battlemaps")
-            ):
-                # Changing as people play: a stale copy would undo their edits.
-                return "no-store, must-revalidate"
-            if (
-                path.startswith("/api/vistas")
-                or path.startswith("/api/charts")
-                or path.startswith("/api/observatory")
-            ):
-                # A GM repositions/saves and immediately hits "Send to
-                # screen" — the screen's fetch of this same vista/chart must
-                # never be answered from a 60s-old cache, or the live
-                # display can show a stale character position while the GM
-                # is mid-session.
-                return "no-store, must-revalidate"
+            if path.startswith(CacheControlMiddleware.PUBLIC_NOTE_READS):
+                return "public, no-cache"
             if path.startswith("/api/"):
-                return "public, max-age=60"
-        
+                # Everything else is behind login (documents, the player, the
+                # editor's raw notes, the sheets), changes as people play, or
+                # is login state itself: never kept by a browser, a shared
+                # cache or the service worker. A default rather than a list of
+                # each kind's prefix, so a kind added later is safe too.
+                return "no-store, must-revalidate"
+
         return None

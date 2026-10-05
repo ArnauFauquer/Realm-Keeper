@@ -16,3 +16,4 @@ vault
 docs-data
 logs
 .pytest_cache
+tests
