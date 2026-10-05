@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from pydantic import ValidationError
 
+from models.encounter import MAX_COUNTER_COLOR_LENGTH, MAX_COUNTER_STYLE_LENGTH, MAX_COUNTERS
 from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
 from services.observatory import image_uid, image_url, is_image_name
 from services.storage_service import IMAGE_URL_PREFIX
@@ -35,7 +36,7 @@ class _NoAliasLoader(yaml.SafeLoader):
     hundred bytes of nested ones parse to almost nothing and then expand to
     gigabytes when the sheet is turned into JSON: a "billion laughs" that a
     public note could use against the server. Sheets have no use for them. (The
-    frontend's parser refuses them too: maxAliasCount: 0 in utils/sheet.js.)"""
+    frontend refuses them too, in utils/pythonYaml.js.)"""
 
     def compose_node(self, parent, index):
         if self.check_event(yaml.AliasEvent):
@@ -105,6 +106,11 @@ def _counter(name: str, raw: Any) -> ResourceSpec:
     counter = ResourceSpec(**spec)
     if counter.min > counter.max:
         raise SheetParseError(f"counter '{name}' has a min above its max")
+    # The limits of a counter in an encounter (models/encounter.py ResourceState).
+    if counter.color and len(counter.color) > MAX_COUNTER_COLOR_LENGTH:
+        raise SheetParseError(f"counter '{name}' color can't be longer than {MAX_COUNTER_COLOR_LENGTH} characters")
+    if counter.style and len(counter.style) > MAX_COUNTER_STYLE_LENGTH:
+        raise SheetParseError(f"counter '{name}' style can't be longer than {MAX_COUNTER_STYLE_LENGTH} characters")
     return counter
 
 
@@ -193,6 +199,8 @@ def _sections(raw: Any) -> Tuple[List[SheetSection], dict]:
             wide=section.get("wide") is True, collapsed=section.get("collapsed") is True,
             tab=_text(section.get("tab")), counters=list(own), stats=_stats(section.get("stats")), items=[_item(i) for i in items or []],
         ))
+    if len(resources) > MAX_COUNTERS:
+        raise SheetParseError(f"a sheet can't have more than {MAX_COUNTERS} counters")
     return sections, resources
 
 
@@ -219,6 +227,11 @@ def parse_sheet_source(
     except yaml.YAMLError as e:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")
+    except (ValueError, TypeError, LookupError, AttributeError, OverflowError, RecursionError) as e:
+        # What PyYAML's constructors let through on a scalar they can't build
+        # (`2024-13-45`, `!!bool maybe`) or a document nested past the stack: the
+        # sheet's YAML is wrong, not the server.
+        raise SheetParseError(f"Invalid YAML: {e}")
     in_document = name is not None
     if data is None and in_document:
         data = {}

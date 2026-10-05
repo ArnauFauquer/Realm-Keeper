@@ -126,7 +126,16 @@ is never behind what is being played.
 The frontend parses the same sources (`utils/sheet.js` `parseSheetDoc`); the two
 normalizations are checked against shared fixtures in
 `backend/tests/fixtures/sheets/`, so a change in one needs the same change in
-the other.
+the other. The backend is the authority (it stores the sheet), and it reads YAML
+with PyYAML, which is YAML 1.1: `yes` is true, `010` is 8, `1e3` is text, a
+duplicated key keeps its last value, `<<` merges. So the frontend reads it the
+same way (`utils/pythonYaml.js`: the `yaml` package for the syntax, PyYAML's own
+patterns for the types, Python dicts' keys and Python's `str()` for the text),
+and counts lengths in characters as Python does. The differences left are noted
+at the top of that file (`!!set`, `!!binary` and the like, refused in the
+browser; error messages worded differently). A sheet is also held to what an
+encounter can hold (at most 24 counters, a counter's `color` and `style` at most
+40 and 20 characters), so one that parses can always be added to a fight.
 
 **Importing the sheets notes used to hold.** Earlier versions wrote sheets in
 notes, as ` ```sheet ` blocks. On startup, after the legacy charts and vistas,

@@ -3,6 +3,12 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 MAX_COMBATANTS = 200
+# What a combatant or a character holds at most. A sheet is held to the same
+# limits when it is parsed (services/sheet_parser.py), so a sheet that parses
+# always fits in an encounter.
+MAX_COUNTERS = 24
+MAX_COUNTER_COLOR_LENGTH = 40
+MAX_COUNTER_STYLE_LENGTH = 20
 
 # Fields encounters saved earlier may still carry, from when they had rounds,
 # turns and initiative. They are dropped when such a document is read, so they
@@ -26,8 +32,8 @@ class ResourceState(BaseModel):
     current: int
     max: int
     min: int = 0
-    color: Optional[str] = Field(None, max_length=40)
-    style: Optional[str] = Field(None, max_length=20)
+    color: Optional[str] = Field(None, max_length=MAX_COUNTER_COLOR_LENGTH)
+    style: Optional[str] = Field(None, max_length=MAX_COUNTER_STYLE_LENGTH)
 
     @model_validator(mode="after")
     def _min_below_max(self):
@@ -55,7 +61,7 @@ class Combatant(BaseModel):
     name: str = Field(max_length=120)
     type: Literal["character", "adversary"] = "adversary"
     sheet: Optional[str] = Field(None, max_length=300)
-    resources: Dict[str, ResourceState] = Field(default_factory=dict, max_length=24)
+    resources: Dict[str, ResourceState] = Field(default_factory=dict, max_length=MAX_COUNTERS)
     conditions: List[Condition] = Field(default_factory=list, max_length=24)
     notes: str = Field("", max_length=4000)
     defeated: bool = False
