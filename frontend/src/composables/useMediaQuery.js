@@ -10,8 +10,14 @@ export function useMediaQuery(query) {
   const matches = ref(list ? list.matches : false)
   if (!list) return matches
 
-  const onChange = (event) => { matches.value = event.matches }
-  list.addEventListener('change', onChange)
-  onBeforeUnmount(() => list.removeEventListener('change', onChange))
+  // `resize` too: an emulated viewport (devtools) can change the size without
+  // the list reporting a change.
+  const update = () => { matches.value = list.matches }
+  list.addEventListener('change', update)
+  window.addEventListener('resize', update)
+  onBeforeUnmount(() => {
+    list.removeEventListener('change', update)
+    window.removeEventListener('resize', update)
+  })
   return matches
 }
