@@ -394,12 +394,28 @@ src/
   (`useLiveScreen`) and the copyable `chart:<id>` reference. `ChartsModal`,
   `VistasModal`, `AdversariesModal`, `CharactersModal`, `EncountersModal` and
   `BattlemapsModal` are each only their editor.
+- **A note on the page.** `NoteView` is only the page: `useNoteLoader` fetches
+  the note (a request token drops an answer for a note the view already left),
+  `utils/renderNote.js` turns its markdown into safe HTML plus its headings
+  (callouts, heading ids, mermaid blocks, scrollable tables; the table of
+  contents in `RightSidebar` takes those headings), and `MarkdownBody` makes
+  that HTML live: note links routed in the app, embeds mounted
+  (`useDocEmbeds`), mermaid drawn (`useMermaid`, imported only for a note that
+  has a diagram), and for a signed-in user dice, roll tables, songs, sound
+  effects (`useInlineActions`) and images' Screen button, through one click
+  listener. It sets all of that up again whenever the HTML or the user
+  changes. `NoteEditor` (`useNoteDraft`) is the editor, with the same
+  `MarkdownBody` as its preview; a save sends the sha it loaded (`base_sha`),
+  and a 409 keeps the draft and offers "Reload their version" or "Overwrite".
+  A save calls `notifyNotesChanged()` (`useNotes.js`), on which the sidebar,
+  the tags, the graph (`useGraphData`) and the folder notes refresh. Every note
+  URL is built by `utils/paths.js` (`noteRoute`, `noteApi`, `noteIdFromHref`).
 - **Charts, vistas and battlemaps share their map mechanics.**
   `useMapViewport` (zoom, pan, screen ↔ map coordinates) was extracted from
   `ChartCanvas` and is used by `BattlemapCanvas` too; `battlemapGeometry.js` is
   pure functions (cells ↔ pixels, snapping, measuring) with its own tests.
 - **Sheets in notes.** A `` `character:<id>` `` or `` `adversary:<id>` `` link
-  becomes a placeholder like a chart's, and `NoteView`'s `mountDocEmbeds` mounts
+  becomes a placeholder like a chart's, and `MarkdownBody` (`useDocEmbeds`) mounts
   a `SheetEmbed` on it (a `DocumentEmbed` for a chart or vista) — also in the
   editor's preview. `SheetEmbed` loads the document and renders `SheetView`; a
   character's counters there are the same live ones the encounters show, and

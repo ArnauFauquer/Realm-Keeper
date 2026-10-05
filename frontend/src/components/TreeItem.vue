@@ -26,7 +26,7 @@
         <router-link
           v-for="note in item.notes"
           :key="note.id"
-          :to="'/note/' + encodeURIComponent(note.id)"
+          :to="noteRoute(note.id)"
           class="row note-link"
           active-class="active"
           :style="{ paddingLeft: `calc(${level + 1} * var(--tree-indent) + var(--space-2) + 20px)` }"
@@ -40,7 +40,7 @@
 
     <router-link
       v-else
-      :to="'/note/' + encodeURIComponent(item.id)"
+      :to="noteRoute(item.id)"
       class="row note-link"
       active-class="active"
       :style="{ paddingLeft: `calc(${level} * var(--tree-indent) + var(--space-2) + 20px)` }"
@@ -53,6 +53,8 @@
 </template>
 
 <script>
+import { noteRoute } from '@/utils/paths'
+
 export default {
   name: 'TreeItem',
   emits: ['toggle', 'note-click'],
@@ -67,6 +69,7 @@ export default {
     }
   },
   methods: {
+    noteRoute,
     hasChildren(item) {
       return (item.children && item.children.length > 0) || (item.notes && item.notes.length > 0)
     }

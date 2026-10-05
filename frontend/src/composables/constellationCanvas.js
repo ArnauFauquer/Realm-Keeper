@@ -436,7 +436,8 @@ export function createConstellationCanvas({
 
   const resizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(resize) : null
   resizeObserver?.observe(canvas)
-  simulation?.on('tick', requestDraw)
+  // Namespaced, so destroy() only removes this listener and not the caller's.
+  simulation?.on('tick.canvas', requestDraw)
   resize()
 
   return {
@@ -482,7 +483,7 @@ export function createConstellationCanvas({
       if (frame) cancelAnimationFrame(frame)
       frame = 0
       resizeObserver?.disconnect()
-      simulation?.on('tick', null)
+      simulation?.on('tick.canvas', null)
       canvas.removeEventListener('pointermove', onPointerMove)
       canvas.removeEventListener('pointerleave', onPointerLeave)
       canvas.removeEventListener('click', onClick)

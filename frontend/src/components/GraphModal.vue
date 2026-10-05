@@ -131,13 +131,14 @@
 <script>
 import * as d3 from 'd3'
 import { markRaw, shallowRef, computed } from 'vue'
-import { getCached, errorMessage } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { errorMessage } from '@/api/http'
+import { fetchGraph, useGraphData } from '@/composables/useGraphData'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
 import { drawStarfield } from '@/composables/useConstellationGraph'
 import { createConstellationCanvas, decorateNodes } from '@/composables/constellationCanvas'
 import { useLiveScreen } from '@/composables/useLiveScreen'
 import { useAuth } from '@/composables/useAuth'
+import { noteRoute } from '@/utils/paths'
 
 // Ticks run synchronously before the first paint so the graph appears almost
 // settled instead of visibly exploding outwards.
@@ -154,6 +155,7 @@ export default {
   emits: ['close'],
   setup() {
     const { user } = useAuth()
+    const { version: graphVersion } = useGraphData()
 
     // The renderer owns the layout and view, so the screen's payload is read
     // from it at push time. `source` only exists so the live composable has
@@ -175,7 +177,7 @@ export default {
     }
 
     return {
-      user, live, sendingToScreen, sendToScreen, toggleLive, stopLive,
+      user, graphVersion, live, sendingToScreen, sendToScreen, toggleLive, stopLive,
       canShowOnScreen, liveBridge, markChanged, setSource
     }
   },
@@ -210,7 +212,9 @@ export default {
   watch: {
     isOpen(newVal) {
       if (newVal) {
-        if (this.nodes.length === 0) {
+        // A note saved since the graph was drawn may have added or removed
+        // links: fetch it again rather than reopen the old one.
+        if (this.nodes.length === 0 || this.fetchedVersion !== this.graphVersion) {
           this.fetchGraphData()
         } else {
           this.$nextTick(() => {
@@ -226,6 +230,7 @@ export default {
     // Deliberately not in data(): the simulation mutates node positions on
     // every tick and Vue would wrap all of that in reactive proxies.
     this.graph = null
+    this.fetchedVersion = -1
   },
   mounted() {
     if (this.isOpen) {
@@ -241,14 +246,9 @@ export default {
       this.error = null
       
       try {
-        const data = await getCached(`${apiUrl}/api/graph/all`, {
-          useCache: true,
-          cacheTtl: 600 // 10 minutos
-        })
-
-        if (!data || !data.nodes || !data.links) {
-          throw new Error("Invalid graph data format returned from API")
-        }
+        const version = this.graphVersion
+        const data = await fetchGraph()
+        this.fetchedVersion = version
 
         // markRaw: d3 owns these objects and writes x/y into them every tick.
         this.nodes = markRaw(data.nodes.map(node => ({ ...node })))
@@ -341,7 +341,7 @@ export default {
     
     onNodeClick(node) {
       this.closeModal()
-      this.$router.push(`/note/${encodeURIComponent(node.id)}`)
+      this.$router.push(noteRoute(node.id))
     },
     
     closeModal() {

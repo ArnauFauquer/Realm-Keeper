@@ -94,7 +94,7 @@ describe('SearchModal — everything, not only notes', () => {
     const wrapper = mountModal()
     expect(search).not.toHaveBeenCalled()
     await wrapper.find('input.search-input').trigger('keydown', { key: 'Enter' })
-    expect(push).toHaveBeenCalledWith('/note/Places%2FCienaga')
+    expect(push).toHaveBeenCalledWith('/note/Places/Cienaga')
     wrapper.unmount()
   })
 })
