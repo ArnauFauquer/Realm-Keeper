@@ -210,16 +210,23 @@ describe('createConstellationCanvas', () => {
 
   it('redraws on simulation ticks and stops after destroy', async () => {
     ctx.clearRect.mockClear()
-    simulation.on('tick')()
+    simulation.on('tick.canvas')()
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(ctx.clearRect).toHaveBeenCalledTimes(1)
 
     renderer.destroy()
-    expect(simulation.on('tick')).toBeUndefined()
+    expect(simulation.on('tick.canvas')).toBeUndefined()
     ctx.clearRect.mockClear()
     renderer.requestDraw()
     await new Promise(resolve => setTimeout(resolve, 5))
     expect(ctx.clearRect).not.toHaveBeenCalled()
+  })
+
+  it('leaves the caller\'s own tick listeners in place on destroy', () => {
+    const own = vi.fn()
+    simulation.on('tick', own)
+    renderer.destroy()
+    expect(simulation.on('tick')).toBe(own)
   })
 
   it('pins a dragged node to the pointer in world coordinates and releases it after', () => {
