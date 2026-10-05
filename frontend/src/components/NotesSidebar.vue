@@ -200,7 +200,11 @@
       </footer>
     </aside>
 
+    <!-- Each modal is its own chunk, fetched the first time it can open:
+         search and the graph when first opened, the rest (all behind login)
+         once someone is signed in. -->
     <SearchModal
+      v-if="searchUsed"
       ref="searchModalRef"
       :is-open="isSearchModalOpen"
       :notes="notes"
@@ -208,25 +212,28 @@
       @close="isSearchModalOpen = false"
     />
     <GraphModal
+      v-if="graphUsed"
       :is-open="isGraphModalOpen"
       @close="closeGraphModal"
     />
-    <PlayerModal
-      :is-open="isPlayerModalOpen"
-      @close="isPlayerModalOpen = false"
-    />
-    <ChartsModal :notes="notes" />
-    <VistasModal />
-    <EncountersModal />
-    <BattlemapsModal />
-    <CharactersModal />
-    <AdversariesModal />
-    <ObservatoryModal
-      :is-open="isObservatoryOpen"
-      :start-path="observatoryPath || ''"
-      :start-kind="observatoryKind"
-      @close="closeObservatory"
-    />
+    <template v-if="user">
+      <PlayerModal
+        :is-open="isPlayerModalOpen"
+        @close="isPlayerModalOpen = false"
+      />
+      <ChartsModal :notes="notes" />
+      <VistasModal />
+      <EncountersModal />
+      <BattlemapsModal />
+      <CharactersModal />
+      <AdversariesModal />
+      <ObservatoryModal
+        :is-open="isObservatoryOpen"
+        :start-path="observatoryPath || ''"
+        :start-kind="observatoryKind"
+        @close="closeObservatory"
+      />
+    </template>
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
       <div class="rk-dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-title">
@@ -264,21 +271,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import TreeItem from './TreeItem.vue'
-import SearchModal from './SearchModal.vue'
-import GraphModal from './GraphModal.vue'
-import PlayerModal from './PlayerModal.vue'
-import ChartsModal from './ChartsModal.vue'
-import VistasModal from './VistasModal.vue'
-import EncountersModal from './EncountersModal.vue'
-import BattlemapsModal from './BattlemapsModal.vue'
-import CharactersModal from './CharactersModal.vue'
-import AdversariesModal from './AdversariesModal.vue'
-import ObservatoryModal from './ObservatoryModal.vue'
 import { appVersion } from '../config/env'
-import { useNotes } from '@/composables/useNotes'
+import { useNotes, useNotesChanged } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
@@ -287,6 +284,19 @@ import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
 import { noteRoute } from '@/utils/noteUrls'
+
+// Kept out of the main bundle: most readers never open them, and a reader
+// who isn't signed in can't open most of them at all.
+const SearchModal = defineAsyncComponent(() => import('./SearchModal.vue'))
+const GraphModal = defineAsyncComponent(() => import('./GraphModal.vue'))
+const PlayerModal = defineAsyncComponent(() => import('./PlayerModal.vue'))
+const ChartsModal = defineAsyncComponent(() => import('./ChartsModal.vue'))
+const VistasModal = defineAsyncComponent(() => import('./VistasModal.vue'))
+const EncountersModal = defineAsyncComponent(() => import('./EncountersModal.vue'))
+const BattlemapsModal = defineAsyncComponent(() => import('./BattlemapsModal.vue'))
+const CharactersModal = defineAsyncComponent(() => import('./CharactersModal.vue'))
+const AdversariesModal = defineAsyncComponent(() => import('./AdversariesModal.vue'))
+const ObservatoryModal = defineAsyncComponent(() => import('./ObservatoryModal.vue'))
 
 const router = useRouter()
 const { user, login, logout } = useAuth()
@@ -346,14 +356,24 @@ const {
   hasMore,
   isLoadingMore,
   fetchNotes,
+  refreshNotes,
   loadMoreNotes,
-  fetchTags,
-  resetPagination
+  fetchTags
 } = useNotes()
+
+// A note saved or created here changes the tree and the tags.
+watch(useNotesChanged(), () => {
+  refreshNotes()
+  fetchTags()
+})
 
 const expandedFolders = ref(new Set())
 const isOpen = ref(false)
 const isSearchModalOpen = ref(false)
+const searchUsed = ref(false)
+watch(isSearchModalOpen, (open) => { if (open) searchUsed.value = true })
+const graphUsed = ref(false)
+watch(isGraphModalOpen, (open) => { if (open) graphUsed.value = true }, { immediate: true })
 // Search opens from anywhere with Ctrl+K (Cmd+K on a Mac), as in most apps.
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 const SEARCH_SHORTCUT = IS_MAC ? '⌘K' : 'Ctrl K'
@@ -371,13 +391,20 @@ const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
 let scrollObserver = null
 
+// The search modal may still be on its way (its chunk loads on first open):
+// the tag waits for it.
+let pendingTag = null
+const applyPendingTag = () => {
+  if (pendingTag === null || !searchModalRef.value) return
+  searchModalRef.value.addExternalTag(pendingTag)
+  pendingTag = null
+}
+watch(searchModalRef, applyPendingTag)
+
 const openSearchWithTag = (tag) => {
+  pendingTag = tag
   isSearchModalOpen.value = true
-  nextTick(() => {
-    if (searchModalRef.value) {
-      searchModalRef.value.addExternalTag(tag)
-    }
-  })
+  nextTick(applyPendingTag)
 }
 
 defineExpose({
@@ -437,14 +464,22 @@ const toggleFolder = (path) => {
   expandedFolders.value = newExpanded
 }
 
+// While the drawer is open on a phone, the page behind it must not scroll.
+// The body never scrolls here (#app is fixed to the viewport): the note
+// scrolls in .main-content, so that is what gets locked.
+const lockPageScroll = (locked) => {
+  const scroller = document.querySelector('.main-content')
+  if (scroller) scroller.style.overflowY = locked ? 'hidden' : ''
+}
+
 const toggleSidebar = () => {
   isOpen.value = !isOpen.value
-  document.body.style.overflow = isOpen.value ? 'hidden' : ''
+  lockPageScroll(isOpen.value)
 }
 
 const closeSidebar = () => {
   isOpen.value = false
-  document.body.style.overflow = ''
+  lockPageScroll(false)
 }
 
 const setupScrollObserver = () => {
@@ -470,8 +505,10 @@ const setupScrollObserver = () => {
   })
 }
 
-watch(notes, () => {
-  setupScrollObserver()
+// An IntersectionObserver only reports changes, and the sentinel never
+// leaves the view: re-arm it after each page so the next one loads too.
+watch([() => notes.value.length, isLoadingMore], () => {
+  if (!isLoadingMore.value) setupScrollObserver()
 })
 
 onMounted(() => {
@@ -481,7 +518,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
-  document.body.style.overflow = ''
+  lockPageScroll(false)
   if (scrollObserver) {
     scrollObserver.disconnect()
   }
