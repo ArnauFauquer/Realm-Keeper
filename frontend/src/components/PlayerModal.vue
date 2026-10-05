@@ -34,11 +34,11 @@
           <div v-if="loadingAlbums" class="album-skeleton" role="status" aria-label="Loading albums">
             <div v-for="n in 5" :key="n" class="rk-skeleton album-skeleton-row"></div>
           </div>
-          <div v-else-if="error && !albums.length" class="rk-alert" role="alert">
+          <div v-else-if="albumsError && !albums.length" class="rk-alert" role="alert">
             <span class="mdi mdi-alert-circle-outline"></span>
-            <span>{{ error }}</span>
+            <span>{{ albumsError }}</span>
           </div>
-          <ul v-else ref="albumListRef" class="album-items">
+          <ul v-else class="album-items">
             <li
               v-for="album in albums"
               :key="album"
@@ -51,15 +51,12 @@
               @drop.prevent="drop(album, onMove)"
             >
               <span class="mdi mdi-folder-music-outline"></span>
-              <input
+              <InlineRename
                 v-if="renamingAlbum === album"
-                v-model="renameValue"
-                class="album-rename-input"
-                aria-label="Album name"
-                @click.stop
-                @keyup.enter="submitRenameAlbum(album)"
-                @keyup.esc="renamingAlbum = null"
-                @blur="submitRenameAlbum(album)"
+                :initial="album"
+                label="Album name"
+                @submit="submitRenameAlbum(album, $event)"
+                @cancel="renamingAlbum = null"
               />
               <span v-else class="album-name">{{ album }}</span>
               <button
@@ -87,6 +84,16 @@
         </aside>
 
         <section class="track-panel">
+          <!-- Something the GM did didn't work (an upload, a rename, a track
+               that won't play): said here, above the list, which stays. -->
+          <div v-if="shownError" class="rk-alert action-error" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span class="action-error-text">{{ shownError }}</span>
+            <button class="rk-icon-btn rk-icon-btn--sm action-error-dismiss" aria-label="Dismiss" title="Dismiss" @click="dismissError">
+              <span class="mdi mdi-close"></span>
+            </button>
+          </div>
+
           <div v-if="!currentAlbum" class="rk-empty empty-state">
             <span class="mdi mdi-music-note-outline"></span>
             <p>Select or create an album to see its tracks.</p>
@@ -110,23 +117,23 @@
             <div v-if="loadingTracks" class="track-skeleton" role="status" aria-label="Loading tracks">
               <div v-for="n in 6" :key="n" class="rk-skeleton track-skeleton-row"></div>
             </div>
-            <div v-else-if="error" class="rk-alert" role="alert">
+            <div v-else-if="tracksError" class="rk-alert" role="alert">
               <span class="mdi mdi-alert-circle-outline"></span>
-              <span>{{ error }}</span>
+              <span>{{ tracksError }}</span>
             </div>
-            <ul v-else ref="trackListRef" class="track-items">
+            <ul v-else class="track-items">
               <li
                 v-for="(track, idx) in tracks"
                 :key="track.key"
                 class="track-item"
                 :class="{ active: idx === currentTrackIndex }"
                 draggable="true"
-                @dblclick="renamingTrack !== track.key && playTrackAt(idx)"
+                @dblclick="renamingTrack !== track.key && play(idx)"
                 @dragstart="startDrag(track)"
                 @dragend="endDrag"
               >
                 <div class="track-play-group">
-                  <button class="track-play-btn" :title="`Play ${track.name}`" :aria-label="`Play ${track.name}`" @click="playTrackAt(idx)">
+                  <button class="track-play-btn" :title="`Play ${track.name}`" :aria-label="`Play ${track.name}`" @click="play(idx)">
                     <span class="mdi" :class="idx === currentTrackIndex && isPlaying ? 'mdi-volume-high' : 'mdi-play'"></span>
                   </button>
                   <button
@@ -140,15 +147,12 @@
                     <span class="mdi" :class="sfxPlaying[track.key] ? 'mdi-stop' : 'mdi-waveform'"></span>
                   </button>
                 </div>
-                <input
+                <InlineRename
                   v-if="renamingTrack === track.key"
-                  v-model="trackRenameValue"
-                  class="track-rename-input"
-                  aria-label="Track name"
-                  @click.stop
-                  @keyup.enter="submitRenameTrack(track)"
-                  @keyup.esc="renamingTrack = null"
-                  @blur="submitRenameTrack(track)"
+                  :initial="track.name"
+                  label="Track name"
+                  @submit="submitRenameTrack(track, $event)"
+                  @cancel="renamingTrack = null"
                 />
                 <span v-else class="track-name">{{ track.name }}</span>
                 <span class="track-size">{{ formatSize(track.size) }}</span>
@@ -206,23 +210,7 @@
           <span class="track-title">{{ currentTrack ? currentTrack.name : 'Nothing playing' }}</span>
         </div>
 
-        <div class="playback-controls">
-          <button class="rk-icon-btn" :class="{ 'is-active': isShuffle }" title="Shuffle" aria-label="Shuffle" :aria-pressed="isShuffle" @click="toggleShuffle">
-            <span class="mdi mdi-shuffle-variant"></span>
-          </button>
-          <button class="rk-icon-btn" title="Previous" aria-label="Previous track" @click="playPrev">
-            <span class="mdi mdi-skip-previous"></span>
-          </button>
-          <button class="rk-icon-btn play-btn" title="Play/Pause" :aria-label="isPlaying ? 'Pause' : 'Play'" @click="togglePlay">
-            <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
-          </button>
-          <button class="rk-icon-btn" title="Next" aria-label="Next track" @click="playNext">
-            <span class="mdi mdi-skip-next"></span>
-          </button>
-          <button class="rk-icon-btn" :class="{ 'is-active': isRepeat }" title="Repeat" aria-label="Repeat" :aria-pressed="isRepeat" @click="toggleRepeat">
-            <span class="mdi mdi-repeat"></span>
-          </button>
-        </div>
+        <PlayerTransport />
 
         <div class="seek-row">
           <span class="time">{{ formatTime(progress) }}</span>
@@ -273,7 +261,9 @@
 </template>
 
 <script setup>
-import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import InlineRename from '@/components/InlineRename.vue'
+import PlayerTransport from '@/components/PlayerTransport.vue'
 import { usePlayer } from '@/composables/usePlayer'
 import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
@@ -288,10 +278,9 @@ const emit = defineEmits(['close'])
 
 const {
   albums, currentAlbum, tracks, currentTrack, currentTrackIndex,
-  isPlaying, isShuffle, isRepeat, loadingAlbums, loadingTracks, error,
+  isPlaying, loadingAlbums, loadingTracks, albumsError, tracksError, playError,
   progress, duration, volume,
-  loadAlbums, selectAlbum, playTrackAt, togglePlay, playNext, playPrev,
-  toggleShuffle, toggleRepeat, seek, setVolume,
+  loadAlbums, selectAlbum, playTrackAt, seek, setVolume,
   createAlbum, deleteAlbum, renameAlbum, uploadTrack, deleteTrack: removeTrack, moveTrack, renameTrack
 } = usePlayer()
 const {
@@ -300,12 +289,33 @@ const {
 } = useSoundEffects()
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
 
+// What went wrong with something the GM did, shown above the track list
+// until dismissed; a load error of the list itself is shown in its place
+// (albumsError, tracksError). A track that wouldn't play is the player's
+// own playError.
+const actionError = ref(null)
+const shownError = computed(() => actionError.value || playError.value)
+
+function failed(e, message) {
+  actionError.value = errorMessage(e, message)
+}
+
+function dismissError() {
+  actionError.value = null
+  playError.value = null
+}
+
+// A track that won't play is already in playError.
+function play(index) {
+  playTrackAt(index).catch(() => {})
+}
+
 async function onMove(track, destAlbum) {
   if (destAlbum === currentAlbum.value) return
   try {
     await moveTrack(track, destAlbum)
   } catch (e) {
-    error.value = errorMessage(e, 'Could not move the track.')
+    failed(e, 'Could not move the track.')
   }
 }
 
@@ -315,11 +325,7 @@ const newAlbumInputRef = ref(null)
 const pendingDeleteAlbum = ref(null)
 const uploading = ref([])
 const renamingAlbum = ref(null)
-const renameValue = ref('')
-const albumListRef = ref(null)
 const renamingTrack = ref(null)
-const trackRenameValue = ref('')
-const trackListRef = ref(null)
 const { copiedKey: copiedTrack, copy } = useCopyToClipboard()
 
 let albumsLoaded = false
@@ -347,7 +353,7 @@ async function submitNewAlbum() {
     newAlbumName.value = ''
     showNewAlbumInput.value = false
   } catch (e) {
-    error.value = errorMessage(e, 'Could not create the album.')
+    failed(e, 'Could not create the album.')
   }
 }
 
@@ -360,29 +366,21 @@ async function confirmDeleteAlbum(album) {
   try {
     await deleteAlbum(album)
   } catch (e) {
-    error.value = errorMessage(e, 'Could not delete the album.')
+    failed(e, 'Could not delete the album.')
   }
 }
 
 function startRenameAlbum(album) {
   renamingAlbum.value = album
-  renameValue.value = album
-  nextTick(() => {
-    const el = albumListRef.value?.querySelector('.album-rename-input')
-    el?.focus()
-    el?.select()
-  })
 }
 
-async function submitRenameAlbum(oldName) {
-  if (renamingAlbum.value !== oldName) return
-  const newName = renameValue.value.trim()
+async function submitRenameAlbum(oldName, newName) {
   renamingAlbum.value = null
   if (!newName || newName === oldName) return
   try {
     await renameAlbum(oldName, newName)
   } catch (e) {
-    error.value = errorMessage(e, 'Could not rename the album.')
+    failed(e, 'Could not rename the album.')
   }
 }
 
@@ -414,7 +412,7 @@ async function toggleSfx(key) {
   try {
     await toggleEffect(key)
   } catch {
-    error.value = 'Could not play the effect.'
+    actionError.value = 'Could not play the effect.'
   }
 }
 
@@ -422,45 +420,41 @@ async function deleteTrack(track) {
   try {
     await removeTrack(track)
   } catch (e) {
-    error.value = errorMessage(e, 'Could not delete the track.')
+    failed(e, 'Could not delete the track.')
   }
 }
 
 function startRenameTrack(track) {
   renamingTrack.value = track.key
-  trackRenameValue.value = track.name
-  nextTick(() => {
-    const el = trackListRef.value?.querySelector('.track-rename-input')
-    el?.focus()
-    el?.select()
-  })
 }
 
-async function submitRenameTrack(track) {
-  if (renamingTrack.value !== track.key) return
-  const newName = trackRenameValue.value.trim()
+async function submitRenameTrack(track, newName) {
   renamingTrack.value = null
   if (!newName || newName === track.name) return
   try {
     await renameTrack(track, newName)
   } catch (e) {
-    error.value = errorMessage(e, 'Could not rename the track.')
+    failed(e, 'Could not rename the track.')
   }
 }
 
 let uploadEntryId = 0
 
+// The album is taken once, when the files are picked: browsing another one
+// while the batch uploads doesn't send the rest there.
 async function onFilesSelected(event) {
   const files = Array.from(event.target.files || [])
   event.target.value = ''
+  const album = currentAlbum.value
   for (const file of files) {
     const id = ++uploadEntryId
-    const entry = { id, name: file.name, progress: 0 }
+    // Reactive, so the bar follows the progress the upload reports into it.
+    const entry = reactive({ id, name: file.name, progress: 0 })
     uploading.value.push(entry)
     try {
-      await uploadTrack(file, (p) => { entry.progress = p })
+      await uploadTrack(file, (p) => { entry.progress = p }, album)
     } catch (e) {
-      error.value = errorMessage(e, `Error uploading ${file.name}.`)
+      failed(e, `Error uploading ${file.name}.`)
     } finally {
       uploading.value = uploading.value.filter(u => u.id !== id)
     }
@@ -582,27 +576,6 @@ function formatTime(seconds) {
   font-size: var(--text-sm);
 }
 
-.album-rename-input,
-.track-rename-input {
-  flex: 1;
-  min-width: 0;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-sm);
-  background: var(--surface-sunken);
-  color: var(--text-primary);
-  font-size: var(--text-sm);
-}
-
-.album-rename-input:focus,
-.album-rename-input:focus-visible,
-.track-rename-input:focus,
-.track-rename-input:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-a20);
-  border-radius: var(--radius-sm);
-}
-
 /* Hidden with opacity only, so keyboard users can still Tab to them. */
 .album-hover-btn {
   opacity: 0;
@@ -648,6 +621,21 @@ function formatTime(seconds) {
 
 .empty-state {
   flex: 1;
+}
+
+.action-error {
+  flex-shrink: 0;
+  align-items: center;
+  margin-bottom: var(--space-4);
+}
+
+.action-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.action-error-dismiss {
+  color: inherit;
 }
 
 .track-panel-header {
@@ -891,24 +879,6 @@ function formatTime(seconds) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.playback-controls {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-}
-
-.play-btn {
-  border-radius: var(--radius-full);
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
-.play-btn:hover:not(:disabled) {
-  background: var(--accent-strong-hover);
-  color: var(--accent-contrast);
 }
 
 .seek-row {

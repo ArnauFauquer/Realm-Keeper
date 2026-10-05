@@ -4,7 +4,8 @@ import { buildDie } from './diceGeometries'
 import { buildFaceMaterials } from './diceTextures'
 import { convexShapeForGeometry } from './dicePhysics'
 import { themeForKind } from './diceTheme'
-import { droppedIndices } from '@/utils/diceNotation'
+import { themeKey } from './diceAssets'
+import { MAX_DICE, SUPPORTED_SIDES, rollResult } from '@/utils/diceNotation'
 
 const UP = new THREE.Vector3(0, 1, 0)
 // If the winning and runner-up face are this close in "up-ness", the die is
@@ -42,11 +43,12 @@ const ASSIST_DAMPING = 0.7
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5))
 
 function spawnDie(world, { sides, variant, index, theme }) {
-  const { geometry, faceTable, materialLabels } = buildDie(sides, variant)
-  const materials = buildFaceMaterials(materialLabels, theme)
+  const cacheKey = variant ? `${sides}-${variant}` : `${sides}`
+  // Shared by every die of the kind (and colour) in this world, see diceAssets.js.
+  const { geometry, faceTable, materialLabels } = world.assets.get(`die:${cacheKey}`, () => buildDie(sides, variant))
+  const materials = world.assets.get(`faces:${cacheKey}:${themeKey(theme)}`, () => buildFaceMaterials(materialLabels, theme))
   const mesh = new THREE.Mesh(geometry, materials)
 
-  const cacheKey = variant ? `${sides}-${variant}` : `${sides}`
   const shape = convexShapeForGeometry(cacheKey, geometry)
 
   const angle = index * GOLDEN_ANGLE + (Math.random() - 0.5) * 0.6
@@ -229,26 +231,15 @@ export async function rollParsedFormula(world, parsed, theme) {
     await waitForSettle(world, entries, { timeoutMs: 2500, assistAfter: NUDGE_ASSIST_AFTER })
   }
 
-  let total = parsed.flatModifier
-  const groups = groupPlans.map(plan => {
-    const rolls = plan.dice.map(d => {
-      if (d.pair) {
-        const tensValue = readFace(d.pair[0]).value
-        const unitsValue = readFace(d.pair[1]).value
-        return (tensValue === 0 && unitsValue === 0) ? 100 : tensValue + unitsValue
-      }
-      return readFace(d.single).value
-    })
-    const dropped = droppedIndices(rolls, plan.keep)
-    const kept = rolls.filter((v, i) => !dropped.includes(i))
-    total += kept.reduce((a, b) => a + b, 0) * plan.sign
-    const group = { sides: plan.sides, sign: plan.sign, rolls }
-    if (plan.kind) group.kind = plan.kind
-    if (plan.keep) group.dropped = dropped
-    return group
-  })
-
-  return { total, groups, flatModifier: parsed.flatModifier }
+  const rolls = groupPlans.map(plan => plan.dice.map(d => {
+    if (d.pair) {
+      const tensValue = readFace(d.pair[0]).value
+      const unitsValue = readFace(d.pair[1]).value
+      return (tensValue === 0 && unitsValue === 0) ? 100 : tensValue + unitsValue
+    }
+    return readFace(d.single).value
+  }))
+  return rollResult(parsed.terms, rolls, parsed.flatModifier)
 }
 
 /** Splits a percentile total back into its tens/units dice values (the
@@ -282,13 +273,22 @@ function quaternionForValue(faceTable, value) {
  * reading whatever it happens to settle on. `groups` is the same shape
  * `rollParsedFormula` returns (`[{sides, sign, rolls: [values]}]`), where
  * each `rolls[i]` is the final value already computed by the original roll.
+ *
+ * The groups arrive over the network, so they are taken with care: at most
+ * MAX_DICE dice are thrown, and a die of a size this table can't build is
+ * skipped instead of throwing halfway, with dice already in the air. Aborting
+ * `signal` (a newer roll took over) stops the tumble where it is and leaves
+ * the dice unsnapped.
  */
-export async function replayGroups(world, groups, theme, { tumbleMs = 1700 } = {}) {
+export async function replayGroups(world, groups, theme, { tumbleMs = 1700, signal } = {}) {
   const targets = []
   let index = 0
 
-  groups.forEach(group => {
-    group.rolls.forEach(value => {
+  for (const group of groups || []) {
+    if (!SUPPORTED_SIDES.includes(group?.sides) || !Array.isArray(group.rolls)) continue
+    const dicePerRoll = group.sides === 100 ? 2 : 1
+    for (const value of group.rolls) {
+      if (index + dicePerRoll > MAX_DICE) break
       if (group.sides === 100) {
         const { tens, units } = decomposePercentile(value)
         const tensDie = spawnDie(world, { sides: 100, variant: 'tens', index: index++, theme })
@@ -298,10 +298,11 @@ export async function replayGroups(world, groups, theme, { tumbleMs = 1700 } = {
         const die = spawnDie(world, { sides: group.sides, index: index++, theme: themeForKind(group.kind, theme) })
         targets.push({ entry: die, value })
       }
-    })
-  })
+    }
+  }
 
-  await tumble(world, tumbleMs)
+  await tumble(world, tumbleMs, signal)
+  if (signal?.aborted) return
 
   targets.forEach(({ entry, value }) => {
     const quat = quaternionForValue(entry.faceTable, value)
@@ -325,28 +326,50 @@ export async function replayGroups(world, groups, theme, { tumbleMs = 1700 } = {
  * remaining steps in one go, so the dice always end up actually fallen and
  * settled - never left floating at their spawn height - before the values
  * get force-corrected onto their predetermined faces.
+ *
+ * Aborting `signal` ends it at once, without the fast-forward: the world is
+ * about to be cleared for another roll, and a loop left running would keep
+ * stepping and drawing the next roll's dice alongside its own.
  */
-function tumble(world, durationMs) {
+function tumble(world, durationMs, signal) {
   const stepDt = 1 / 60
   const totalSteps = Math.round((durationMs / 1000) / stepDt)
+  const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
   let stepsDone = 0
   let finished = false
+  let frameId = null
+  let timer = null
 
   return new Promise(resolve => {
-    function finish() {
+    function end() {
       if (finished) return
       finished = true
+      clearTimeout(timer)
+      if (frameId != null) cancelAnimationFrame(frameId)
+      signal?.removeEventListener('abort', end)
+      resolve()
+    }
+
+    function finish() {
+      if (finished) return
       while (stepsDone < totalSteps) {
         world.stepAndRender(stepDt)
         stepsDone++
       }
-      resolve()
+      end()
     }
 
-    const startTime = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+    if (signal?.aborted) {
+      end()
+      return
+    }
+    signal?.addEventListener('abort', end)
+
+    const startTime = now()
     function frame() {
+      frameId = null
       if (finished) return
-      const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startTime
+      const elapsed = now() - startTime
       const targetSteps = Math.min(totalSteps, Math.floor((elapsed / 1000) / stepDt))
       while (stepsDone < targetSteps) {
         world.stepAndRender(stepDt)
@@ -356,9 +379,9 @@ function tumble(world, durationMs) {
         finish()
         return
       }
-      requestAnimationFrame(frame)
+      frameId = requestAnimationFrame(frame)
     }
-    requestAnimationFrame(frame)
-    setTimeout(finish, durationMs + 250)
+    if (typeof requestAnimationFrame === 'function') frameId = requestAnimationFrame(frame)
+    timer = setTimeout(finish, durationMs + 250)
   })
 }

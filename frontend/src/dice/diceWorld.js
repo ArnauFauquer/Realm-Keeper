@@ -1,5 +1,7 @@
 import * as THREE from 'three'
 import * as CANNON from 'cannon-es'
+import { createAssetCache } from './diceAssets'
+import { clearShapeCache } from './dicePhysics'
 
 // The tray follows the viewport's shape: its half-extent along the screen's
 // shorter side is fixed and the longer side stretches with the aspect ratio
@@ -28,6 +30,13 @@ function trayHalfFor(aspect) {
     : { x: TRAY_SHORT_HALF_PORTRAIT, z: TRAY_SHORT_HALF_PORTRAIT * stretch }
 }
 
+// Past 2x the extra pixels cost more GPU memory than they add sharpness.
+const MAX_PIXEL_RATIO = 2
+
+function pixelRatio() {
+  return Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO)
+}
+
 /** Places the camera far enough back that the whole tray fits the viewport
  * along both axes. */
 function frameTray(camera, half) {
@@ -44,8 +53,11 @@ function frameTray(camera, half) {
  * Owns the three.js scene/camera/renderer and the cannon-es physics world
  * (gravity + a static open-top "tray" that keeps thrown dice in view), and
  * the per-frame loop that steps physics and syncs each die's mesh to its
- * body. One instance is created per roll session by useDiceRoller and
- * disposed once the overlay hides.
+ * body. One world per canvas, kept for as long as the canvas is: the dice
+ * overlay's (useDiceRoller) and the screen's (ScreenView). Between rolls it
+ * only clears its dice and stops its loop, so shaders and the shared die
+ * resources (diceAssets.js) are built once; `dispose` frees everything when
+ * the canvas goes away.
  */
 export function createDiceWorld(canvas) {
   const scene = new THREE.Scene()
@@ -55,7 +67,40 @@ export function createDiceWorld(canvas) {
   frameTray(camera, trayHalf)
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true })
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  renderer.setPixelRatio(pixelRatio())
+  const assets = createAssetCache()
+
+  // The browser can take the GPU context back (memory pressure, a driver
+  // reset, a phone backgrounding the tab). three.js keeps the context
+  // restorable and skips drawing meanwhile; the physics doesn't need it, so a
+  // roll in flight still lands on a result. Once restored, the dice are drawn
+  // again where they are - a finished roll has no loop left to do it.
+  let contextLost = false
+  function onContextLost() {
+    contextLost = true
+  }
+  function onContextRestored() {
+    contextLost = false
+    render()
+  }
+  canvas.addEventListener('webglcontextlost', onContextLost)
+  canvas.addEventListener('webglcontextrestored', onContextRestored)
+
+  // Moving the window to a screen of another density changes the pixel ratio
+  // without always resizing the canvas: follow it, or the dice go blurry (or
+  // cost 4x the pixels). The query matches one ratio, so it is renewed each time.
+  let ratioQuery = null
+  function watchPixelRatio() {
+    ratioQuery?.removeEventListener('change', onPixelRatioChange)
+    ratioQuery = window.matchMedia?.(`(resolution: ${window.devicePixelRatio || 1}dppx)`) ?? null
+    ratioQuery?.addEventListener('change', onPixelRatioChange)
+  }
+  function onPixelRatioChange() {
+    renderer.setPixelRatio(pixelRatio())
+    watchPixelRatio()
+    render()
+  }
+  watchPixelRatio()
 
   scene.add(new THREE.HemisphereLight(0xe6e0ff, 0x1a1230, 1.15))
   const keyLight = new THREE.DirectionalLight(0xffffff, 1.0)
@@ -118,7 +163,7 @@ export function createDiceWorld(canvas) {
   }
 
   function render() {
-    renderer.render(scene, camera)
+    if (!contextLost) renderer.render(scene, camera)
   }
 
   // Physics-step and render/sync, kept separable so a scripted replay (see
@@ -157,20 +202,11 @@ export function createDiceWorld(canvas) {
     entries.push({ mesh, body })
   }
 
-  function disposeMesh(mesh) {
-    mesh.geometry?.dispose?.()
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    materials.forEach(m => {
-      m?.map?.dispose?.()
-      m?.dispose?.()
-    })
-  }
-
+  // A die's geometry and materials belong to `assets` and outlive it.
   function clearDice() {
     entries.slice().forEach(({ mesh, body }) => {
       scene.remove(mesh)
       world.removeBody(body)
-      disposeMesh(mesh)
     })
     entries.length = 0
   }
@@ -182,17 +218,23 @@ export function createDiceWorld(canvas) {
     layoutTray()
     frameTray(camera, trayHalf)
     camera.updateProjectionMatrix()
+    if (renderer.getPixelRatio() !== pixelRatio()) renderer.setPixelRatio(pixelRatio())
     renderer.setSize(width, height, false)
   }
 
   function dispose() {
     stop()
     clearDice()
+    assets.dispose()
+    clearShapeCache()
+    ratioQuery?.removeEventListener('change', onPixelRatioChange)
+    canvas.removeEventListener('webglcontextlost', onContextLost)
+    canvas.removeEventListener('webglcontextrestored', onContextRestored)
     renderer.dispose()
   }
 
   return {
-    scene, camera, world, addDie, clearDice, start, stop, resize, dispose,
+    scene, camera, world, assets, addDie, clearDice, start, stop, resize, dispose,
     stepAndRender, syncMeshes, render,
     trayHalf
   }
