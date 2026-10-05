@@ -1,12 +1,13 @@
 // What goes into an encounter when a sheet is added: the same copy whether the
 // sheet is a catalog entry (GET /api/sheets) or one a note is showing.
+import { counterStart } from './sheet'
 
 const LIBRARY_PREFIX = '/api/observatory/images/'
 
 /** A counter as the live documents keep it: its definition plus where it stands. */
 export function counterFromSpec(spec) {
   return {
-    current: spec.start ?? spec.max,
+    current: counterStart(spec),
     max: spec.max,
     min: spec.min ?? 0,
     color: spec.color ?? null,

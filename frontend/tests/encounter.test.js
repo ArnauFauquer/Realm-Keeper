@@ -19,6 +19,11 @@ describe('counterFromSpec', () => {
     expect(counterFromSpec({ max: 3, start: 0, min: 0 }).current).toBe(0)
     expect(counterFromSpec({ max: 3, start: 2, color: 'gold' })).toMatchObject({ current: 2, color: 'gold' })
   })
+
+  it('starts within the range, as the backend starts a character (sheet_docs.py)', () => {
+    expect(counterFromSpec({ max: 3, start: 9 }).current).toBe(3)
+    expect(counterFromSpec({ max: 3, min: 1, start: -2 }).current).toBe(1)
+  })
 })
 
 describe('combatantsFromSheet', () => {

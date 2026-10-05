@@ -71,7 +71,7 @@
           <slot v-for="r in section.counterList" :key="r.name" name="counter" :resource="r">
             <ResourceCounter
               :name="r.name"
-              :current="r.start ?? r.max"
+              :current="counterStart(r)"
               :max="r.max"
               :min="r.min"
               :display="r.style"
@@ -160,6 +160,7 @@ import { createMarkdown } from '@/utils/markdown'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { parseDiceFormula } from '@/utils/diceNotation'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { counterStart } from '@/utils/sheet'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 
 // A sheet, drawn: `sheet` is the normalized shape from utils/sheet.js (or the

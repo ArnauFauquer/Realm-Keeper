@@ -283,6 +283,14 @@ export function parseSheetSource(source, document = null) {
   }
 }
 
+/** Where a counter of a sheet starts: its `start`, or its max, within its
+ * range. The parser keeps `start` as written (`{ max: 3, start: 9 }`), and the
+ * backend starts such a counter at 3 (services/sheet_docs.py), so this does too. */
+export function counterStart(spec) {
+  const min = spec.min ?? 0
+  return Math.max(min, Math.min(spec.max, spec.start ?? spec.max))
+}
+
 /** The sheet a character or adversary document describes: { sheet, warnings }. */
 export function parseSheetDoc(doc, type) {
   return parseSheetSource(doc.source || '', { name: doc.name || '', id: doc.id, type })
