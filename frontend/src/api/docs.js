@@ -1,12 +1,6 @@
-import axios from 'axios'
 import { apiUrl } from '@/config/env'
-
-// Document ids and folder paths can be several segments deep ("goblins/cave-
-// ambush") — encode each segment on its own so the "/" stays a path separator
-// instead of being escaped to %2F.
-export function encodePath(id) {
-  return id.split('/').map(encodeURIComponent).join('/')
-}
+import { encodePath } from '@/utils/paths'
+import { httpClient as client } from './http'
 
 /**
  * The client for one kind of document (see backend routes/doc_router.py):
@@ -19,7 +13,6 @@ export function encodePath(id) {
  */
 export function createDocApi(prefix, { itemsKey = prefix } = {}) {
   const base = `${apiUrl}/api/${prefix}`
-  const client = axios.create({ withCredentials: true })
   const docUrl = (id) => `${base}/${encodePath(id)}`
   const data = (res) => res.data
 

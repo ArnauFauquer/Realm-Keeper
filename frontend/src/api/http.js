@@ -2,12 +2,16 @@ import axios from 'axios'
 import { apiCache } from './cache'
 import { useAuth } from '@/composables/useAuth'
 
-const httpClient = axios.create({
+// The one HTTP client of the app: every module in api/ goes through it, so
+// they all send the session cookie, give up after 30 s, log server errors,
+// and — the reason there is only one — notice when the session has expired:
+// a 401 from anywhere (the Observatory, an editor, the player) signs the page
+// out, instead of only from the few calls that used to go through here.
+// (No Content-Type of its own: axios gives a JSON body its type, and an upload
+// — FormData — must keep the one the browser gives it, with its boundary.)
+export const httpClient = axios.create({
   timeout: 30000,
-  withCredentials: true,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  withCredentials: true
 })
 
 httpClient.interceptors.request.use((config) => {
@@ -73,4 +77,3 @@ export async function put(url, data, options = {}) {
 export function invalidateCached(url) {
   apiCache.delete(`GET:${url}`)
 }
-

@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { client } = vi.hoisted(() => ({
   client: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }
 }))
-vi.mock('axios', () => ({ default: { create: () => client } }))
+// Every client goes through the app's one HTTP client (api/http.js).
+vi.mock('@/api/http', () => ({ httpClient: client }))
 vi.mock('@/config/env', () => ({ apiUrl: 'https://api.test' }))
 
 const { chartsApi, vistasApi, encountersApi, charactersApi, docApi } = await import('@/api/docs')

@@ -1,12 +1,8 @@
-import axios from 'axios'
 import { apiUrl } from '@/config/env'
+import { encodePath } from '@/utils/paths'
+import { httpClient as client } from './http'
 
 const base = `${apiUrl}/api/player`
-const client = axios.create({ withCredentials: true })
-
-function encodeKey(key) {
-  return key.split('/').map(encodeURIComponent).join('/')
-}
 
 export async function fetchAlbums() {
   const res = await client.get(`${base}/albums`)
@@ -34,6 +30,8 @@ export async function uploadTrack(album, file, onProgress) {
   const formData = new FormData()
   formData.append('file', file)
   await client.post(`${base}/albums/${encodeURIComponent(album)}/tracks`, formData, {
+    // An album's worth of music over a slow connection: no time limit.
+    timeout: 0,
     onUploadProgress: onProgress
       ? (e) => onProgress(e.total ? e.loaded / e.total : 0)
       : undefined
@@ -41,7 +39,7 @@ export async function uploadTrack(album, file, onProgress) {
 }
 
 export async function deleteTrack(key) {
-  await client.delete(`${base}/tracks/${encodeKey(key)}`)
+  await client.delete(`${base}/tracks/${encodePath(key)}`)
 }
 
 export async function moveTrack(key, album) {
@@ -55,5 +53,5 @@ export async function renameTrack(key, name) {
 }
 
 export function streamUrl(key) {
-  return `${base}/stream/${encodeKey(key)}`
+  return `${base}/stream/${encodePath(key)}`
 }
