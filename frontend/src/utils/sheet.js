@@ -6,6 +6,7 @@
 // into text as Python would: the backend stores the sheet, so what it makes of
 // `wide: yes` or `subtitle: 1.0` is what the sheet says.
 import { PyDict, PyFloat, YamlError, loadYaml, pyStr, pyStrip, toJson } from './pythonYaml'
+import { OBSERVATORY_IMAGE_PREFIX as IMAGE_URL_PREFIX } from './docTypes'
 
 export const SHEET_TYPES = ['character', 'adversary']
 
@@ -23,7 +24,6 @@ const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags',
 // How many columns a layout may ask for (the sheet's sections, a section's
 // items, a group of stats). Narrow screens fall back to fewer on their own.
 const MAX_COLUMNS = 12
-const IMAGE_URL_PREFIX = '/api/observatory/images/'
 // An Observatory image's file name: its uid (lower-case hex, as uploads are
 // named), then its name ("1a2b3c4d-boar.png").
 const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^\n]+$/

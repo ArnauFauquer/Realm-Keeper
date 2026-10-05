@@ -84,6 +84,9 @@ export const DOC_TYPES = {
   }
 }
 
+/** Where every Observatory image is served: `/api/observatory/images/<uid>-<name>`. */
+export const OBSERVATORY_IMAGE_PREFIX = '/api/observatory/images/'
+
 /** The Observatory's other kind of file: an image, worded like the documents. */
 export const IMAGE_KIND = {
   type: 'image',
@@ -98,6 +101,9 @@ export const EMBEDDABLE_TYPES = Object.values(DOC_TYPES).filter((t) => t.embedda
 
 /** The icon of a kind's embed placeholder in a note. */
 export const embedIcon = (type) => DOC_TYPES[type].embedIcon || DOC_TYPES[type].icon
+
+/** A kind's label at the start of a line: "chart" -> "Chart". */
+export const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
 const pick = (doc, fields) => Object.fromEntries(fields.map((field) => [field, doc[field]]))
 

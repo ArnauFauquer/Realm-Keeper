@@ -161,6 +161,7 @@ import { useSyncedDoc } from '@/composables/useSyncedDoc'
 import { useCharacters } from '@/composables/useCharacters'
 import { syncStatus } from '@/composables/syncSocket'
 import { combatantsFromSheet, customCombatant, moveBefore } from '@/utils/encounter'
+import { errorMessage } from '@/api/http'
 
 // One encounter, live: everyone who has it open sees every change as it is
 // made. Nothing here saves; each action is a command (api/docs.js) and the
@@ -199,7 +200,7 @@ async function attempt(work) {
     await work
     return true
   } catch (err) {
-    actionError.value = err.response?.data?.detail || err.message
+    actionError.value = errorMessage(err)
     return false
   }
 }

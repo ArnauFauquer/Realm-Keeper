@@ -145,7 +145,8 @@ Write your note in Markdown..."
 
 <script>
 import mermaid from 'mermaid'
-import { getCached, post, put, invalidateCached } from '@/api/http'
+import { getCached, put, invalidateCached, errorMessage } from '@/api/http'
+import { screenApi } from '@/api/screen'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
@@ -326,7 +327,7 @@ export default {
             this.startCreating()
           }
         } else {
-          this.error = err.response?.data?.detail || err.message
+          this.error = errorMessage(err)
         }
       }
     },
@@ -339,7 +340,7 @@ export default {
         this.isEditing = true
         this.isCreating = false
       } catch (err) {
-        this.error = err.response?.data?.detail || err.message
+        this.error = errorMessage(err)
       }
     },
     startCreating() {
@@ -379,7 +380,7 @@ export default {
         this.isCreating = false
         await this.fetchNote()
       } catch (err) {
-        this.saveError = err.response?.data?.detail || err.message || 'Could not save the note.'
+        this.saveError = errorMessage(err, 'Could not save the note.')
       } finally {
         this.saving = false
       }
@@ -665,7 +666,7 @@ export default {
           const title = img.alt || ''
           
           try {
-            await post(`${apiUrl}/api/screen/display`, { url, title })
+            await screenApi.display(url, title)
             const originalText = btn.innerHTML
             btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Sent!</span>`
             btn.classList.add('sent')

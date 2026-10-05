@@ -25,7 +25,7 @@ vi.mock('@/composables/useCharacters', async () => {
 })
 vi.mock('@/composables/syncSocket', () => ({ syncStatus: ref('open') }))
 vi.mock('@/api/docs', () => ({ battlemapsApi: { commands }, encountersApi: { fetchAll, fetch: vi.fn() } }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 // The canvas has its own tests; here it only has to pass things on.
 vi.mock('@/components/BattlemapCanvas.vue', () => ({

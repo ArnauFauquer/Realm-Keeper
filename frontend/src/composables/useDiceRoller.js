@@ -1,7 +1,6 @@
 import { reactive, readonly } from 'vue'
 import { parseDiceFormula, formatDiceFormula, resolveDuality, resolveNatural } from '@/utils/diceNotation'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { screenApi } from '@/api/screen'
 import { themeForSlot } from '@/dice/diceTheme'
 import { useAuth } from '@/composables/useAuth'
 
@@ -66,7 +65,7 @@ function pushToast(formula, result, label, outcome = null) {
  * tab/device) shows the same roll - never lets a screen-broadcast failure
  * affect the local roll/toast. */
 function broadcastToScreen(formula, result, label) {
-  post(`${apiUrl}/api/screen/dice`, {
+  screenApi.dice({
     formula,
     label,
     groups: result.groups,
