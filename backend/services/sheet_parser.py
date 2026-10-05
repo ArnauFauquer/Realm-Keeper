@@ -1,9 +1,13 @@
-"""Turns the YAML of a sheet (a character's or an adversary's `source`) into a
-normalized SheetSpec.
+"""Sheets, read. A character or adversary document keeps its sheet as JSON
+(`sheet`, a models/sheet.py SheetBody, what the sheet builder edits);
+spec_from_body turns it into the SheetSpec everything draws and plays from.
+frontend/src/utils/sheet.js sheetFromDoc does the same; both are checked
+against the shared cases in tests/fixtures/sheet-bodies/.
 
-frontend/src/utils/sheet.js does the same normalization for rendering; both
-are checked against the shared cases in tests/fixtures/sheets/, so a change
-here needs the same change there.
+Sheets used to be YAML: first ```sheet blocks in notes, then a document's
+`source`. parse_sheet_source still reads that format, for the documents and
+notes written in it (upgrade_legacy_source, services/sheet_import.py); the
+YAML fixtures in tests/fixtures/sheets/ are its cases.
 """
 import re
 import unicodedata
@@ -12,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import yaml
 from pydantic import ValidationError
 
-from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
+from models.sheet import ResourceSpec, SheetBody, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
 from services.observatory import image_uid, image_url, is_image_name
 from services.storage_service import IMAGE_URL_PREFIX
 
@@ -264,8 +268,97 @@ def parse_sheet_source(
     return spec, warnings
 
 
-def parse_sheet_doc(doc: Dict[str, Any], sheet_type: str) -> Tuple[SheetSpec, List[str]]:
-    """The sheet a character or adversary document describes."""
-    return parse_sheet_source(
-        doc.get("source") or "", name=doc.get("name") or "", sheet_id=doc.get("id"), sheet_type=sheet_type,
+def _first_error(e: ValidationError) -> str:
+    error = e.errors()[0]
+    where = ".".join(str(part) for part in error.get("loc", ()) if part != "__root__")
+    message = error["msg"].removeprefix("Value error, ")
+    return f"{message} ({where})" if where and error.get("type") != "value_error" else message
+
+
+def read_body(raw: Any) -> SheetBody:
+    """A document's `sheet`, checked. Raises SheetParseError."""
+    try:
+        return SheetBody.model_validate(raw if raw is not None else {})
+    except ValidationError as e:
+        raise SheetParseError(f"Invalid sheet: {_first_error(e)}")
+
+
+def spec_from_body(body: SheetBody, *, name: str, sheet_id: str, sheet_type: str) -> SheetSpec:
+    """What a sheet draws: its counters gathered by name into `resources`
+    (what encounters and saved characters go by), each section naming its own."""
+    resources: Dict[str, ResourceSpec] = {}
+    sections = []
+    for section in body.sections:
+        for counter in section.counters:
+            resources[counter.name] = ResourceSpec(**counter.model_dump(exclude={"name"}))
+        sections.append(SheetSection(
+            title=section.title, columns=section.columns, wide=section.wide, collapsed=section.collapsed, tab=section.tab,
+            counters=[counter.name for counter in section.counters],
+            stats=[StatGroup(**group.model_dump()) for group in section.stats],
+            items=[SheetItem(**item.model_dump()) for item in section.items],
+        ))
+    return SheetSpec(
+        id=sheet_id, name=name, type=sheet_type, subtitle=body.subtitle, image=body.image, tags=body.tags,
+        resources=resources, stats=[], sections=sections, columns=body.columns, text=body.text,
     )
+
+
+def _stat_value(value: Any) -> Any:
+    if value is None or (isinstance(value, (int, float, str)) and not isinstance(value, bool)):
+        return value
+    return str(value)
+
+
+def body_from_spec(spec: SheetSpec) -> Dict[str, Any]:
+    """The JSON sheet a YAML one becomes. The sheet's own top-level stats
+    become a first, untitled, whole-row section: that is how they were drawn."""
+    def groups(stat_groups):
+        return [
+            {**group.model_dump(exclude={"stats"}), "stats": [{**stat.model_dump(), "value": _stat_value(stat.value)} for stat in group.stats]}
+            for group in stat_groups
+        ]
+
+    sections = [{"wide": True, "stats": groups(spec.stats)}] if spec.stats else []
+    for section in spec.sections:
+        sections.append({
+            **section.model_dump(exclude={"counters", "stats"}),
+            "counters": [{"name": name, **spec.resources[name].model_dump()} for name in section.counters],
+            "stats": groups(section.stats),
+        })
+    body = read_body({
+        "subtitle": spec.subtitle, "image": spec.image, "tags": spec.tags, "columns": spec.columns,
+        "text": spec.text, "sections": sections,
+    })
+    return body.model_dump(mode="json")
+
+
+def upgrade_legacy_source(doc: Dict[str, Any], sheet_type: str) -> bool:
+    """A document from when sheets were YAML: its `source` becomes its `sheet`.
+    Returns whether it changed. Raises SheetParseError (the document is left
+    as it was) when the YAML isn't a sheet."""
+    if "source" not in doc:
+        return False
+    if "sheet" not in doc:
+        spec, _warnings = parse_sheet_source(
+            doc.get("source") or "", name=doc.get("name") or doc.get("id") or "", sheet_id=doc.get("id"), sheet_type=sheet_type,
+        )
+        doc["sheet"] = body_from_spec(spec)
+    del doc["source"]
+    return True
+
+
+def parse_sheet_doc(doc: Dict[str, Any], sheet_type: str) -> Tuple[SheetSpec, List[str]]:
+    """The sheet a character or adversary document describes, and warnings
+    about it. Raises SheetParseError."""
+    if "source" in doc:
+        doc = dict(doc)
+        upgrade_legacy_source(doc, sheet_type)
+    body = read_body(doc.get("sheet"))
+    warnings = []
+    image, image_warning = normalize_image(body.image)
+    if image_warning:
+        warnings.append(image_warning)
+        body = body.model_copy(update={"image": None})
+    elif image != body.image:
+        body = body.model_copy(update={"image": image})
+    return spec_from_body(body, name=doc.get("name") or doc.get("id") or "", sheet_id=doc.get("id") or "", sheet_type=sheet_type), warnings

@@ -1,14 +1,14 @@
-from typing import List, Optional
+from typing import Any, ClassVar, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from services.sheet_parser import MAX_SOURCE_LENGTH
+from models.sheet import SheetBody
 
 
 class SheetDocMetadata(BaseModel):
     """What a gallery (and the sheet catalog) needs of a character or an
-    adversary. `image`, `subtitle` and `tags` are read from its source when it
-    is stored, so a listing doesn't parse every sheet."""
+    adversary. `image`, `subtitle` and `tags` are copied from its sheet when it
+    is stored, so a listing doesn't read every sheet."""
     id: str
     name: str = Field("", max_length=120)
     description: Optional[str] = Field(None, max_length=2000)
@@ -19,11 +19,23 @@ class SheetDocMetadata(BaseModel):
 
 
 class SheetDoc(SheetDocMetadata):
-    """A sheet kept as a document: its YAML (`source`, the same format a sheet
-    always had, without `name`, `id` and `type`, which are the document's),
-    edited in its gallery and shown in notes as `character:<id>` or
-    `adversary:<id>`. The sheet itself is parsed from `source` where it is
-    used (services/sheet_parser.py parse_sheet_doc, utils/sheet.js)."""
-    model_config = ConfigDict(extra="allow")
+    """A sheet kept as a document: the sheet itself (`sheet`, JSON, built in
+    its gallery's sheet builder), shown in notes as `character:<id>` or
+    `adversary:<id>`. Its name, id and type are the document's.
 
-    source: str = Field("", max_length=MAX_SOURCE_LENGTH)
+    A document stored when sheets were YAML has a `source` instead; it becomes
+    a `sheet` when read (services/sheet_parser.py upgrade_legacy_source; the
+    stored ones are converted at startup, services/sheet_import.py)."""
+    model_config = ConfigDict(extra="allow")
+    sheet_type: ClassVar[str] = "adversary"
+
+    sheet: SheetBody = Field(default_factory=SheetBody)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_yaml(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "source" in data:
+            from services.sheet_parser import upgrade_legacy_source  # the parser imports the models
+            data = dict(data)
+            upgrade_legacy_source(data, cls.sheet_type)
+        return data

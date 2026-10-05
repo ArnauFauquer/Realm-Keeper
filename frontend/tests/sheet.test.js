@@ -1,93 +1,71 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { parseSheetDoc, parseSheetSource, slugify, normalizeImage, SheetParseError, SHEET_TEMPLATES } from '@/utils/sheet'
+import { normalizeImage, SHEET_TEMPLATES, sheetFromDoc, sheetProblems } from '@/utils/sheet'
 
-// The same files backend/tests/test_sheets.py checks: the two normalizers
-// must agree, or a sheet would show one thing in a note and another in the
-// encounter picker.
-const FIXTURES = fileURLToPath(new URL('../../backend/tests/fixtures/sheets/', import.meta.url))
-const files = readdirSync(FIXTURES)
-const read = (name) => readFileSync(FIXTURES + name, 'utf-8')
+// The same files backend/tests/test_sheets.py checks: both sides must draw a
+// document's sheet alike, or a sheet would show one thing in a note and
+// another in the encounter picker.
+const FIXTURES = fileURLToPath(new URL('../../backend/tests/fixtures/sheet-bodies/', import.meta.url))
+const cases = readdirSync(FIXTURES).filter((f) => f.endsWith('.json'))
+const read = (name) => JSON.parse(readFileSync(FIXTURES + name, 'utf-8'))
 
 describe('sheet fixtures shared with the backend', () => {
-  const valid = files.filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''))
-  const invalid = files.filter((f) => f.startsWith('error-')).map((f) => f.replace(/\.yaml$/, ''))
-
   it('finds the cases', () => {
-    expect(valid.length).toBeGreaterThan(3)
-    expect(invalid.length).toBeGreaterThan(3)
+    expect(cases.length).toBeGreaterThan(3)
   })
 
-  it.each(valid)('%s normalizes like the backend', (name) => {
-    expect(parseSheetSource(read(`${name}.yaml`))).toEqual(JSON.parse(read(`${name}.json`)))
-  })
-
-  it.each(invalid)('%s is rejected', (name) => {
-    expect(() => parseSheetSource(read(`${name}.yaml`))).toThrow(SheetParseError)
+  it.each(cases)('%s draws like the backend', (file) => {
+    const { type, doc, expected } = read(file)
+    expect(sheetFromDoc(doc, type)).toEqual(expected)
   })
 })
 
-describe('limits', () => {
-  it('refuses aliases, which a few lines of can expand to gigabytes', () => {
-    expect(() => parseSheetSource('name: A\nresources: &r {HP: 6}\nstats: *r\n')).toThrow(/Invalid YAML/)
+describe('sheetFromDoc', () => {
+  it("is named by its document, and empty while it has no sheet", () => {
+    const { sheet, warnings } = sheetFromDoc({ id: 'imp', name: 'Imp' }, 'adversary')
+    expect([sheet.id, sheet.name, sheet.type, sheet.sections, warnings]).toEqual(['imp', 'Imp', 'adversary', [], []])
   })
 
-  it('does not mind an anchor nothing refers to', () => {
-    expect(parseSheetSource('name: A\nsections:\n  - counters:\n      HP: &hp 6\n').sheet.resources.HP.max).toBe(6)
-  })
-
-  it('does not parse a sheet that is far too long', () => {
-    expect(() => parseSheetSource(`name: A\ntext: ${'x'.repeat(200_000)}`)).toThrow(/longer/)
+  it.each(Object.keys(SHEET_TEMPLATES))('the %s template is a sheet with counters', (type) => {
+    const { sheet, warnings } = sheetFromDoc({ id: 'new', name: 'New', sheet: SHEET_TEMPLATES[type] }, type)
+    expect(warnings).toEqual([])
+    expect(Object.keys(sheet.resources)).toEqual(['HP', 'Stress'])
+    expect(sheetProblems(SHEET_TEMPLATES[type])).toEqual([])
   })
 })
 
-describe('slugify', () => {
-  it('drops accents and punctuation', () => {
-    expect(slugify('Jabalí Gigante')).toBe('jabali-gigante')
-    expect(slugify("  Aria's  Ghost!! ")).toBe('aria-s-ghost')
-    expect(slugify('???')).toBe('')
+describe('sheetProblems', () => {
+  it('names counters that share a name or a minimum above the maximum', () => {
+    const body = {
+      sections: [
+        { counters: [{ name: 'HP', max: 6, min: 0 }] },
+        { counters: [{ name: 'HP', max: 3, min: 0 }, { name: 'Fear', max: 1, min: 2 }] }
+      ]
+    }
+    expect(sheetProblems(body)).toEqual([
+      'Two counters are called "HP": each one needs its own name.',
+      '"Fear" has a minimum above its maximum.'
+    ])
+  })
+
+  it('caps the counters a sheet can have', () => {
+    const counters = Array.from({ length: 25 }, (_, i) => ({ name: `C${i}`, max: 1, min: 0 }))
+    expect(sheetProblems({ sections: [{ counters }] })).toEqual(['A sheet can have at most 24 counters.'])
   })
 })
 
 describe('normalizeImage', () => {
-  it('keeps an Observatory image as the app-relative URL, whatever it was pasted with', () => {
-    const relative = '/api/observatory/images/1a2b3c4d-boar.png'
+  const relative = '/api/observatory/images/1a2b3c4d-boar.png'
+  it('keeps an Observatory image as the relative URL, however it was given', () => {
     expect(normalizeImage(relative)).toEqual([relative, null])
     expect(normalizeImage(`https://realm.example.com${relative}`)).toEqual([relative, null])
     expect(normalizeImage('1a2b3c4d-boar.png')).toEqual([relative, null])
-    // Quoted as the backend quotes it.
     expect(normalizeImage("1a2b3c4d-boar (it's big).png")[0]).toBe('/api/observatory/images/1a2b3c4d-boar%20%28it%27s%20big%29.png')
   })
 
-  it('warns about anything that is not an image URL', () => {
-    expect(normalizeImage('Bestiary/boar.png')[0]).toBeNull()
-    expect(normalizeImage('Bestiary/boar.png')[1]).toMatch(/Observatory/)
-    expect(normalizeImage('Bestiary/1a2b3c4d-boar.png')[0]).toBeNull()
+  it('refuses a path that is not an Observatory image', () => {
+    expect(normalizeImage('Bestiary/boar.png')).toEqual([null, expect.stringMatching(/Observatory/)])
     expect(normalizeImage('')).toEqual([null, null])
-  })
-})
-
-describe('the editor templates', () => {
-  it.each(Object.keys(SHEET_TEMPLATES))('the %s template is a valid sheet', (type) => {
-    const { sheet, warnings } = parseSheetDoc({ id: 'new', name: 'New', source: SHEET_TEMPLATES[type] }, type)
-    expect(sheet.type).toBe(type)
-    expect(warnings).toEqual([])
-  })
-})
-
-describe('a sheet kept as a document', () => {
-  it("takes its name, id and type from the document, and says the YAML's are ignored", () => {
-    const source = 'name: Old name\nid: old\ntype: adversary\nsubtitle: Ranger\n'
-    const { sheet, warnings } = parseSheetDoc({ id: 'party/aria', name: 'Aria', source }, 'character')
-    expect([sheet.id, sheet.name, sheet.type, sheet.subtitle]).toEqual(['party/aria', 'Aria', 'character', 'Ranger'])
-    expect(warnings).toHaveLength(3)
-    expect(warnings.every((w) => w.includes('ignored'))).toBe(true)
-  })
-
-  it('is an empty sheet while its source is empty', () => {
-    const { sheet, warnings } = parseSheetDoc({ id: 'imp', name: 'Imp', source: '' }, 'adversary')
-    expect([sheet.name, sheet.sections, warnings]).toEqual(['Imp', [], []])
-    expect(() => parseSheetDoc({ id: 'imp', name: 'Imp', source: '- a list' }, 'adversary')).toThrow(SheetParseError)
   })
 })

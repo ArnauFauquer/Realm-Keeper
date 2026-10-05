@@ -1,0 +1,23 @@
+{
+  "type": "adversary",
+  "doc": {
+    "id": "imp",
+    "name": "Imp"
+  },
+  "expected": {
+    "sheet": {
+      "id": "imp",
+      "name": "Imp",
+      "type": "adversary",
+      "subtitle": null,
+      "image": null,
+      "tags": [],
+      "resources": {},
+      "stats": [],
+      "sections": [],
+      "columns": null,
+      "text": null
+    },
+    "warnings": []
+  }
+}

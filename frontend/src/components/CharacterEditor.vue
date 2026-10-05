@@ -47,8 +47,9 @@ import SheetEditor from './SheetEditor.vue'
 import ResourceCounter from './ResourceCounter.vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { sameSheet } from '@/utils/sheetModel'
 
-// One character: its sheet's YAML beside the sheet, with its counters live.
+// One character: its sheet, built beside the sheet it draws, counters live.
 // A character is a live document (its counters are played as it is edited),
 // so its sheet is saved here, with its own button, rather than by the modal.
 const props = defineProps({
@@ -62,14 +63,14 @@ const characters = useCharacters(() => [id])
 const state = computed(() => characters.stateOf(id))
 const status = computed(() => characters.statusOf(id))
 
-// What is being typed; it follows the saved sheet while it has no changes of
+// What is being built; it follows the saved sheet while it has no changes of
 // its own (someone else saved it, or this just loaded).
-const draft = ref('')
-const savedSource = computed(() => state.value?.source ?? '')
-const dirty = computed(() => !!state.value && draft.value !== savedSource.value)
+const draft = ref({})
+const savedSheet = computed(() => state.value?.sheet ?? {})
+const dirty = computed(() => !!state.value && !sameSheet(draft.value, savedSheet.value))
 let following = true
-watch(savedSource, (source) => { if (following) draft.value = source }, { immediate: true })
-watch(draft, (value) => { following = value === savedSource.value })
+watch(savedSheet, (sheet) => { if (following) draft.value = sheet }, { immediate: true })
+watch(draft, (value) => { following = sameSheet(value, savedSheet.value) })
 
 const saving = ref(false)
 const saveError = ref('')
@@ -78,7 +79,7 @@ async function save() {
   saving.value = true
   saveError.value = ''
   try {
-    await characters.patch(id, { source: draft.value })
+    await characters.patch(id, { sheet: draft.value })
     following = true
   } catch (err) {
     saveError.value = err.response?.data?.detail || err.message

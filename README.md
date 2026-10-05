@@ -70,9 +70,9 @@ named by you.
   An **adversary** is a template: each copy in an encounter will have its own
   values. It is edited whole and saved with a button, like a chart.
 - Create one from the sidebar's **Characters** or **Adversaries** tool
-  (**New character**, **New adversary**). The editor is the sheet's YAML beside
-  a live preview, which keeps showing the last valid version while you type;
-  an empty sheet offers **Start from a template**, and Tab indents.
+  (**New character**, **New adversary**) and build it in the **sheet
+  builder**, beside a live preview; an empty sheet offers **Start from a
+  template**. No format to learn: everything is a form.
 - To show one in a note, write its link, `` `character:<id>` `` or
   `` `adversary:<id>` `` (see the table above): the note editor's **Sheet**
   button finds one and inserts it, and the gallery's copy button gives it too.
@@ -86,68 +86,43 @@ named by you.
   commit), and the encounters and map tokens that use it follow. Renaming it
   only changes the name it shows.
 
-A sheet is YAML:
+What the sheet builder edits:
 
-```yaml
-subtitle: Tier 1 · Bruiser
-image:                     # URL of an Observatory image, as copied from the Observatory
-tags: [goblinoid]
-columns: 2                 # optional: sections side by side on a wide sheet
-sections:                  # everything below the header is sections
-  - wide: true             # an untitled one opens the sheet; `wide` takes the whole row
-    counters:              # HP: 6, or { max, min, start, color, style }
-      HP: 6
-      Stress: { max: 3, start: 0 }   # `start` = where it begins (default: the max)
-    stats:                 # label: value, or { value, roll } for a dice button
-      Difficulty: 14
-      Attack: { value: "+2", roll: "hf+2" }
-  - title: Actions
-    items:
-      - name: Gore
-        roll: 1d20+3
-        text: "Hits for `1d10+2` damage near [[Goblin Cave]]."
-text: |                    # free markdown
-  A tusked brute.
-```
-
-- **Name, id and type are the document's**, not the YAML's: the name is the one
-  given in the gallery (rename it there), the id is where it is stored, and the
-  type is whether it is a character or an adversary. A `name`, `id` or `type`
-  left in the YAML is ignored, with a warning. An empty sheet is allowed.
-- **Layout**: `stats` can also be a list of groups, each drawn apart: a plain
-  mapping, or `{ title, columns, stats }` to give it a heading and a fixed number
-  per row. `columns` on the sheet puts its sections side by side (`wide: true`
-  on a section takes the whole row), and on a section lays its items out in a
-  grid. Narrow sheets (a phone, the encounter tracker) fall back to fewer
-  columns on their own.
-- **Sections** hold everything: each draws its `counters`, then its `stats`,
-  then its `items`, so spell slots can sit with their spells. Counter names are
-  unique in the sheet (characters and encounters go by them); a top-level
-  `resources` is refused with a message saying where counters went. `stats` may
-  also stay at the top level: they are drawn as a first, whole-row section.
+- **Header**: a portrait (picked from the Observatory), a subtitle and tags.
+  The name, id and type are the document's: the name is the one given in the
+  gallery (rename it there), the id is where it is stored, and the type is
+  whether it is a character or an adversary.
+- **Sections** hold everything, in order: add one, give it a title (or none:
+  an untitled section opens the sheet), and drag it by its handle (or press
+  ↑/↓ on the handle) to reorder. Each section draws its **counters**, then its
+  **stats**, then its **entries**, so spell slots can sit with their spells.
+- **Counters** have a name, a maximum, a minimum, where they **start** (the
+  maximum unless said otherwise, so one can count up from 0), how they are
+  shown (pips, a bar or a number) and a colour. Their names are unique in the
+  sheet: characters and encounters go by them.
+- **Stats** come in groups, each with an optional title and a number per row:
+  a label, a value and, for a dice button, a roll. A value typed as a whole
+  number is kept as one.
+- **Entries** (actions, features, gear...) have a name, a roll, a cost, tags
+  and a Markdown text, where an inline formula (`` `1d8+2` ``) is a dice button
+  too. An entry that is only a name and a roll (a skill, a save) is drawn as
+  one row, the roll at its end.
+- **Layout**: "Side by side" puts the sheet's sections in columns on a wide
+  sheet (**Full width** takes a section across the whole row); "Entries" lays
+  a section's entries out in a grid. Narrow sheets (a phone, the encounter
+  tracker) fall back to fewer columns on their own.
+- **Tabs**: sections sharing a **Tab** (Spells, Gear) are shown one tab at a
+  time, under a tab bar placed after the sections without one, so a long sheet
+  stays one screen tall. A titled section folds with a click; **Starts
+  folded** starts it folded.
 - **Counters follow the sheet.** When a character's sheet is saved, each counter
   keeps its current value (within its new range), a new one starts where the
   sheet says, and one the sheet no longer has is dropped — so renaming a counter
   starts it again.
-- **Tabs**: sections sharing a `tab` (`tab: Spells`) are shown one tab at a
-  time, under a tab bar placed after the sections without one. A long sheet
-  (a caster's spell lists) stays one screen tall.
-- A titled section folds with a click; `collapsed: true` starts it folded (a
-  spell list, the equipment). An item that is only a name and a roll (a skill,
-  a save) is drawn as one row, the roll at its end.
-
-  ```yaml
-  stats:
-    - { Evasion: 11, Thresholds: 6/12 }
-    - title: Traits
-      columns: 6
-      stats: { Agility: { value: "0", roll: hf }, Strength: { value: "-1", roll: hf-1 } }
-  ```
-- Texts are markdown (tables included); an inline dice formula (`` `1d8+2` ``) is a button. Quote
-  a text that starts with a `[[link]]`, or YAML reads it as a list.
-- A sheet with a mistake can't be saved: the editor says what is wrong, and the
-  preview keeps the last valid version. A sheet is plain YAML: no aliases
-  (`*name`, which can expand to gigabytes) and at most 100 KB.
+- A sheet with a mistake (two counters with the same name, a minimum above the
+  maximum) can't be saved: the builder says what is wrong.
+- A sheet is stored as JSON in its document (`sheet`). Sheets used to be
+  YAML; any still stored that way are converted when the app starts.
 - `GET /api/sheets` lists every character and adversary (signed in), and
   `GET /api/sheets/detail?type=&ref=` returns one, read.
 
