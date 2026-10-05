@@ -12,68 +12,19 @@
         </div>
       </div>
 
-      <div v-else-if="isEditing" class="note-content editor-shell">
-        <header class="editor-header">
-          <h1>{{ isCreating ? 'New note' : note.title }}</h1>
-          <p class="editor-path">{{ notePath }}</p>
-        </header>
+      <NoteEditor
+        v-else-if="editing"
+        class="note-content"
+        :note-path="notePath"
+        :title="note ? note.title : ''"
+        :content="editing.content"
+        :sha="editing.sha"
+        :creating="editing.creating"
+        @saved="onSaved"
+        @cancel="editing = null"
+      />
 
-        <div class="editor-tabs" role="tablist">
-          <button
-            type="button"
-            role="tab"
-            class="editor-tab"
-            :class="{ active: editorTab === 'write' }"
-            :aria-selected="editorTab === 'write'"
-            @click="editorTab = 'write'"
-          >Write</button>
-          <button
-            type="button"
-            role="tab"
-            class="editor-tab"
-            :class="{ active: editorTab === 'preview' }"
-            :aria-selected="editorTab === 'preview'"
-            @click="editorTab = 'preview'"
-          >Preview</button>
-        </div>
-
-        <div v-if="editorTab === 'write'" class="editor-toolbar">
-          <span class="editor-toolbar-label">Insert</span>
-          <SheetRefPicker @pick="insertAtCursor" />
-        </div>
-
-        <textarea
-          v-if="editorTab === 'write'"
-          ref="editorTextarea"
-          v-model="draftContent"
-          class="editor-textarea"
-          placeholder="# Title
-
-Write your note in Markdown..."
-          spellcheck="false"
-        ></textarea>
-        <article
-          v-else
-          ref="previewContent"
-          class="markdown-content editor-preview"
-          v-html="draftPreviewHtml"
-        ></article>
-
-        <div v-if="saveError" class="rk-alert" role="alert">
-          <span class="mdi mdi-alert-circle-outline"></span>
-          <span>{{ saveError }}</span>
-        </div>
-
-        <div class="editor-actions">
-          <button type="button" class="rk-btn rk-btn--ghost" :disabled="saving" @click="cancelEditing">Cancel</button>
-          <button type="button" class="rk-btn rk-btn--primary" :disabled="saving" @click="saveNote">
-            <span v-if="saving" class="rk-spinner btn-spinner"></span>
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-      </div>
-
-      <div v-else-if="noteNotFound" class="note-content not-found">
+      <div v-else-if="notFound" class="note-content not-found">
         <span class="mdi mdi-file-question-outline"></span>
         <h2>This note doesn't exist yet</h2>
         <p class="not-found-path">{{ notePath }}</p>
@@ -126,7 +77,7 @@ Write your note in Markdown..."
                 :key="tag"
                 type="button"
                 class="tag clickable"
-                @click="filterByTag(tag)"
+                @click="addTagFilter(tag)"
                 title="Filter by this tag"
               >
                 #{{ tag }}
@@ -135,600 +86,187 @@ Write your note in Markdown..."
           </div>
         </header>
 
-        <article class="markdown-content" ref="markdownContent" v-html="renderedContent"></article>
+        <MarkdownBody
+          :html="noteHtml"
+          :page-title="note.title"
+          @link-hover="prefetchNote($event, 1500)"
+          @rendered="scrollToHash"
+        />
       </div>
     </div>
 
-    <RightSidebar v-if="note && !loading && !error && !isEditing" :note="note" />
+    <!-- Not rendered at all where the layout has no room for it (it would
+         otherwise fetch the graph and run its simulation hidden). -->
+    <RightSidebar
+      v-if="hasRoomForAside && note && !loading && !error && !editing"
+      :note="note"
+      :headings="rendered.headings"
+    />
   </div>
 </template>
 
-<script>
-import mermaid from 'mermaid'
-import { getCached, post, put, invalidateCached } from '@/api/http'
+<script setup>
+import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { getCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
-import { slugifyHeading } from '@/utils/slugify'
-import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
-import { renderCallouts } from '@/utils/callouts'
-import { defineAsyncComponent, h, render } from 'vue'
-import { createMarkdown } from '@/utils/markdown'
-import { findRangeIndex, readRowRanges, rollVirtual, rowOutcome } from '@/utils/rollTables'
-import { useDiceRoller } from '@/composables/useDiceRoller'
-import { usePlayer } from '@/composables/usePlayer'
-import { useSoundEffects } from '@/composables/useSoundEffects'
+import { lockAssetImages } from '@/utils/sanitizeHtml'
+import { renderNote } from '@/utils/renderNote'
+import { noteApi, noteRoute } from '@/utils/noteUrls'
 import { useAuth } from '@/composables/useAuth'
+import { useMediaQuery } from '@/composables/useMediaQuery'
+import { useNoteLoader } from '@/composables/useNoteLoader'
+import { useNotesChanged } from '@/composables/useNotes'
 import RightSidebar from '@/components/RightSidebar.vue'
-import DocumentEmbed from '@/components/DocumentEmbed.vue'
-import SheetRefPicker from '@/components/SheetRefPicker.vue'
-import { DOC_TYPES } from '@/utils/docTypes'
-import { noteApi, noteIdFromHref, noteRawApi, noteRoute } from '@/utils/noteUrls'
+import MarkdownBody from '@/components/MarkdownBody.vue'
+import NoteEditor from '@/components/NoteEditor.vue'
 
-// A sheet (and the YAML parser it needs) is only fetched for a note that shows one.
-const SheetEmbed = defineAsyncComponent(() => import('@/components/SheetEmbed.vue'))
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  themeVariables: {
-    darkMode: true,
-    background: '#12132a',
-    primaryColor: '#1a1b3a',
-    primaryTextColor: '#f0f0ff',
-    primaryBorderColor: '#8a5cf5',
-    lineColor: '#a78bfa',
-    secondaryColor: '#1a1b3a',
-    tertiaryColor: '#12132a',
-    // Gantt task labels that don't fit inside their bar are drawn outside it,
-    // against the diagram background rather than the bar. Mermaid accounts
-    // for that on :done tasks (it swaps in taskTextOutsideColor) but not on
-    // :active ones, which keep taskTextDarkColor — meant for dark text on the
-    // light active-task bar — even when placed outside on our dark bg, making
-    // them invisible. Keeping this light fixes that; it only trades away
-    // contrast for the (currently unused) case of a label short enough to
-    // fit inside the light active bar itself.
-    taskTextDarkColor: '#f0f0ff',
-    taskTextColor: '#f0f0ff',
-    taskTextLightColor: '#f0f0ff',
-    taskTextOutsideColor: '#f0f0ff'
+const props = defineProps({
+  notePath: {
+    type: String,
+    required: true
   }
 })
 
-export default {
-  name: 'NoteView',
-  components: { RightSidebar, SheetRefPicker },
-  inject: {
-    addTagFilter: {
-      from: 'addTagFilter',
-      default: () => () => {}
-    }
-  },
-  props: {
-    notePath: {
-      type: String,
-      required: true
-    }
-  },
-  setup() {
-    const { user } = useAuth()
-    const { playing: sfxPlaying } = useSoundEffects()
-    return { user, sfxPlaying }
-  },
-  data() {
-    const md = createMarkdown()
+const addTagFilter = inject('addTagFilter', () => {})
+const route = useRoute()
+const { user } = useAuth()
+const { note, loading, error, notFound, load, loadRaw } = useNoteLoader()
 
-    const defaultFence = md.renderer.rules.fence || function (tokens, idx, options, env, self) {
-      return self.renderToken(tokens, idx, options)
-    }
-    md.renderer.rules.fence = (tokens, idx, options, env, self) => {
-      const token = tokens[idx]
-      const lang = token.info.trim().toLowerCase()
-      if (lang === 'mermaid') {
-        return `<pre class="mermaid">${md.utils.escapeHtml(token.content)}</pre>`
-      }
-      return defaultFence(tokens, idx, options, env, self)
-    }
+// The editor, while open: what it opened with ({ content, sha, creating }).
+const editing = shallowRef(null)
+const containerFolders = ref({})
+// Same breakpoint as the layout's CSS that used to hide it.
+const hasRoomForAside = useMediaQuery('(min-width: 1025px)')
 
-    return {
-      note: null,
-      loading: true,
-      error: null,
-      noteNotFound: false,
-      md,
-      prefetchCache: new Set(),
-      prefetchTimeout: null,
-      containerFolders: {},
-      // Elements that currently host a mounted DocumentEmbed (chart/vista).
-      mountedEmbeds: [],
-      isEditing: false,
-      isCreating: false,
-      editorTab: 'write',
-      draftContent: '',
-      saving: false,
-      saveError: null
-    }
-  },
-  computed: {
-    draftPreviewHtml() {
-      if (!this.draftContent.trim()) return '<p class="preview-empty">Nothing to preview yet.</p>'
-      return sanitizeHtml(this.md.render(this.draftContent))
-    },
-    breadcrumbs() {
-      if (!this.note || !this.note.id || !this.containerFolders) return []
-      
-      const parts = this.note.id.split('/')
-      // Start with a link to the root notes view
-      const crumbs = [{ name: 'Notes', to: '/' }]
-      
-      let currentPath = ''
-      for (let i = 0; i < parts.length; i++) {
-        const name = parts[i]
-        const isLast = i === parts.length - 1
-        
-        currentPath = currentPath ? `${currentPath}/${name}` : name
-        
-        if (isLast) {
-          crumbs.push({ name, to: null })
-        } else {
-          // If the folder mapping has a note ID for this path, use it as the link
-          const targetNoteId = this.containerFolders[currentPath]
-          if (targetNoteId) {
-            crumbs.push({ name, to: noteRoute(targetNoteId) })
-          } else {
-            crumbs.push({ name, to: null })
-          }
-        }
-      }
-      
-      return crumbs
-    },
-    renderedContent() {
-      if (!this.note || !this.note.content) return ''
-      const withCallouts = renderCallouts(this.note.content, (text) => this.md.render(text))
-      let html = this.md.render(withCallouts)
+const rendered = computed(() => (note.value?.content ? renderNote(note.value.content) : { html: '', headings: [] }))
+// Library images are behind login: a signed-out reader gets placeholders.
+const noteHtml = computed(() => (user.value ? rendered.value.html : lockAssetImages(rendered.value.html)))
 
-      // Add IDs to headers for ToC navigation
-      let headerCount = {}
-      html = html.replace(/<h([1-6])>(.*?)<\/h\1>/g, (match, level, content) => {
-        const id = slugifyHeading(content, headerCount)
-        return `<h${level} id="${id}">${content}</h${level}>`
-      })
+const breadcrumbs = computed(() => {
+  if (!note.value || !note.value.id || !containerFolders.value) return []
 
-      html = html.replace(/<a href="\/note\/([^"]+)"/g, (match, linkId) => {
-        return `<a href="/note/${linkId}" data-note-link="${linkId}"`
-      })
-      html = sanitizeHtml(html)
-      return this.user ? html : lockAssetImages(html)
-    }
-  },
-  methods: {
-    filterByTag(tag) {
-      this.addTagFilter(tag)
-    },
-    async fetchNote() {
-      this.loading = true
-      this.error = null
-      this.noteNotFound = false
-      this.isEditing = false
-      this.isCreating = false
+  const parts = note.value.id.split('/')
+  // Start with a link to the root notes view
+  const crumbs = [{ name: 'Notes', to: '/' }]
 
-      try {
-        this.note = await getCached(noteApi(this.notePath), { cacheTtl: 300 })
-        this.loading = false
+  let currentPath = ''
+  for (let i = 0; i < parts.length; i++) {
+    const name = parts[i]
+    const isLast = i === parts.length - 1
 
-        this.setupLinkPrefetch()
-        this.renderMermaidDiagrams()
+    currentPath = currentPath ? `${currentPath}/${name}` : name
 
-        this.prefetchLinkedNotes(this.note.links || [])
-      } catch (err) {
-        this.loading = false
-        if (err.response?.status === 404) {
-          this.noteNotFound = true
-          if (this.$route.query.new === '1' && this.user) {
-            this.startCreating()
-          }
-        } else {
-          this.error = err.response?.data?.detail || err.message
-        }
-      }
-    },
-    async startEditing() {
-      this.saveError = null
-      this.editorTab = 'write'
-      try {
-        const data = await getCached(noteRawApi(this.notePath), { useCache: false })
-        this.draftContent = data.content
-        this.isEditing = true
-        this.isCreating = false
-      } catch (err) {
-        this.error = err.response?.data?.detail || err.message
-      }
-    },
-    startCreating() {
-      const title = this.notePath.split('/').pop()
-      this.draftContent = `# ${title}\n\n`
-      this.editorTab = 'write'
-      this.saveError = null
-      this.isCreating = true
-      this.isEditing = true
-    },
-    // Puts `snippet` (a sheet's link) into the draft where the cursor is.
-    insertAtCursor(snippet) {
-      const textarea = this.$refs.editorTextarea
-      const start = textarea ? textarea.selectionStart : this.draftContent.length
-      const end = textarea ? textarea.selectionEnd : start
-      this.draftContent = this.draftContent.slice(0, start) + snippet + this.draftContent.slice(end)
-      this.$nextTick(() => {
-        if (!textarea) return
-        textarea.focus()
-        textarea.setSelectionRange(start + snippet.length, start + snippet.length)
-      })
-    },
-    cancelEditing() {
-      this.isEditing = false
-      this.isCreating = false
-      this.saveError = null
-    },
-    async saveNote() {
-      this.saving = true
-      this.saveError = null
-      try {
-        await put(noteApi(this.notePath), { content: this.draftContent })
-        invalidateCached(noteApi(this.notePath))
-        invalidateCached(noteRawApi(this.notePath))
-        invalidateCached(`${apiUrl}/api/notes`)
-        this.isEditing = false
-        this.isCreating = false
-        await this.fetchNote()
-      } catch (err) {
-        this.saveError = err.response?.data?.detail || err.message || 'Could not save the note.'
-      } finally {
-        this.saving = false
-      }
-    },
-    prefetchLinkedNotes(links) {
-      if (!links || links.length === 0) return
-
-      const prefetchFn = () => {
-        links.slice(0, 5).forEach(linkId => {
-          if (this.prefetchCache.has(linkId)) return
-          
-          this.prefetchCache.add(linkId)
-
-          getCached(noteApi(linkId), { cacheTtl: 300, timeout: 2000 }).catch(() => {
-          })
-        })
-      }
-
-      if (this.prefetchTimeout) {
-        clearTimeout(this.prefetchTimeout)
-      }
-
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(prefetchFn)
-      } else {
-        this.prefetchTimeout = setTimeout(prefetchFn, 1000)
-      }
-    },
-    onLinkMouseEnter(linkId) {
-      if (this.prefetchCache.has(linkId)) return
-      
-      this.prefetchCache.add(linkId)
-
-      getCached(noteApi(linkId), { cacheTtl: 300, timeout: 1500 }).catch(() => {
-      })
-    },
-    setupLinkPrefetch() {
-      this.$nextTick(() => {
-        const content = this.$refs.markdownContent
-        if (!content) return
-        
-        // :not(wired) — this also runs again whenever renderedContent
-        // re-renders (see the watcher), and must not stack listeners.
-        const links = content.querySelectorAll('a[data-note-link]:not([data-link-wired])')
-        links.forEach(link => {
-          const linkId = noteIdFromHref(link.getAttribute('href'))
-          if (!linkId) return
-          link.setAttribute('data-link-wired', '1')
-
-          link.addEventListener('mouseenter', () => {
-            this.onLinkMouseEnter(linkId)
-          }, { once: false })
-
-          // Plain <a> from v-html isn't a <router-link>, so a click would
-          // otherwise trigger a full page navigation (reloading the app and
-          // killing audio playback). Route it through Vue Router instead,
-          // unless the user wants the browser's own handling (new tab, etc).
-          link.addEventListener('click', (e) => {
-            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-            e.preventDefault()
-            this.$router.push(noteRoute(linkId))
-          })
-        })
-
-        this.mountDocEmbeds(content)
-
-        if (this.user) {
-          this.setupImageScreenButtons()
-          this.setupDiceRolls()
-          this.setupSongLinks()
-          this.setupSfxButtons()
-        }
-      })
-    },
-    // Makes every not-yet-wired element carrying `attr` behave like a
-    // button (click / Enter / Space), calling handler(el, attrValue).
-    wireInlineActions(attr, handler) {
-      const content = this.$refs.markdownContent
-      if (!content) return
-
-      content.querySelectorAll(`[${attr}]:not([data-inline-wired])`).forEach(el => {
-        el.setAttribute('data-inline-wired', '1')
-        const value = el.getAttribute(attr)
-        const trigger = (e) => {
-          e.preventDefault()
-          handler(el, value)
-        }
-        el.addEventListener('click', trigger)
-        el.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') trigger(e)
-        })
-      })
-    },
-    setupDiceRolls() {
-      const { roll } = useDiceRoller()
-      this.wireInlineActions('data-dice-formula', (el, formula) => roll(formula))
-      this.wireInlineActions('data-roll-table', (el, formula) => this.rollOnTable(el, formula))
-    },
-    // A roll table's header die: throws it (or draws the number, for a die
-    // with no physical body like a d7), then marks the row it landed on.
-    async rollOnTable(die, formula) {
-      const table = die.closest('table')
-      if (!table || table.hasAttribute('data-rolling')) return
-      const rows = [...table.querySelectorAll('tbody tr[data-roll-min]')]
-      const ranges = readRowRanges(rows)
-      const rowFor = (total) => rows[findRangeIndex(ranges, total)] || null
-      const outcome = (result) => rowOutcome(rowFor(result.total), result.total)
-      const { roll, showRoll } = useDiceRoller()
-
-      table.setAttribute('data-rolling', '')
-      try {
-        let result
-        if (table.hasAttribute('data-roll-virtual')) {
-          result = rollVirtual(formula)
-          await this.scanRows(rows)
-          // Written like a physical roll's toast: "1d7", not "d7".
-          showRoll(formula.replace(/^d/, '1d'), result, { outcome: outcome(result) })
-        } else {
-          result = await roll(formula, { outcome })
-        }
-        if (result) this.markRolledRow(table, die, rowFor(result.total), result.total)
-      } finally {
-        table.removeAttribute('data-rolling')
-      }
-    },
-    // A drawn number has no dice to watch, so the highlight runs down a few
-    // rows first, slowing as it goes: the table itself is what's rolling.
-    async scanRows(rows) {
-      if (rows.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-      let last = -1
-      for (let step = 0; step < 9; step++) {
-        let next = Math.floor(Math.random() * rows.length)
-        if (next === last) next = (next + 1) % rows.length
-        rows[last]?.classList.remove('roll-scan')
-        rows[next].classList.add('roll-scan')
-        last = next
-        await new Promise(resolve => setTimeout(resolve, 45 + step * 14))
-      }
-      rows[last].classList.remove('roll-scan')
-    },
-    markRolledRow(table, die, row, total) {
-      table.querySelectorAll('tr.roll-hit').forEach(tr => tr.classList.remove('roll-hit'))
-      let badge = die.querySelector('.roll-table-last')
-      if (!badge) {
-        badge = document.createElement('span')
-        badge.className = 'roll-table-last'
-        die.appendChild(badge)
-      }
-      badge.textContent = String(total)
-      if (!row) return
-      // Restart the landing flash when the same row comes up twice.
-      void row.offsetWidth
-      row.classList.add('roll-hit')
-      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      row.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' })
-    },
-    setupSongLinks() {
-      const { playByKey } = usePlayer()
-      this.wireInlineActions('data-song-key', async (el, key) => {
-        if (el.classList.contains('loading')) return
-        el.classList.add('loading')
-        try {
-          await playByKey(key)
-        } catch (err) {
-          console.error('Failed to play track:', err)
-          el.classList.add('song-link-error')
-          setTimeout(() => el.classList.remove('song-link-error'), 2000)
-        } finally {
-          el.classList.remove('loading')
-        }
-      })
-    },
-    // Sound-effect buttons toggle their effect over the music; their look
-    // (playing, progress fill) follows useSoundEffects, see syncSfxButtons.
-    setupSfxButtons() {
-      const { toggle } = useSoundEffects()
-      this.wireInlineActions('data-sfx-key', async (el, key) => {
-        try {
-          await toggle(key)
-        } catch (err) {
-          console.error('Failed to play sound effect:', err)
-          el.classList.add('sfx-button-error')
-          setTimeout(() => el.classList.remove('sfx-button-error'), 2000)
-        }
-      })
-      this.syncSfxButtons()
-    },
-    syncSfxButtons() {
-      const content = this.$refs.markdownContent
-      if (!content) return
-      content.querySelectorAll('[data-sfx-key]').forEach(el => {
-        const effect = this.sfxPlaying[el.getAttribute('data-sfx-key')]
-        el.classList.toggle('is-playing', !!effect)
-        el.setAttribute('aria-pressed', effect ? 'true' : 'false')
-        el.style.setProperty('--sfx-progress', effect ? effect.progress : 0)
-        const icon = el.querySelector('.mdi')
-        icon?.classList.toggle('mdi-waveform', !effect)
-        icon?.classList.toggle('mdi-stop', !!effect)
-      })
-    },
-    // Document placeholders from the inline-code rule get a real component
-    // rendered into them: a chart or vista a DocumentEmbed, a character or
-    // adversary a SheetEmbed. v-html knows nothing about those component
-    // trees, so hosts whose DOM a later render replaced are unmounted here
-    // (and every remaining one in beforeUnmount).
-    mountDocEmbeds(root) {
-      this.mountedEmbeds = this.mountedEmbeds.filter(el => {
-        if (el.isConnected) return true
-        render(null, el)
-        return false
-      })
-
-      if (!root) return
-
-      const pageHeadings = [this.note?.title, ...[...root.querySelectorAll('h1, h2, h3')].map((h) => h.textContent)]
-      root.querySelectorAll('[data-doc-embed]:not([data-embed-mounted])').forEach(el => {
-        el.setAttribute('data-embed-mounted', '1')
-        const type = el.getAttribute('data-doc-embed')
-        const props = { type, id: el.getAttribute('data-doc-id'), canInteract: !!this.user }
-        const vnode = DOC_TYPES[type]?.sheet ? h(SheetEmbed, { ...props, pageHeadings }) : h(DocumentEmbed, props)
-        // Share the app's router/plugins with this detached render tree.
-        vnode.appContext = this.$.appContext
-        el.textContent = ''
-        render(vnode, el)
-        this.mountedEmbeds.push(el)
-      })
-    },
-    unmountDocEmbeds() {
-      this.mountedEmbeds.forEach(el => render(null, el))
-      this.mountedEmbeds = []
-    },
-    renderMermaidDiagrams() {
-      this.$nextTick(() => {
-        const content = this.$refs.markdownContent
-        if (!content) return
-
-        const diagrams = content.querySelectorAll('pre.mermaid')
-        if (!diagrams.length) return
-
-        // Mermaid sizes diagrams (e.g. gantt) from the container's current
-        // offsetWidth. Right after the DOM patch the layout may not have
-        // settled yet (sibling panels still loading their own content), so
-        // wait until the container actually has width before rendering.
-        this.waitForLayoutWidth(content, () => {
-          mermaid.run({ nodes: diagrams }).catch(err => {
-            console.error('Failed to render Mermaid diagram:', err)
-          })
-        })
-      })
-    },
-    waitForLayoutWidth(el, callback, attempts = 0) {
-      if (el.offsetWidth > 0 || attempts >= 10) {
-        requestAnimationFrame(callback)
-        return
-      }
-      requestAnimationFrame(() => this.waitForLayoutWidth(el, callback, attempts + 1))
-    },
-    setupImageScreenButtons() {
-      const content = this.$refs.markdownContent
-      if (!content) return
-
-      const images = content.querySelectorAll('img:not([data-screen-wrapped])')
-      images.forEach(img => {
-        // Chart/vista embeds have their own screen button for the whole scene.
-        if (img.closest('.doc-embed')) return
-        img.setAttribute('data-screen-wrapped', '1')
-
-        // Wrap in a relative container
-        const wrapper = document.createElement('span')
-        wrapper.className = 'img-screen-wrapper'
-        img.parentNode.insertBefore(wrapper, img)
-        wrapper.appendChild(img)
-
-        // Build button
-        const btn = document.createElement('button')
-        btn.className = 'img-screen-btn'
-        btn.title = 'Display on screen'
-        btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Screen</span>`
-        btn.addEventListener('click', async (e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          const url = img.src
-          const title = img.alt || ''
-          
-          try {
-            await post(`${apiUrl}/api/screen/display`, { url, title })
-            const originalText = btn.innerHTML
-            btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Sent!</span>`
-            btn.classList.add('sent')
-            setTimeout(() => {
-              btn.classList.remove('sent')
-              btn.innerHTML = originalText
-            }, 2000)
-          } catch (err) {
-            console.error('Failed to send to screen:', err)
-          }
-        })
-        wrapper.appendChild(btn)
-      })
-    },
-    async loadContainerFolders() {
-      try {
-        this.containerFolders = await getCached(`${apiUrl}/api/container-folders`, { cacheTtl: 300 })
-      } catch (err) {
-        console.error('Error loading container folders:', err)
-      }
-    }
-  },
-  mounted() {
-    this.loadContainerFolders()
-  },
-  watch: {
-    // renderedContent also depends on whether someone is signed in (library
-    // images become placeholders without it), so it re-renders when the
-    // session check resolves or on logout — not only after fetchNote(), which
-    // is where the v-html's links, embeds, buttons and diagrams get wired.
-    renderedContent() {
-      this.setupLinkPrefetch()
-      this.renderMermaidDiagrams()
-    },
-    // The editor preview is its own v-html, re-rendered on every keystroke
-    // or tab switch; keep its chart/vista embeds mounted too.
-    draftPreviewHtml() {
-      this.$nextTick(() => this.mountDocEmbeds(this.$refs.previewContent))
-    },
-    editorTab() {
-      this.$nextTick(() => this.mountDocEmbeds(this.$refs.previewContent))
-    },
-    sfxPlaying: {
-      deep: true,
-      handler() {
-        this.syncSfxButtons()
-      }
-    },
-    notePath: {
-      immediate: true,
-      handler() {
-        this.fetchNote()
-      }
-    }
-  },
-  beforeUnmount() {
-    this.unmountDocEmbeds()
-    if (this.prefetchTimeout) {
-      clearTimeout(this.prefetchTimeout)
+    if (isLast) {
+      crumbs.push({ name, to: null })
+    } else {
+      // If the folder mapping has a note ID for this path, use it as the link
+      const targetNoteId = containerFolders.value[currentPath]
+      crumbs.push({ name, to: targetNoteId ? noteRoute(targetNoteId) : null })
     }
   }
+
+  return crumbs
+})
+
+// The hash of a shared link (#a-heading) is scrolled to once the note is in the page.
+let hashScrolledFor = null
+
+async function fetchNote() {
+  const path = props.notePath
+  editing.value = null
+  hashScrolledFor = null
+  const loaded = await load(path)
+  if (props.notePath !== path) return
+  if (loaded) prefetchLinkedNotes(note.value.links || [])
+  else openNewNoteEditor()
 }
+
+// "New note" lands here with ?new=1: the editor opens on the missing note.
+function openNewNoteEditor() {
+  if (notFound.value && route.query.new === '1' && user.value && !editing.value) startCreating()
+}
+
+async function startEditing() {
+  const path = props.notePath
+  try {
+    const raw = await loadRaw(path)
+    // The view moved on to another note before the file came back.
+    if (!raw || props.notePath !== path) return
+    editing.value = { content: raw.content, sha: raw.sha, creating: false }
+  } catch (err) {
+    if (props.notePath === path) error.value = err.response?.data?.detail || err.message
+  }
+}
+
+function startCreating() {
+  const title = props.notePath.split('/').pop()
+  editing.value = { content: `# ${title}\n\n`, sha: null, creating: true }
+}
+
+function onSaved() {
+  editing.value = null
+  fetchNote()
+}
+
+function scrollToHash(el) {
+  if (!route.hash || hashScrolledFor === props.notePath) return
+  hashScrolledFor = props.notePath
+  let id
+  try {
+    id = decodeURIComponent(route.hash.slice(1))
+  } catch {
+    return
+  }
+  el.querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'start' })
+}
+
+// ── Prefetching linked notes ─────────────────────────────────────────
+// Keyed by the same URL the view loads a note from, so a prefetched note
+// opens straight from the cache.
+const prefetched = new Set()
+let prefetchTimeout = null
+
+function prefetchNote(id, timeout) {
+  if (prefetched.has(id)) return
+  prefetched.add(id)
+  getCached(noteApi(id), { cacheTtl: 300, timeout }).catch(() => {})
+}
+
+function prefetchLinkedNotes(links) {
+  if (!links || links.length === 0) return
+
+  const prefetchFn = () => links.slice(0, 5).forEach(id => prefetchNote(id, 2000))
+
+  if (prefetchTimeout) {
+    clearTimeout(prefetchTimeout)
+  }
+
+  if ('requestIdleCallback' in window) {
+    requestIdleCallback(prefetchFn)
+  } else {
+    prefetchTimeout = setTimeout(prefetchFn, 1000)
+  }
+}
+
+async function loadContainerFolders() {
+  try {
+    containerFolders.value = await getCached(`${apiUrl}/api/container-folders`, { cacheTtl: 300 })
+  } catch (err) {
+    console.error('Error loading container folders:', err)
+  }
+}
+
+watch(() => props.notePath, fetchNote, { immediate: true })
+// The session check can answer after the note did.
+watch(user, openNewNoteEditor)
+// A note saved here (this one or a new one) can be a folder's note now.
+watch(useNotesChanged(), loadContainerFolders)
+
+onMounted(loadContainerFolders)
+onBeforeUnmount(() => {
+  if (prefetchTimeout) clearTimeout(prefetchTimeout)
+})
 </script>
 
 <style scoped>
@@ -824,134 +362,6 @@ export default {
 
 .edit-note-btn .mdi {
   font-size: 1.1rem;
-}
-
-/* ── Editor ─────────────────────────────────────────────────── */
-.editor-shell {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.editor-header {
-  border-bottom: 1px solid var(--border-light);
-  padding-bottom: var(--space-4);
-}
-
-.editor-header h1 {
-  margin: 0 0 var(--space-1) 0;
-  font-size: var(--text-2xl);
-  color: var(--text-primary);
-}
-
-.editor-path {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  font-family: var(--font-mono);
-}
-
-.editor-tabs {
-  display: flex;
-  gap: var(--space-1);
-  border-bottom: 1px solid var(--border-light);
-}
-
-.editor-tab {
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  color: var(--text-secondary);
-  padding: var(--space-2) var(--space-4);
-  margin-bottom: -1px;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  transition:
-    color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out);
-}
-
-.editor-tab:hover {
-  color: var(--text-primary);
-  background: var(--hover-tint);
-}
-
-.editor-tab:active {
-  background: var(--accent-a12);
-}
-
-.editor-tab.active {
-  color: var(--text-primary);
-  border-bottom-color: var(--accent);
-}
-
-.editor-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.editor-toolbar-label {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
-}
-
-.editor-textarea {
-  width: 100%;
-  min-height: 50dvh;
-  resize: vertical;
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  padding: var(--space-4);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--text-base);
-  line-height: 1.6;
-  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.editor-textarea::placeholder {
-  color: var(--text-muted);
-}
-
-.editor-textarea:focus,
-.editor-textarea:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-a20);
-  border-radius: var(--radius-md);
-}
-
-.editor-preview {
-  min-height: 50dvh;
-  padding: var(--space-4);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  background: var(--surface-sunken);
-}
-
-.editor-preview :deep(.preview-empty) {
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-}
-
-/* Spinner sits on the solid accent button, so it is drawn in the
-   contrast colour instead of the default accent ring. */
-.btn-spinner {
-  width: 14px;
-  height: 14px;
-  border-color: color-mix(in srgb, var(--accent-contrast) 30%, transparent);
-  border-top-color: var(--accent-contrast);
 }
 
 /* ── Not found ───────────────────────────────────────────────── */
@@ -1061,539 +471,6 @@ export default {
   border-radius: var(--radius-full);
 }
 
-/* ── Rendered markdown ───────────────────────────────────────── */
-.markdown-content {
-  line-height: var(--leading-relaxed);
-  color: var(--text-primary);
-  font-size: var(--text-md);
-}
-
-/* Prose keeps a readable measure. Headings (and their rules), tables, code,
-   callouts, and paragraphs that only wrap an image or a chart/vista embed
-   still use the full column, and so does a sheet (it has its own layout). */
-.markdown-content :deep(:is(p:not(:has(img, .doc-embed)), ul, ol, blockquote):not(.sheet-card *)) {
-  max-width: 70ch;
-}
-
-.markdown-content :deep(h1),
-.markdown-content :deep(h2),
-.markdown-content :deep(h3),
-.markdown-content :deep(h4),
-.markdown-content :deep(h5),
-.markdown-content :deep(h6) {
-  margin-top: 1.8em;
-  margin-bottom: 0.6em;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.markdown-content > :deep(:first-child) {
-  margin-top: 0;
-}
-
-.markdown-content :deep(h1) {
-  font-size: 1.875rem;
-  padding-bottom: var(--space-2);
-  border-bottom: 1px solid var(--border-medium);
-}
-
-.markdown-content :deep(h2) {
-  font-size: 1.5rem;
-  padding-bottom: var(--space-1);
-  border-bottom: 1px solid var(--border-light);
-}
-
-.markdown-content :deep(h3) {
-  font-size: 1.25rem;
-}
-
-.markdown-content :deep(h4) {
-  font-size: 1.0625rem;
-}
-
-.markdown-content :deep(h5),
-.markdown-content :deep(h6) {
-  font-size: var(--text-md);
-  color: var(--text-secondary);
-}
-
-.markdown-content :deep(p) {
-  margin-bottom: 1em;
-}
-
-.markdown-content :deep(code) {
-  background: var(--accent-a12);
-  color: var(--accent-soft);
-  padding: 0.15em 0.4em;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-mono);
-  font-size: 0.875em;
-}
-
-.markdown-content :deep(pre) {
-  background: var(--surface-sunken);
-  padding: var(--space-4);
-  border-radius: var(--radius-md);
-  overflow-x: auto;
-  margin-bottom: 1em;
-  border: 1px solid var(--border-light);
-  line-height: 1.55;
-}
-
-.markdown-content :deep(pre code) {
-  background: transparent;
-  color: var(--text-primary);
-  padding: 0;
-}
-
-.markdown-content :deep(code.dice-roll) {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  background: var(--accent-a20);
-  border: 1px solid var(--accent-a45);
-  color: var(--accent-soft);
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.markdown-content :deep(code.dice-roll .mdi) {
-  font-size: 0.95em;
-}
-
-.markdown-content :deep(code.dice-roll:hover) {
-  background: var(--accent-a45);
-  border-color: var(--accent);
-}
-
-.markdown-content :deep(code.dice-roll:active) {
-  transform: translateY(1px);
-}
-
-.markdown-content :deep(.doc-embed) {
-  display: block;
-}
-
-.markdown-content :deep(.doc-embed-placeholder) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 0.85em;
-}
-
-/* Sound effects: amber, apart from the teal music links, with the effect's
-   progress filling the button while it sounds. Pressing again cuts it. */
-.markdown-content :deep(code.sfx-button) {
-  --sfx-progress: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  background:
-    linear-gradient(90deg, rgba(251, 191, 36, 0.32) calc(var(--sfx-progress) * 100%), transparent 0),
-    rgba(251, 191, 36, 0.14);
-  border: 1px solid rgba(251, 191, 36, 0.4);
-  color: #fcd34d;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-out),
-    box-shadow var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.markdown-content :deep(code.sfx-button .mdi) {
-  font-size: 0.95em;
-}
-
-.markdown-content :deep(code.sfx-button:hover) {
-  border-color: rgba(251, 191, 36, 0.75);
-}
-
-.markdown-content :deep(code.sfx-button:active) {
-  transform: translateY(1px);
-}
-
-.markdown-content :deep(code.sfx-button.is-playing) {
-  border-color: rgba(251, 191, 36, 0.9);
-  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
-}
-
-.markdown-content :deep(code.sfx-button.sfx-button-error) {
-  background: var(--status-error-bg);
-  border-color: var(--status-error-border);
-  color: var(--status-error);
-}
-
-/* Song links keep their own teal so they read apart from dice rolls. */
-.markdown-content :deep(code.song-link) {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  background: rgba(45, 212, 191, 0.18);
-  border: 1px solid rgba(45, 212, 191, 0.4);
-  color: #5eead4;
-  cursor: pointer;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.markdown-content :deep(code.song-link .mdi) {
-  font-size: 0.95em;
-}
-
-.markdown-content :deep(code.song-link:hover) {
-  background: rgba(45, 212, 191, 0.35);
-  border-color: rgba(45, 212, 191, 0.7);
-}
-
-.markdown-content :deep(code.song-link:active) {
-  transform: translateY(1px);
-}
-
-.markdown-content :deep(code.song-link.loading) {
-  opacity: 0.6;
-  cursor: wait;
-}
-
-.markdown-content :deep(code.song-link.song-link-error) {
-  background: var(--status-error-bg);
-  border-color: var(--status-error-border);
-  color: var(--status-error);
-}
-
-.markdown-content :deep(a) {
-  color: var(--accent-hover);
-  text-decoration: underline;
-  text-decoration-color: var(--accent-a45);
-  text-underline-offset: 0.2em;
-  border-radius: var(--radius-sm);
-  transition:
-    color var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out),
-    text-decoration-color var(--duration-fast) var(--ease-out);
-}
-
-.markdown-content :deep(a:hover) {
-  color: var(--accent-soft);
-  text-decoration-color: currentColor;
-  background: var(--hover-tint);
-}
-
-/* Internal note links: no underline until hovered, so prose stays calm. */
-.markdown-content :deep(a[data-note-link]) {
-  text-decoration-color: transparent;
-}
-
-.markdown-content :deep(a[data-note-link]:hover) {
-  text-decoration-color: currentColor;
-}
-
-.markdown-content :deep(blockquote) {
-  border-left: 3px solid var(--accent-a45);
-  margin: 1em 0;
-  padding: var(--space-1) 0 var(--space-1) var(--space-4);
-  color: var(--text-secondary);
-  font-style: italic;
-}
-
-.markdown-content :deep(ul),
-.markdown-content :deep(ol) {
-  margin-bottom: 1em;
-  padding-left: 1.75em;
-}
-
-.markdown-content :deep(li) {
-  margin-bottom: 0.35em;
-}
-
-.markdown-content :deep(li::marker) {
-  color: var(--text-muted);
-}
-
-.markdown-content :deep(hr) {
-  border: none;
-  border-top: 1px solid var(--border-light);
-  margin: 2em 0;
-}
-
-/* Embedded charts/vistas style their own images (pin icons, vista assets).
-   max-height keeps a tall 9:16 portrait from towering over a 16:9 one at
-   the same column width — both cap out around the same on-screen size. */
-.markdown-content :deep(img:not(.document-embed img)) {
-  max-width: 100%;
-  max-height: 60dvh;
-  height: auto;
-  border-radius: var(--radius-md);
-  margin: 0;
-  display: block;
-}
-
-/* Screen button wrapper. width: fit-content (not the full column) so a
-   capped, narrower portrait image centers instead of sitting flush left,
-   and so the send-to-screen button below stays anchored to the image
-   itself rather than floating over empty space beside it. */
-.markdown-content :deep(.img-screen-wrapper) {
-  display: block;
-  position: relative;
-  width: fit-content;
-  max-width: 100%;
-  margin: var(--space-6) auto;
-  line-height: 0;
-  border-radius: var(--radius-md);
-  overflow: visible;
-}
-
-.markdown-content :deep(.img-screen-btn) {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  min-height: var(--control-sm);
-  background: var(--surface-chrome);
-  border: 1px solid var(--accent-a45);
-  color: var(--accent-soft);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  line-height: 1;
-  font-family: inherit;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  opacity: 0;
-  transform: translateY(-4px);
-  transition:
-    opacity var(--duration-base) var(--ease-out),
-    transform var(--duration-base) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
-  z-index: var(--z-raised);
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.markdown-content :deep(.img-screen-wrapper:hover .img-screen-btn),
-.markdown-content :deep(.img-screen-btn:focus-visible) {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-/* No hover on touch screens: keep the button visible there. */
-@media (hover: none) {
-  .markdown-content :deep(.img-screen-btn) {
-    opacity: 1;
-    transform: none;
-    pointer-events: auto;
-  }
-}
-
-.markdown-content :deep(.img-screen-btn:hover) {
-  background: var(--accent-strong);
-  border-color: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
-.markdown-content :deep(.img-screen-btn:active) {
-  transform: translateY(1px);
-}
-
-.markdown-content :deep(.img-screen-btn.sent) {
-  background: var(--status-success-bg);
-  border-color: color-mix(in srgb, var(--status-success) 50%, transparent);
-  color: var(--status-success);
-}
-
-.markdown-content :deep(.locked-asset) {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.markdown-content :deep(pre.mermaid) {
-  background: transparent;
-  border: none;
-  padding: var(--space-4) 0;
-  overflow-x: auto;
-}
-
-.markdown-content :deep(pre.mermaid svg) {
-  display: block;
-  margin: 0 auto;
-  max-width: 100%;
-}
-
-.markdown-content :deep(table) {
-  border-collapse: collapse;
-  width: 100%;
-  margin-bottom: 1em;
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  font-size: var(--text-base);
-  line-height: var(--leading-normal);
-}
-
-.markdown-content :deep(th),
-.markdown-content :deep(td) {
-  border: 1px solid var(--border-light);
-  padding: var(--space-2) var(--space-3);
-  text-align: left;
-  vertical-align: top;
-}
-
-.markdown-content :deep(th) {
-  background: var(--surface-raised);
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.markdown-content :deep(tbody tr:hover) {
-  background: var(--accent-a08);
-}
-
-/* Roll tables: the header die rolls, the row it lands on stays marked. */
-.markdown-content :deep(.roll-table th:first-child),
-.markdown-content :deep(.roll-table td:first-child) {
-  width: 1%;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-.markdown-content :deep(.roll-table td:first-child) {
-  color: var(--text-secondary);
-}
-
-.markdown-content :deep(.roll-table-die) {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.1em 0.45em;
-  border-radius: var(--radius-sm);
-  background: var(--accent-a20);
-  border: 1px solid var(--accent-a45);
-  color: var(--accent-soft);
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  font-weight: 500;
-  cursor: pointer;
-  user-select: none;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
-}
-
-.markdown-content :deep(.roll-table-die:hover) {
-  background: var(--accent-a45);
-  border-color: var(--accent);
-}
-
-.markdown-content :deep(.roll-table-die:active) {
-  transform: translateY(1px);
-}
-
-.markdown-content :deep(.roll-table-die:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.markdown-content :deep(.roll-table[data-rolling] .roll-table-die) {
-  cursor: progress;
-  opacity: 0.7;
-}
-
-.markdown-content :deep(.roll-table-last) {
-  margin-left: 0.1rem;
-  padding: 0 0.4em;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 700;
-}
-
-.markdown-content :deep(.roll-table tr.roll-scan) {
-  background: var(--accent-a12);
-}
-
-.markdown-content :deep(.roll-table tr.roll-hit) {
-  background: var(--accent-a20);
-  animation: roll-land 700ms var(--ease-out);
-}
-
-.markdown-content :deep(.roll-table tr.roll-hit td:first-child) {
-  box-shadow: inset 3px 0 0 var(--accent);
-  color: var(--accent-soft);
-  font-weight: 700;
-}
-
-@keyframes roll-land {
-  from { background: var(--accent-a45); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .markdown-content :deep(.roll-table tr.roll-hit) {
-    animation: none;
-  }
-}
-
-/* Obsidian-style callouts. Type colours are content, kept literal. */
-.markdown-content :deep(.callout) {
-  --callout-color: #a78bfa;
-  margin: 1em 0;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  border-left: 3px solid var(--callout-color);
-  background: color-mix(in srgb, var(--callout-color) 12%, transparent);
-}
-
-.markdown-content :deep(.callout-title) {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0;
-  font-weight: 600;
-  color: var(--callout-color);
-}
-
-.markdown-content :deep(.callout-title .mdi) {
-  font-size: 1.1rem;
-}
-
-.markdown-content :deep(.callout-content) {
-  margin-top: var(--space-2);
-}
-
-.markdown-content :deep(.callout-content) > :first-child {
-  margin-top: 0;
-}
-
-.markdown-content :deep(.callout-content) > :last-child {
-  margin-bottom: 0;
-}
-
-.markdown-content :deep(.callout-blue) { --callout-color: #58a6ff; }
-.markdown-content :deep(.callout-cyan) { --callout-color: #22d3ee; }
-.markdown-content :deep(.callout-teal) { --callout-color: #2dd4bf; }
-.markdown-content :deep(.callout-green) { --callout-color: #3fb950; }
-.markdown-content :deep(.callout-amber) { --callout-color: #d4a72c; }
-.markdown-content :deep(.callout-orange) { --callout-color: #f0883e; }
-.markdown-content :deep(.callout-red) { --callout-color: #f85149; }
-.markdown-content :deep(.callout-purple) { --callout-color: #a78bfa; }
-.markdown-content :deep(.callout-grey) { --callout-color: #8b949e; }
-
 /* ── Small screens ───────────────────────────────────────────── */
 /* Laptop widths: both sidebars are visible, so give the text the room. */
 @media (max-width: 1439px) {
@@ -1616,8 +493,7 @@ export default {
     padding: var(--space-5);
   }
 
-  .note-header h1,
-  .editor-header h1 {
+  .note-header h1 {
     font-size: var(--text-xl);
   }
 }
