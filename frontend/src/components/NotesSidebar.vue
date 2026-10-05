@@ -176,6 +176,28 @@
               @input="setVolume($event.target.valueAsNumber)"
             />
           </label>
+
+          <div class="volume sfx-volume" :class="{ 'is-sounding': sfxPlayingKeys.length }">
+            <label class="volume">
+              <span class="mdi mdi-waveform" aria-hidden="true"></span>
+              <span class="rk-visually-hidden">Effects volume</span>
+              <input
+                type="range" min="0" max="1" step="0.01"
+                :value="sfxVolume"
+                class="volume-bar"
+                @input="setSfxVolume($event.target.valueAsNumber)"
+              />
+            </label>
+            <button
+              class="rk-icon-btn rk-icon-btn--sm"
+              :disabled="!sfxPlayingKeys.length"
+              :title="sfxPlayingKeys.length ? `Stop effects: ${sfxNames}` : 'No effects playing'"
+              aria-label="Stop all effects"
+              @click="stopAllSfx"
+            >
+              <span class="mdi mdi-stop"></span>
+            </button>
+          </div>
         </section>
 
         <div v-if="user && !user.local" class="account">
@@ -284,6 +306,7 @@ import { useGraphModal } from '@/composables/useGraphModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
 import { DOC_TYPES } from '@/utils/docTypes'
 import { usePlayer } from '@/composables/usePlayer'
+import { useSoundEffects } from '@/composables/useSoundEffects'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
 
@@ -316,6 +339,11 @@ const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
   togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
 } = usePlayer()
+const {
+  playing: sfxPlaying, playingKeys: sfxPlayingKeys, volume: sfxVolume,
+  setVolume: setSfxVolume, stopAll: stopAllSfx
+} = useSoundEffects()
+const sfxNames = computed(() => sfxPlayingKeys.value.map((key) => sfxPlaying[key].name).join(', '))
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
 
@@ -871,6 +899,25 @@ onBeforeUnmount(() => {
   flex: 1;
   min-width: 0;
   accent-color: var(--accent);
+}
+
+/* Effects sound over the music with their own volume; the row lights up
+   amber (the colour of effect buttons in notes) while one is sounding. */
+.sfx-volume {
+  margin-right: calc(-1 * var(--space-1));
+}
+
+.sfx-volume > .volume {
+  flex: 1;
+  min-width: 0;
+}
+
+.sfx-volume.is-sounding .mdi-waveform {
+  color: #fcd34d;
+}
+
+.sfx-volume .volume-bar {
+  accent-color: #fbbf24;
 }
 
 .account {

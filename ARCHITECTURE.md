@@ -53,7 +53,10 @@ chart, its vistas and its encounters; a kind's files are told apart by their
 `.<kind>.json` ending (`DocType.suffix`), and two of different kinds may share a
 slug. `player/` belongs to `storage_service.py`. A track's key as the player and
 the notes see it is `<album>/<track>`: the `player/` in front is only where it
-is stored, so notes that name a song don't care where it lives.
+is stored, so notes that name a song don't care where it lives. A sound effect
+(`sfx:<album>/<track>` in a note) is just a track too: the browser plays it
+on an `<audio>` of its own (`composables/useSoundEffects.js`), over the music
+rather than instead of it, so any track can be either.
 
 Nothing in a note or a document names an image's storage key either: they name
 its URL, `/api/observatory/images/<uid>-<name>`, and the image is found by the

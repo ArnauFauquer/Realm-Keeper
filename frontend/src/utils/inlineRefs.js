@@ -1,10 +1,11 @@
 // Inline-code spans in a note that turn into something actionable instead of
 // plain code: a dice formula (`4d8+2d2`, `adv+5`, `roll:hf`), a music track
-// (`Action/01 Beyond Distant Lands.mp3`), or an embedded chart / vista
+// (`Action/01 Beyond Distant Lands.mp3`), a sound effect played over the
+// music (`sfx:Efectos/door.mp3`), or an embedded chart / vista
 // (`chart:regions/tavern-map`, `vista:tavern/night`). The note renderer only
 // emits placeholder markup here; NoteView wires the behavior afterwards.
 import { parseDiceFormula } from './diceNotation'
-import { parseSongKey } from './audioLink'
+import { parseSfxRef, parseSongKey } from './audioLink'
 import { EMBEDDABLE_TYPES, embedIcon } from './docTypes'
 
 // A document's id is "<folder path>/<slug>" ("La Biblioteca Olvidada/la-entrada")
@@ -48,6 +49,8 @@ export function parseInlineRef(text) {
   const formula = parseDiceRef(text)
   if (formula) return { kind: 'dice', formula }
   const trimmed = text.trim()
+  const sfx = parseSfxRef(trimmed)
+  if (sfx) return { kind: 'sfx', ...sfx }
   const song = parseSongKey(trimmed)
   if (song) return { kind: 'song', ...song }
   const doc = parseDocRef(trimmed)
@@ -66,6 +69,12 @@ export function renderInlineRef(ref, escape) {
     const key = escape(ref.key)
     return `<code class="song-link" data-song-key="${key}" role="button" tabindex="0" title="Play ${key}">` +
       `<span class="mdi mdi-play-circle-outline"></span>${escape(ref.filename)}</code>`
+  }
+  if (ref.kind === 'sfx') {
+    const key = escape(ref.key)
+    const name = escape(ref.filename.replace(/\.[^.]+$/, ''))
+    return `<code class="sfx-button" data-sfx-key="${key}" role="button" tabindex="0" aria-pressed="false" title="Sound effect: ${key}">` +
+      `<span class="mdi mdi-waveform"></span>${name}</code>`
   }
   const id = escape(ref.id)
   return `<span class="doc-embed" data-doc-embed="${ref.type}" data-doc-id="${id}">` +

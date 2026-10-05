@@ -154,6 +154,7 @@ import { defineAsyncComponent, h, render } from 'vue'
 import { createMarkdown } from '@/utils/markdown'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { usePlayer } from '@/composables/usePlayer'
+import { useSoundEffects } from '@/composables/useSoundEffects'
 import { useAuth } from '@/composables/useAuth'
 import RightSidebar from '@/components/RightSidebar.vue'
 import DocumentEmbed from '@/components/DocumentEmbed.vue'
@@ -207,7 +208,8 @@ export default {
   },
   setup() {
     const { user } = useAuth()
-    return { user }
+    const { playing: sfxPlaying } = useSoundEffects()
+    return { user, sfxPlaying }
   },
   data() {
     const md = createMarkdown()
@@ -447,6 +449,7 @@ export default {
           this.setupImageScreenButtons()
           this.setupDiceRolls()
           this.setupSongLinks()
+          this.setupSfxButtons()
         }
       })
     },
@@ -487,6 +490,34 @@ export default {
         } finally {
           el.classList.remove('loading')
         }
+      })
+    },
+    // Sound-effect buttons toggle their effect over the music; their look
+    // (playing, progress fill) follows useSoundEffects, see syncSfxButtons.
+    setupSfxButtons() {
+      const { toggle } = useSoundEffects()
+      this.wireInlineActions('data-sfx-key', async (el, key) => {
+        try {
+          await toggle(key)
+        } catch (err) {
+          console.error('Failed to play sound effect:', err)
+          el.classList.add('sfx-button-error')
+          setTimeout(() => el.classList.remove('sfx-button-error'), 2000)
+        }
+      })
+      this.syncSfxButtons()
+    },
+    syncSfxButtons() {
+      const content = this.$refs.markdownContent
+      if (!content) return
+      content.querySelectorAll('[data-sfx-key]').forEach(el => {
+        const effect = this.sfxPlaying[el.getAttribute('data-sfx-key')]
+        el.classList.toggle('is-playing', !!effect)
+        el.setAttribute('aria-pressed', effect ? 'true' : 'false')
+        el.style.setProperty('--sfx-progress', effect ? effect.progress : 0)
+        const icon = el.querySelector('.mdi')
+        icon?.classList.toggle('mdi-waveform', !effect)
+        icon?.classList.toggle('mdi-stop', !!effect)
       })
     },
     // Document placeholders from the inline-code rule get a real component
@@ -616,6 +647,12 @@ export default {
     },
     editorTab() {
       this.$nextTick(() => this.mountDocEmbeds(this.$refs.previewContent))
+    },
+    sfxPlaying: {
+      deep: true,
+      handler() {
+        this.syncSfxButtons()
+      }
     },
     notePath: {
       immediate: true,
@@ -1086,6 +1123,48 @@ export default {
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.85em;
+}
+
+/* Sound effects: amber, apart from the teal music links, with the effect's
+   progress filling the button while it sounds. Pressing again cuts it. */
+.markdown-content :deep(code.sfx-button) {
+  --sfx-progress: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background:
+    linear-gradient(90deg, rgba(251, 191, 36, 0.32) calc(var(--sfx-progress) * 100%), transparent 0),
+    rgba(251, 191, 36, 0.14);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  color: #fcd34d;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.markdown-content :deep(code.sfx-button .mdi) {
+  font-size: 0.95em;
+}
+
+.markdown-content :deep(code.sfx-button:hover) {
+  border-color: rgba(251, 191, 36, 0.75);
+}
+
+.markdown-content :deep(code.sfx-button:active) {
+  transform: translateY(1px);
+}
+
+.markdown-content :deep(code.sfx-button.is-playing) {
+  border-color: rgba(251, 191, 36, 0.9);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.18);
+}
+
+.markdown-content :deep(code.sfx-button.sfx-button-error) {
+  background: var(--status-error-bg);
+  border-color: var(--status-error-border);
+  color: var(--status-error);
 }
 
 /* Song links keep their own teal so they read apart from dice rolls. */
