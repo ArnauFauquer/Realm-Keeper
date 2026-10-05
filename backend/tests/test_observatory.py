@@ -324,6 +324,12 @@ def test_a_document_s_link_may_hold_spaces():
     assert migration.rewrite_links(source, known)[0] == "image: /api/observatory/images/1a2b3c4d-cave%20map.png\nname: x"
 
 
+def test_a_link_to_an_image_moved_since_finds_it_by_its_uid():
+    known = {"asset-library/Oneshots/Biblioteca/167b3479-fondo.png"}
+    text = '"/api/asset-library/assets/asset-library/Biblioteca/167b3479-fondo.png"'
+    assert migration.rewrite_links(text, known) == ('"/api/observatory/images/167b3479-fondo.png"', 1)
+
+
 def test_a_link_to_an_image_that_is_gone_is_left_alone():
     missing = []
     text = "/api/asset-library/assets/asset-library/Maps/gone.png"

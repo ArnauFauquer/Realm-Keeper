@@ -133,7 +133,14 @@ def rewrite_links(text: str, known: Optional[set] = None, missing: Optional[List
     same image in the Observatory, and how many it changed. The link may be
     relative or absolute (the host stays), percent-encoded or not. With
     `known` (the asset library's keys), a link to an image that isn't there is
-    left alone and added to `missing`."""
+    left alone and added to `missing` — unless an image with its uid is
+    somewhere else (it was moved after the link was made, which used to break
+    it): then the link points at that one."""
+    by_uid = {}
+    for key in known or ():
+        name = key.rsplit("/", 1)[-1]
+        if _UID_RE.match(name):
+            by_uid.setdefault(name[:8], key)
     out, count, start = [], 0, 0
     while (found := text.find(OLD_URL_PREFIX, start)) != -1:
         tail = (_URL_TAIL if known is None else _URL_TAIL_WITH_SPACES).match(text, found + len(OLD_URL_PREFIX)).group(0)
@@ -144,6 +151,12 @@ def rewrite_links(text: str, known: Optional[set] = None, missing: Optional[List
             if _is_image(path) and (known is None or f"{ASSET_LIBRARY}/{path}" in known):
                 end, old_key = length, f"{ASSET_LIBRARY}/{path}"
                 break
+        if old_key is None and by_uid:
+            for length in range(len(tail), 0, -1):
+                name = unquote(tail[:length]).rsplit("/", 1)[-1]
+                if _is_image(name) and _UID_RE.match(name) and name[:8] in by_uid:
+                    end, old_key = length, by_uid[name[:8]]
+                    break
         if old_key is None:
             if missing is not None:
                 missing.append(OLD_URL_PREFIX + tail)
