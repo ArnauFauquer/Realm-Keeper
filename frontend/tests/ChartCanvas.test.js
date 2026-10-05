@@ -5,10 +5,12 @@ import { mount } from '@vue/test-utils'
 
 // jsdom has no SVG geometry: the map is as big as its image, and a pointer
 // reads straight off the event (as in BattlemapCanvas.test.js).
+const imageStatus = ref('ready')
 vi.mock('@/composables/useMapViewport', () => ({
   useMapViewport: () => ({
-    naturalWidth: ref(1000),
-    naturalHeight: ref(500),
+    naturalWidth: ref(imageStatus.value === 'ready' ? 1000 : 0),
+    naturalHeight: ref(imageStatus.value === 'ready' ? 500 : 0),
+    imageStatus,
     pointer: (event) => ({ x: event.clientX, y: event.clientY })
   })
 }))
@@ -25,6 +27,7 @@ let wrapper = null
 afterEach(() => {
   wrapper?.unmount()
   wrapper = null
+  imageStatus.value = 'ready'
 })
 
 function mountChart() {
@@ -86,6 +89,14 @@ describe('ChartCanvas', () => {
     window.dispatchEvent(pointer('pointerup', 600, 300))
     expect(chart.pins[0]).toMatchObject({ x: 60, y: 60 })
     expect(wrapper.emitted('change')).toHaveLength(1)
+  })
+
+  it('says so when the map image cannot be loaded, and offers another', () => {
+    imageStatus.value = 'error'
+    const { wrapper } = mountChart()
+    expect(wrapper.find('svg').exists()).toBe(false)
+    expect(wrapper.find('[role="alert"]').text()).toContain('could not be loaded')
+    expect(wrapper.find('[role="alert"] button').text()).toContain('Choose map image')
   })
 
   it('puts a pin back when the browser cancels the drag', async () => {

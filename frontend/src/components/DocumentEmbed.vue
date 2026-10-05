@@ -51,11 +51,11 @@ import VistaCanvas from './VistaCanvas.vue'
 import { docApi } from '@/api/docs'
 import { errorMessage } from '@/api/http'
 import { screenApi } from '@/api/screen'
-import { resolveUrl } from '@/utils/resolveUrl'
 import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
 import { noteRoute } from '@/utils/paths'
 import { useDocModal } from '@/composables/useDocModal'
 import { useFlash } from '@/composables/useFlash'
+import { useImageSize } from '@/composables/useImageSize'
 
 const props = defineProps({
   type: { type: String, required: true }, // 'chart' | 'vista'
@@ -94,7 +94,10 @@ const loading = ref(true)
 const error = ref(null)
 const { on: sent, flash: flashSent } = useFlash()
 const locked = ref(false)
-const imageRatio = ref(null)
+// A chart's SVG is fit ("meet") to its map image, so match the frame to the
+// image's proportions to avoid letterbox bars around it.
+const chartImage = useImageSize(() => (props.type === 'chart' ? doc.value?.image_url : null))
+const imageRatio = computed(() => (chartImage.status.value === 'ready' ? `${chartImage.width.value} / ${chartImage.height.value}` : null))
 
 const hasImage = computed(() => !!doc.value?.[config.value.imageKey])
 const canvasProps = computed(() => config.value.canvasProps(doc.value))
@@ -111,24 +114,12 @@ async function load() {
   loading.value = true
   try {
     doc.value = await config.value.fetch(props.id)
-    loadImageRatio()
   } catch (err) {
     if (err.response?.status === 401) locked.value = true
     else error.value = err.response?.status === 404 ? 'not found' : errorMessage(err)
   } finally {
     loading.value = false
   }
-}
-
-// A chart's SVG is fit ("meet") to its map image, so match the frame to the
-// image's proportions to avoid letterbox bars around it.
-function loadImageRatio() {
-  imageRatio.value = null
-  const url = props.type === 'chart' && doc.value?.image_url
-  if (!url) return
-  const img = new Image()
-  img.onload = () => { imageRatio.value = `${img.naturalWidth} / ${img.naturalHeight}` }
-  img.src = resolveUrl(url)
 }
 
 watch(() => [props.type, props.id, props.canInteract], load, { immediate: true })

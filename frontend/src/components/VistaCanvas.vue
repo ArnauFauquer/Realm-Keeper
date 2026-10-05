@@ -27,6 +27,9 @@
           :style="backgroundStyle"
           @pointerdown="startBackgroundPan"
         ></div>
+        <CanvasEmptyState v-if="backgroundStatus === 'error'" class="stage-error" icon="mdi-image-broken-variant" error>
+          The background could not be loaded. It may have been deleted from the Observatory.
+        </CanvasEmptyState>
 
         <!-- Assets, painter's-algorithm ordered: farther (smaller y) behind, nearer (larger y) in front -->
         <div
@@ -202,6 +205,8 @@ import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { usePointerDrag } from '@/composables/usePointerDrag'
+import { useImageSize } from '@/composables/useImageSize'
+import CanvasEmptyState from './CanvasEmptyState.vue'
 
 const props = defineProps({
   vista: { type: Object, required: true },
@@ -295,23 +300,11 @@ const frameStyle = computed(() => ({
 // verticalPanRangePx below) — a plain img/href sizing trick like the chart
 // canvas uses won't do here since this background is a CSS background-image,
 // not an <img>, so nothing else already knows its intrinsic dimensions.
-const bgNaturalWidth = ref(0)
-const bgNaturalHeight = ref(0)
-
-function loadBackgroundNaturalSize(url) {
-  if (!url) {
-    bgNaturalWidth.value = 0
-    bgNaturalHeight.value = 0
-    return
-  }
-  const img = new Image()
-  img.onload = () => {
-    bgNaturalWidth.value = img.naturalWidth
-    bgNaturalHeight.value = img.naturalHeight
-  }
-  img.src = resolveUrl(url)
-}
-watch(() => props.vista.background_url, loadBackgroundNaturalSize, { immediate: true })
+// Its status says when it couldn't be loaded, so the stage says so too.
+const background = useImageSize(() => props.vista.background_url)
+const bgNaturalWidth = background.width
+const bgNaturalHeight = background.height
+const backgroundStatus = background.status
 
 // Quoted: an image URL saved before the Observatory may hold a space ("Hijos Del Fango/…"),
 // and an unquoted CSS url() with a space is invalid, dropping the background.
@@ -779,6 +772,13 @@ function resetAsset(asset) {
   background-size: cover;
   background-position-x: center;
   background-repeat: no-repeat;
+}
+
+/* Under the assets, which still show where they stand. */
+.stage-error {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .stage-background.panning {

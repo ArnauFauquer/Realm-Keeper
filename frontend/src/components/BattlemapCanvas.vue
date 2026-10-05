@@ -72,6 +72,9 @@
           </g>
         </g>
       </svg>
+      <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
+        The map image could not be loaded. It may have been deleted from the Observatory.
+      </CanvasEmptyState>
     </div>
   </div>
 </template>
@@ -79,6 +82,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMapViewport } from '@/composables/useMapViewport'
+import CanvasEmptyState from './CanvasEmptyState.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
@@ -118,7 +122,7 @@ const svgRef = ref(null)
 const groupRef = ref(null)
 
 const resolvedImageUrl = computed(() => resolveUrl(props.imageUrl))
-const { naturalWidth, naturalHeight, pointer } = useMapViewport({
+const { naturalWidth, naturalHeight, imageStatus, pointer } = useMapViewport({
   svgRef,
   groupRef,
   imageUrl: () => props.imageUrl,

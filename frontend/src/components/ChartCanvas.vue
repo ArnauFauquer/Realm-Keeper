@@ -173,6 +173,15 @@
         </g>
       </svg>
 
+      <CanvasEmptyState v-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
+        The map image could not be loaded. It may have been deleted from the Observatory.
+        <template v-if="editable" #actions>
+          <button class="rk-btn rk-btn--primary" @click="openLibraryForMap">
+            <span class="mdi mdi-folder-multiple-image"></span> Choose map image
+          </button>
+        </template>
+      </CanvasEmptyState>
+
       <!-- Hover tooltip -->
       <div v-if="hoveredPin" class="pin-tooltip">
         <img v-if="hoveredPin.icon_url" :src="resolveUrl(hoveredPin.icon_url)" class="pin-tooltip-icon" />
@@ -332,6 +341,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
 import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
+import CanvasEmptyState from './CanvasEmptyState.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { usePointerDrag } from '@/composables/usePointerDrag'
@@ -407,7 +417,7 @@ const DRAG_THRESHOLD_PX = 3
 const resolvedImageUrl = computed(() => resolveUrl(props.chart.image_url))
 
 // The image's size, zoom and pan, and pointer -> map point, shared with the battlemap.
-const { naturalWidth, naturalHeight, pointer: clientToViewBoxPoint } = useMapViewport({
+const { naturalWidth, naturalHeight, imageStatus, pointer: clientToViewBoxPoint } = useMapViewport({
   svgRef,
   groupRef: zoomGroupRef,
   imageUrl: () => props.chart.image_url,
