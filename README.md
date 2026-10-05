@@ -18,7 +18,9 @@ audio) lives in S3-compatible object storage.
 - Obsidian-style `[[wiki links]]` (`[[Note]]`, `[[Folder/Note]]`,
   `[[Note|custom text]]`), frontmatter, tags and callouts.
 - Mermaid diagrams in fenced ` ```mermaid ` blocks.
-- Full-text search, tag filtering and a folder tree sidebar.
+- Search (Ctrl+K, or Cmd+K on a Mac) across the notes and, signed in, everything
+  in the Observatory: documents of every kind and images, by name, folder,
+  subtitle or tag. Tag filtering and a folder tree sidebar.
 - Constellation: an interactive map of every note and link (D3 force layout on canvas).
 - In-browser note editing, committed and pushed back to the vault's Git repo.
 - Notes tagged with `NOTE_TAG_IGNORE` (e.g. `draft`) are hidden from the app.

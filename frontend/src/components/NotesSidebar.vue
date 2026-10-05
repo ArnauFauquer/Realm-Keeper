@@ -27,9 +27,10 @@
       </header>
 
       <nav class="primary-nav" aria-label="Vault tools">
-        <button class="search-trigger" @click="isSearchModalOpen = true">
+        <button class="search-trigger" :aria-keyshortcuts="SEARCH_SHORTCUT_ARIA" @click="isSearchModalOpen = true">
           <span class="mdi mdi-magnify" aria-hidden="true"></span>
-          <span>Search Notes</span>
+          <span class="search-trigger-label">Search</span>
+          <kbd class="search-trigger-key" aria-hidden="true">{{ SEARCH_SHORTCUT }}</kbd>
         </button>
         <!-- The Observatory (every document and image) is behind login, like the player. -->
         <div v-if="user" class="observatory-tile">
@@ -352,6 +353,18 @@ const {
 const expandedFolders = ref(new Set())
 const isOpen = ref(false)
 const isSearchModalOpen = ref(false)
+// Search opens from anywhere with Ctrl+K (Cmd+K on a Mac), as in most apps.
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+const SEARCH_SHORTCUT = IS_MAC ? '⌘K' : 'Ctrl K'
+const SEARCH_SHORTCUT_ARIA = IS_MAC ? 'Meta+K' : 'Control+K'
+const onSearchShortcut = (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    isSearchModalOpen.value = true
+  }
+}
+onMounted(() => window.addEventListener('keydown', onSearchShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSearchShortcut))
 const isPlayerModalOpen = ref(false)
 const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
@@ -534,14 +547,16 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border-light);
 }
 
+/* Search: a field-like control, sunken where the Observatory tile is raised,
+   with the same corners so the two read as one block. */
 .search-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
   min-height: var(--control-md);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
   background: var(--surface-sunken);
   color: var(--text-secondary);
@@ -551,12 +566,37 @@ onBeforeUnmount(() => {
 }
 
 .search-trigger .mdi {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.search-trigger-label {
+  flex: 1;
+}
+
+.search-trigger-key {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border-medium);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
 }
 
 .search-trigger:hover {
-  border-color: var(--border-medium);
+  border-color: var(--accent-a45);
   color: var(--text-primary);
+}
+
+.search-trigger:hover .mdi {
+  color: var(--accent-soft);
 }
 
 /* Where every document and image is: a small patch of night sky with the way

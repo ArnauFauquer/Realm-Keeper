@@ -114,6 +114,12 @@ def make_observatory_router(
     async def list_folder(path: str = "", user: dict = Depends(require_auth)):
         return await blocking(observatory.list, path)
 
+    @router.get("/search")
+    @guarded
+    async def search(q: str = "", user: dict = Depends(require_auth)):
+        """Documents and images matching `q`, of every kind, in every folder."""
+        return {"items": await blocking(observatory.search, q)}
+
     @router.get("/all")
     @guarded
     async def list_kind(kind: str, user: dict = Depends(require_auth)):

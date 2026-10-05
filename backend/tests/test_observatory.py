@@ -85,6 +85,20 @@ def test_everything_of_one_kind_wherever_it_is(observatory):
         observatory.list_kind("song")
 
 
+def test_searching_finds_every_kind_by_name_place_and_tags(observatory):
+    observatory.collections["chart"].create("La Ciénaga", folder_path="Hijos del Fango")
+    observatory.collections["encounter"].create("Emboscada en la ciénaga")
+    observatory.collections["vista"].create("Taberna", folder_path="Hijos del Fango")
+    upload(observatory, "Mapas", "cienaga norte.png")
+    found = observatory.search("cienaga")
+    assert sorted((i["kind"], i["name"]) for i in found) == [
+        ("chart", "La Ciénaga"), ("encounter", "Emboscada en la ciénaga"), ("image", "cienaga norte.png"),
+    ]
+    assert found[0]["name"] == "cienaga norte.png"                       # starts with it: first
+    assert [i["name"] for i in observatory.search("fango taberna")] == ["Taberna"]   # every word, place too
+    assert observatory.search("   ") == [] and observatory.search("dragon") == []
+
+
 def test_a_folder_moves_and_goes_with_everything_in_it(observatory):
     encounters = observatory.collections["encounter"]
     encounters.create("Fight", folder_path="act 2/caves")
@@ -278,6 +292,7 @@ def test_folders_over_http(api):
     assert api.get("/api/observatory", params={"path": "act 3"}).json() == {"folders": ["act II"], "items": []}
     assert [i["folder"] for i in api.get("/api/observatory/all", params={"kind": "chart"}).json()["items"]] == ["act 3/act II"]
     assert api.get("/api/observatory/all", params={"kind": "song"}).status_code == 400
+    assert [i["id"] for i in api.get("/api/observatory/search", params={"q": "tav"}).json()["items"]] == ["act 3/act II/tavern"]
     assert api.delete("/api/observatory/folders/act 3").status_code == 200
     assert api.delete("/api/observatory/folders/act 3").status_code == 404
     assert api.post("/api/observatory/folders", json={"path": "../x"}).status_code == 400

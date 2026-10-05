@@ -13,6 +13,8 @@ const data = (res) => res.data
 
 export const observatoryApi = {
   list: (path = '') => client.get(base, { params: { path } }).then(data),
+  // Documents and images matching `q`, of every kind, in every folder: { items }.
+  search: (q) => client.get(`${base}/search`, { params: { q } }).then(data),
   // Everything of one kind ("chart"... or "image"), in every folder; each item says its `folder`.
   listKind: (kind) => client.get(`${base}/all`, { params: { kind } }).then(data),
 

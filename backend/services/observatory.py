@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import threading
+import unicodedata
 import time
 import uuid
 import zipfile
@@ -72,6 +73,12 @@ def image_url(filename: str) -> str:
     """Where the app serves an image ("/api/observatory/images/1a2b3c4d-cave%20map.png"),
     quoted so it can be pasted as is into a note's markdown."""
     return f"{IMAGE_URL_PREFIX}{quote(filename, safe='')}"
+
+
+def _folded(text: str) -> str:
+    """Lowercase, without accents: "Ciénaga" and "cienaga" are the same search."""
+    decomposed = unicodedata.normalize("NFKD", str(text).lower())
+    return "".join(c for c in decomposed if not unicodedata.combining(c))
 
 
 def _check_image_name(name: str) -> str:
@@ -150,6 +157,23 @@ class Observatory:
             raise ValueError(f"Unknown kind: {kind}")
         items.sort(key=lambda item: ((item.get("name") or "").lower(), item["folder"].lower()))
         return {"folders": [], "items": items}
+
+    def search(self, query: str, limit: int = 40) -> List[Dict[str, Any]]:
+        """Documents and images whose name, place, subtitle or tags hold every
+        word of `query`, ignoring case and accents; names that start with it first."""
+        words = _folded(query).split()
+        if not words:
+            return []
+        found = []
+        for kind in (*self.collections, IMAGE_KIND):
+            for item in self.list_kind(kind)["items"]:
+                name = _folded(item.get("name") or "")
+                haystack = " ".join([name, _folded(item.get("id") or ""), _folded(item.get("subtitle") or ""),
+                                     *(_folded(tag) for tag in item.get("tags") or [])])
+                if all(word in haystack for word in words):
+                    found.append((not name.startswith(words[0]), name, item))
+        found.sort(key=lambda entry: entry[:2])
+        return [item for _, _, item in found[:limit]]
 
     def ids_under(self, path: str) -> Dict[str, List[str]]:
         """The ids of every document inside the folder at `path`, at any depth, by kind."""
