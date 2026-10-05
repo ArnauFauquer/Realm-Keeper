@@ -90,7 +90,7 @@
           :html="noteHtml"
           :page-title="note.title"
           @link-hover="prefetchNote($event, 1500)"
-          @rendered="scrollToHash"
+          @rendered="placeNote"
         />
       </div>
     </div>
@@ -169,13 +169,15 @@ const breadcrumbs = computed(() => {
   return crumbs
 })
 
-// The hash of a shared link (#a-heading) is scrolled to once the note is in the page.
-let hashScrolledFor = null
+// Where a note opens, once it is in the page: at the heading a shared link
+// names (#a-heading), else at its top (the page scrolls inside .main-content,
+// which kept the previous note's position). Once per note: reloading the same
+// one (after a save) leaves the reader where they are.
+let placedFor = null
 
 async function fetchNote() {
   const path = props.notePath
   editing.value = null
-  hashScrolledFor = null
   const loaded = await load(path)
   if (props.notePath !== path) return
   if (loaded) prefetchLinkedNotes(note.value.links || [])
@@ -209,16 +211,18 @@ function onSaved() {
   fetchNote()
 }
 
-function scrollToHash(el) {
-  if (!route.hash || hashScrolledFor === props.notePath) return
-  hashScrolledFor = props.notePath
-  let id
+function placeNote(el) {
+  if (placedFor === props.notePath) return
+  placedFor = props.notePath
+  let id = null
   try {
-    id = decodeURIComponent(route.hash.slice(1))
+    id = route.hash ? decodeURIComponent(route.hash.slice(1)) : null
   } catch {
-    return
+    // A malformed hash: open at the top.
   }
-  el.querySelector(`[id="${CSS.escape(id)}"]`)?.scrollIntoView({ block: 'start' })
+  const target = id && el.querySelector(`[id="${CSS.escape(id)}"]`)
+  if (target) target.scrollIntoView({ block: 'start' })
+  else el.closest('.main-content')?.scrollTo({ top: 0 })
 }
 
 // ── Prefetching linked notes ─────────────────────────────────────────
