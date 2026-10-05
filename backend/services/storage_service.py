@@ -67,6 +67,17 @@ def _sanitize_segment(name: str) -> str:
     return name
 
 
+def _validate_key(key: str) -> None:
+    """Validate a (possibly multi-segment) object key: every segment must be
+    a safe path component. A second check on the stored key a track is
+    streamed from, beyond the album/file shape `_split_key` checks."""
+    parts = (key or "").split("/")
+    if not parts or not all(parts):
+        raise StorageError(f"Invalid key: {key!r}")
+    for part in parts:
+        _sanitize_segment(part)
+
+
 def _extension(filename: str) -> str:
     return filename[filename.rfind("."):].lower() if "." in filename else ""
 

@@ -89,6 +89,14 @@ def test_track_keys_cannot_reach_beyond_the_player(monkeypatch):
             storage_service.get_track_stream(key)
 
 
+def test_a_track_streams_from_under_the_player(fake_s3):
+    """The real path, unmocked: a track key reaches its object (and nothing
+    the key checks need along the way has gone missing)."""
+    fake_s3.objects["player/Efectos/puerta.mp3"] = b"mp3 bytes"
+    response = storage_service.get_track_stream("Efectos/puerta.mp3")
+    assert response["Body"].read() == b"mp3 bytes"
+
+
 def test_served_content_type_ignores_uploaded_metadata():
     assert storage_service.content_type_for("observatory/evil.png") == "image/png"
     assert storage_service.content_type_for("observatory/evil.html") == "application/octet-stream"
