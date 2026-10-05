@@ -38,7 +38,7 @@
           <!-- Paths -->
           <g v-for="path in chart.paths" :key="path.id" class="chart-path-group">
             <path
-              :d="pathData(path)"
+              :d="pathData.get(path.id)"
               class="chart-path"
               :class="{ selected: selectedId === path.id }"
               :stroke="selectedId === path.id ? null : (path.color || DEFAULT_PATH_COLOR)"
@@ -48,7 +48,7 @@
             />
             <path
               v-if="editable"
-              :d="pathData(path)"
+              :d="pathData.get(path.id)"
               class="chart-path-hit"
               :stroke-width="pathHitWidth"
               @click.stop="selectElement('path', path.id)"
@@ -199,8 +199,19 @@
         </button>
       </div>
 
-      <div v-if="editable && mode === 'path' && drawingPoints.length" class="path-hint">
-        Click to add points · Enter to finish · Esc to cancel
+      <!-- Buttons as well as Enter and Esc: a tablet has no keyboard. -->
+      <div v-if="editable && mode === 'path'" class="path-hint" role="toolbar" aria-label="Drawing a path">
+        <span class="path-hint-text">{{ drawingPoints.length ? 'Add more points, then finish' : 'Click to add points' }}</span>
+        <button type="button" class="rk-btn rk-btn--sm rk-btn--ghost" title="Cancel (Esc)" @click="cancelPath">Cancel</button>
+        <button
+          type="button"
+          class="rk-btn rk-btn--sm rk-btn--primary"
+          title="Finish (Enter)"
+          :disabled="drawingPoints.length < 2"
+          @click="finishPath"
+        >
+          <span class="mdi mdi-check"></span> Finish
+        </button>
       </div>
 
       <!-- Selection panel -->
@@ -434,11 +445,12 @@ function annotationFontSizeFor(note) { return annotationWidthFor(note) * 0.11 }
 function toPx(xPercent) { return (xPercent / 100) * naturalWidth.value }
 function toPy(yPercent) { return (yPercent / 100) * naturalHeight.value }
 
-function pathData(path) {
-  const pts = path.points.map(p => [toPx(p.x), toPy(p.y)])
-  const gen = d3.line().curve(d3.curveCatmullRom.alpha(0.5))
-  return gen(pts)
-}
+// Each path's curve, worked out once per change rather than twice per path
+// on every render (the line and its wider hit area draw the same curve).
+const curve = d3.line().curve(d3.curveCatmullRom.alpha(0.5))
+const pathData = computed(() => new Map(
+  props.chart.paths.map(path => [path.id, curve(path.points.map(p => [toPx(p.x), toPy(p.y)]))])
+))
 
 function clientToPercent(evt) {
   if (!naturalWidth.value) return null
@@ -540,17 +552,23 @@ function onCanvasClick(evt) {
   }
 }
 
+function finishPath() {
+  if (drawingPoints.value.length < 2) return
+  props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })
+  emitChange()
+  drawingPoints.value = []
+  mode.value = 'select'
+}
+
+function cancelPath() {
+  drawingPoints.value = []
+  mode.value = 'select'
+}
+
 function onKeydown(evt) {
   if (mode.value !== 'path') return
-  if (evt.key === 'Enter' && drawingPoints.value.length >= 2) {
-    props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })
-    emitChange()
-    drawingPoints.value = []
-    mode.value = 'select'
-  } else if (evt.key === 'Escape') {
-    drawingPoints.value = []
-    mode.value = 'select'
-  }
+  if (evt.key === 'Enter') finishPath()
+  else if (evt.key === 'Escape') cancelPath()
 }
 window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
@@ -916,12 +934,22 @@ function onLibrarySelect(item) {
   bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-4));
   background: var(--surface-chrome);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-4);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+.path-hint-text {
+  margin-right: var(--space-2);
+  white-space: nowrap;
 }
 
 .selection-panel {
