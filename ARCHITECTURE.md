@@ -95,25 +95,29 @@ this layout.
 
 ### Sheets
 
-A sheet is YAML describing a character or an adversary (counters, stats,
-sections, free text). Each one is a document of its own (see *Documents* below),
-whose `source` field is that YAML: a **`character`** is an individual, live
-(see *Characters*); an **`adversary`** is a template, saved whole, never with
-state of its own, and *copied* into an encounter once per instance. Neither is
-written in a note any more: a note shows one with an inline link,
-`` `character:<id>` `` or `` `adversary:<id>` ``.
+A sheet describes a character or an adversary (counters, stats, entries, in
+sections, and free text). Each one is a document of its own (see *Documents*
+below), whose `sheet` field is the sheet as JSON (`models/sheet.py`
+`SheetBody`): a **`character`** is an individual, live (see *Characters*); an
+**`adversary`** is a template, saved whole, never with state of its own, and
+*copied* into an encounter once per instance. Neither is written in a note: a
+note shows one with an inline link, `` `character:<id>` `` or
+`` `adversary:<id>` ``. Its name, id and type are the document's (its name,
+where it is stored, its kind).
 
-The YAML is the format sheets always had, minus `name`, `id` and `type`: those
-are the document's (its name, where it is stored, its kind). A YAML that still
-has them is read without them, with a warning. An empty source is an empty sheet.
-
-`sheet_parser.py` `parse_sheet_doc` normalizes a document into a `SheetSpec`
-(stats always come out as a list of groups, however they were written; counters
-are written in sections, and gathered by name into `resources` for everything
-that uses them; `columns`, `wide` and `collapsed` are layout only). A source that
-isn't a valid sheet is **refused when it is stored** (`services/sheet_docs.py`
-`sheet_preparer`, the kinds' `DocType.prepare`), so what a note shows always
-parses; the same hook copies the sheet's `image`, `subtitle` and `tags` onto the
+`SheetBody` is the sheet as it is built: a header (`subtitle`, `image`,
+`tags`), `columns`, `text`, and `sections`, each with its `counters` (a list,
+each named: `{name, max, min, start, color, style}`), groups of `stats`
+(`{title, columns, stats: [{label, value, roll}]}`) and `items`. It validates
+itself: counter names unique in the sheet (at most 24), a minimum not above
+its maximum, columns 1 to 12, bounded lengths, no unknown fields.
+`sheet_parser.py` `parse_sheet_doc` reads a document into the `SheetSpec`
+everything draws and plays from (`spec_from_body`: counters gathered by name
+into `resources`, each section naming its own). A sheet that isn't valid, or
+whose image isn't an Observatory one, is **refused when it is stored**
+(`services/sheet_docs.py` `sheet_preparer`, the kinds' `DocType.prepare`), so
+what a note shows always reads; the same hook stores the sheet whole (every
+field, defaults filled) and copies its `image`, `subtitle` and `tags` onto the
 document for its gallery card.
 
 `routes/sheets.py` serves the catalog behind login, like the documents
@@ -123,10 +127,30 @@ themselves: `GET /api/sheets` lists every character and adversary, read
 character held by the hub is read from its memory (`DocHub.held`), so the catalog
 is never behind what is being played.
 
-The frontend parses the same sources (`utils/sheet.js` `parseSheetDoc`); the two
-normalizations are checked against shared fixtures in
-`backend/tests/fixtures/sheets/`, so a change in one needs the same change in
-the other.
+The frontend draws documents the same way (`utils/sheet.js` `sheetFromDoc`);
+both are checked against shared fixtures in
+`backend/tests/fixtures/sheet-bodies/`, so a change in one needs the same change
+in the other.
+
+**Editing.** `SheetEditor` is the sheet builder (`SheetBuilder`, forms) beside
+a live preview. `utils/sheetModel.js` `modelFromBody` makes an editable copy of
+a sheet, every field present to bind a form to; `bodyFromModel` turns it back
+into the sheet that is saved, leaving out rows still without a name and
+trimming what was typed. `sameSheet` compares two sheets by what they save
+(the character editor's unsaved-changes check). `sheetProblems` says what the
+server would refuse, for the author.
+
+**The YAML sheets used to be.** Sheets were YAML, first in notes (` ```sheet `
+blocks), then in documents (`source`). `parse_sheet_source` still reads that
+format (its cases are `backend/tests/fixtures/sheets/`), and
+`upgrade_legacy_source` turns a `source` into a `sheet` (`body_from_spec`; the
+sheet's top-level `stats` become a first, untitled, `wide` section, which is
+how they were drawn). At startup `services/sheet_import.py`
+`convert_yaml_sheets` converts every stored character and adversary still in
+YAML (nothing to do once they are all JSON; one that doesn't read is logged and
+left as it was). `SheetDoc` converts on read too, so the hub, an import of an
+old export or a document written by a pod still running the previous version
+are read the same.
 
 **Importing the sheets notes used to hold.** Earlier versions wrote sheets in
 notes, as ` ```sheet ` blocks. On startup, after the legacy charts and vistas,
@@ -260,10 +284,10 @@ at once.
 ### Characters
 
 A character is a live document, `characters/<folders>/<slug>/character.json`:
-its name, description, sheet (`source`) and the current value of each of its
+its name, description, sheet (`sheet`) and the current value of each of its
 counters (`resources`), shared by every note that shows it and every encounter
 and map it appears in. Its gallery card's `image`, `subtitle` and `tags` are
-derived from the source when it is stored, and it has a `rev` like every live
+derived from the sheet when it is stored, and it has a `rev` like every live
 document (`schema_version` 3).
 
 `resources` follows the sheet, on the server: whenever a character is stored,
@@ -273,8 +297,8 @@ one starts where the sheet says; one the sheet no longer has is dropped, so
 renaming a counter starts it again. The client never reconciles anything.
 
 It is made from the **Characters** gallery like any kind ("New character"), lives
-in folders, and is edited in `CharacterEditor`: the sheet's YAML with its own
-Save button (`PATCH {source}`, since the document is live), while
+in folders, and is edited in `CharacterEditor`: the sheet (`SheetEditor`) with its own
+Save button (`PATCH {sheet}`, since the document is live), while
 `POST /api/characters/<id>/adjust` changes one of its counters, from a note, an
 encounter or a map. On the client, `useSyncedDocs` follows any number of
 documents of a kind at once (an encounter's characters), and `useCharacters(ids)`
@@ -326,11 +350,11 @@ src/
 ├── views/        Home, NoteView, ScreenView
 ├── components/   DocumentModal (+ the thin *Modal wrappers), canvases
 │                 (ChartCanvas, VistaCanvas, BattlemapCanvas), SheetView, SheetEmbed,
-│                 SheetEditor, SheetRefPicker, EncounterTracker, FolderGallery,
+│                 SheetEditor, SheetBuilder, SheetRefPicker, EncounterTracker, FolderGallery,
 │                 sidebar, dice, player
 ├── composables/  useDocCollection, useDocModal, useSyncedDoc, syncSocket,
 │                 useCharacters, useLiveScreen, useMapViewport, useNotes …
-├── utils/        docTypes, sheet, applyEvent, encounter, battlemapGeometry …
+├── utils/        docTypes, sheet, sheetModel, applyEvent, encounter, battlemapGeometry …
 ├── api/          docs.js (createDocApi), sheets, assetLibrary, player …
 ├── dice/         three.js + cannon-es dice simulation
 └── styles/       tokens.css, base.css (the `rk-` primitives)
@@ -373,9 +397,9 @@ src/
   can be played from the note. Its footer has **Edit** (the kind's modal, on it)
   and **Add to encounter**. A sheet named like the note's title or a heading
   hides its name. Signed out, it shows "Sign in to see this character".
-- **Sheet editing.** `SheetEditor` is a YAML textarea beside a live preview
-  that keeps the last valid sheet ("Start from a template" when empty, Tab
-  indents); `CharacterEditor` and `AdversariesModal` use it. In the note editor,
+- **Sheet editing.** `SheetEditor` is the sheet builder beside a live preview
+  ("Start from a template" when empty); `CharacterEditor` and
+  `AdversariesModal` use it. In the note editor,
   `SheetRefPicker` (the **Sheet** button) searches the catalog and inserts a
   link.
 

@@ -10,7 +10,7 @@
 //               fields a save sends besides its name and description
 //   screen      can be shown on the table screen, and mirrored there as it is edited
 //   embeddable  a note can show it with `<type>:<id>`
-//   sheet       a character or adversary: its `source` is a sheet's YAML
+//   sheet       a character or adversary: its `sheet` is a sheet's JSON
 //               (utils/sheet.js), and a note shows it as that sheet
 export const DOC_TYPES = {
   chart: {
@@ -70,7 +70,7 @@ export const DOC_TYPES = {
     icon: 'mdi-skull-outline',
     embedIcon: 'mdi-card-account-details-outline',
     imageField: 'image',
-    saved: ['source'],
+    saved: ['sheet'],
     embeddable: true,
     sheet: true
   },

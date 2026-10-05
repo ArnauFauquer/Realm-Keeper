@@ -1,5 +1,6 @@
-"""Sheets: ```sheet blocks in notes, their parsing and the catalog built from
-them. Run from backend/:  python -m pytest tests/test_sheets.py
+"""Sheets: the JSON a character or adversary document keeps, the YAML they
+used to be written in (in notes, then in documents), and the catalog built
+from them. Run from backend/:  python -m pytest tests/test_sheets.py
 """
 import json
 import tempfile
@@ -17,13 +18,25 @@ from services.doc_collection import DocCollection
 from services.fences import extract_fenced_blocks, iter_fenced_blocks, strip_fenced_blocks
 from services import markdown_service
 from services.markdown_parser import MarkdownParser
-from services.sheet_parser import SheetParseError, parse_sheet_doc, parse_sheet_source, slugify
+from services.sheet_parser import (
+    SheetParseError, body_from_spec, parse_sheet_doc, parse_sheet_source, slugify, upgrade_legacy_source,
+)
 from services.sync_hub import DocHub
 
 FIXTURES = Path(__file__).parent / "fixtures" / "sheets"
+BODIES = Path(__file__).parent / "fixtures" / "sheet-bodies"
 
 
 # ── shared cases (frontend/tests/sheet.test.js runs the same files) ────────
+
+@pytest.mark.parametrize("case", sorted(p.stem for p in BODIES.glob("*.json")))
+def test_a_documents_sheet_draws_as_expected(case):
+    fixture = json.loads((BODIES / f"{case}.json").read_text(encoding="utf-8"))
+    sheet, warnings = parse_sheet_doc(fixture["doc"], fixture["type"])
+    assert {"sheet": sheet.model_dump(), "warnings": warnings} == fixture["expected"]
+
+
+# ── the YAML sheets used to be written in ──────────────────────────────────
 
 @pytest.mark.parametrize("case", sorted(p.stem for p in FIXTURES.glob("*.json")))
 def test_sheet_matches_expected(case):
@@ -143,18 +156,65 @@ def test_wikilinks_inside_a_sheet_still_count_as_links(vault):
 
 # ── a sheet kept as a document ──────────────────────────────────────────────
 
+BUGBOAR = {"tags": ["tier 1"], "sections": [{"counters": [{"name": "HP", "max": 6}]}]}
+
+
 def test_a_documents_name_id_and_type_are_its_own():
-    source = "name: Old name\nid: old\ntype: adversary\nsubtitle: Ranger\n"
-    sheet, warnings = parse_sheet_doc({"id": "party/aria", "name": "Aria", "source": source}, "character")
-    assert (sheet.id, sheet.name, sheet.type, sheet.subtitle) == ("party/aria", "Aria", "character", "Ranger")
-    assert len(warnings) == 3 and all("ignored" in w for w in warnings)
+    sheet, warnings = parse_sheet_doc({"id": "party/aria", "name": "Aria", "sheet": {"subtitle": "Ranger"}}, "character")
+    assert (sheet.id, sheet.name, sheet.type, sheet.subtitle, warnings) == ("party/aria", "Aria", "character", "Ranger", [])
 
 
 def test_an_empty_document_is_an_empty_sheet():
-    sheet, warnings = parse_sheet_doc({"id": "imp", "name": "Imp", "source": ""}, "adversary")
+    sheet, warnings = parse_sheet_doc({"id": "imp", "name": "Imp"}, "adversary")
     assert (sheet.name, sheet.sections, warnings) == ("Imp", [], [])
-    with pytest.raises(SheetParseError):
-        parse_sheet_doc({"id": "imp", "name": "Imp", "source": "- a list"}, "adversary")
+
+
+@pytest.mark.parametrize("body, problem", [
+    (["a list"], "valid dictionary"),
+    ({"sections": [{"counters": [{"name": "HP", "max": "lots"}]}]}, "integer"),
+    ({"sections": [{"counters": [{"name": "HP", "max": 1, "min": 3}]}]}, "min above its max"),
+    ({"sections": [{"counters": [{"name": "HP", "max": 6}]}, {"counters": [{"name": "HP", "max": 3}]}]}, "two counters"),
+    ({"sections": [{"counters": [{"name": "", "max": 6}]}]}, "at least 1 character"),
+    ({"columns": 13}, "less than or equal to 12"),
+    ({"sections": [{"counters": [{"name": "HP", "max": 6, "style": "dial"}]}]}, "'pips', 'bar' or 'number'"),
+    ({"stats": {"Difficulty": 12}}, "Extra inputs"),
+])
+def test_an_invalid_sheet_is_refused_with_a_reason(body, problem):
+    with pytest.raises(SheetParseError, match=problem):
+        parse_sheet_doc({"id": "imp", "name": "Imp", "sheet": body}, "adversary")
+
+
+def test_counters_are_gathered_by_name_and_each_section_names_its_own():
+    body = {"sections": [
+        {"counters": [{"name": "HP", "max": 6, "color": "red"}, {"name": "Stress", "max": 3, "start": 0, "style": "pips"}]},
+        {"title": "Actions", "items": [{"name": "Gore", "roll": "1d20+3"}]},
+    ]}
+    sheet, _ = parse_sheet_doc({"id": "bugboar", "name": "Bugboar", "sheet": body}, "adversary")
+    assert list(sheet.resources) == ["HP", "Stress"] and sheet.resources["Stress"].start == 0
+    assert [s.counters for s in sheet.sections] == [["HP", "Stress"], []]
+    assert sheet.sections[1].items[0].roll == "1d20+3"
+
+
+def test_a_yaml_document_becomes_json_drawing_the_same():
+    source = (FIXTURES / "adversary-full.yaml").read_text(encoding="utf-8")
+    from_yaml, _ = parse_sheet_source(source)
+    doc = {"id": "bugboar", "name": "Bugboar", "source": source}
+    assert upgrade_legacy_source(doc, "adversary") and "source" not in doc
+    from_json, _ = parse_sheet_doc(doc, "adversary")
+    # The sheet's own stats are now its first section, drawn where they were.
+    assert from_json.stats == [] and from_json.sections[0].wide and from_json.sections[0].stats == from_yaml.stats
+    assert from_json.sections[1:] == from_yaml.sections and from_json.resources == from_yaml.resources
+    assert (from_json.subtitle, from_json.image, from_json.tags, from_json.text) == (
+        from_yaml.subtitle, from_yaml.image, from_yaml.tags, from_yaml.text,
+    )
+    assert not upgrade_legacy_source(doc, "adversary")   # once
+
+
+@pytest.mark.parametrize("case", sorted(p.stem for p in FIXTURES.glob("*.json")))
+def test_every_yaml_case_converts(case):
+    spec, _ = parse_sheet_source((FIXTURES / f"{case}.yaml").read_text(encoding="utf-8"))
+    converted, _ = parse_sheet_doc({"id": spec.id, "name": spec.name, "sheet": body_from_spec(spec)}, spec.type)
+    assert converted.resources == spec.resources
 
 
 # ── catalog ─────────────────────────────────────────────────────────────────
@@ -180,9 +240,9 @@ def store(tmp_path, monkeypatch):
 @pytest.fixture
 def client(store):
     store["adversary"].create("Bugboar", folder_path="Bestiary")
-    store["adversary"].save("Bestiary/bugboar", {"name": "Bugboar", "source": "tags: [tier 1]\nsections:\n  - counters: {HP: 6}\n"})
+    store["adversary"].save("Bestiary/bugboar", {"name": "Bugboar", "sheet": BUGBOAR})
     store["character"].create("Aria")
-    store["character"].set_field("aria", "source", "sections:\n  - counters: {HP: 12}\n")
+    store["character"].set_field("aria", "sheet", {"sections": [{"counters": [{"name": "HP", "max": 12}]}]})
     app = FastAPI()
     app.include_router(sheets_router)
     app.dependency_overrides[require_auth] = lambda: {"email": "gm@example.com"}
@@ -216,12 +276,35 @@ def test_detail_looks_a_sheet_up_by_type_and_ref(client):
 
 def test_a_stored_sheet_is_always_valid_and_its_card_reads_from_it(store):
     made = store["adversary"].create("Imp")
-    assert made.source == ""
-    with pytest.raises(ValueError, match="whole number"):
-        store["adversary"].save("imp", {"name": "Imp", "source": "sections:\n  - counters: {HP: lots}\n"})
-    saved = store["adversary"].save("imp", {"name": "Imp", "source": "subtitle: Tiny\ntags: [fiend]\n"})
+    assert made.sheet.sections == []
+    with pytest.raises(ValueError, match="integer"):
+        store["adversary"].save("imp", {"name": "Imp", "sheet": {"sections": [{"counters": [{"name": "HP", "max": "lots"}]}]}})
+    with pytest.raises(ValueError, match="Observatory image"):
+        store["adversary"].save("imp", {"name": "Imp", "sheet": {"image": "imp.png"}})
+    saved = store["adversary"].save("imp", {"name": "Imp", "sheet": {"subtitle": "Tiny", "tags": ["fiend"]}})
     assert (saved.subtitle, saved.tags) == ("Tiny", ["fiend"])
     assert store["adversary"].list_all()[0].subtitle == "Tiny"
+    stored = store["adversary"].read_raw("imp")["sheet"]
+    assert stored["sections"] == [] and stored["columns"] is None   # stored whole, defaults filled
+
+
+def test_documents_still_in_yaml_are_converted_once(store):
+    yaml_sheet = "subtitle: Old\nsections:\n  - counters: {HP: 6}\n"
+    store["adversary"].write_raw("imp", {"id": "imp", "name": "Imp", "source": yaml_sheet})
+    store["character"].write_raw("aria", {"id": "aria", "name": "Aria", "rev": 2, "source": "sections:\n  - counters: {HP: 9}\n",
+                                         "resources": {"HP": {"current": 4, "max": 9}}})
+    store["adversary"].write_raw("broken", {"id": "broken", "name": "Broken", "source": "sections: ["})
+    assert store["adversary"].get("imp").sheet.subtitle == "Old"    # read as JSON even before
+
+    assert sheet_import.convert_yaml_sheets() == 2
+    imp = store["adversary"].read_raw("imp")
+    assert "source" not in imp and imp["sheet"]["sections"][0]["counters"] == [
+        {"name": "HP", "max": 6, "min": 0, "start": None, "color": None, "style": None},
+    ]
+    aria = store["character"].read_raw("aria")
+    assert "source" not in aria and (aria["rev"], aria["resources"]["HP"]["current"]) == (2, 4)
+    assert store["adversary"].read_raw("broken")["source"] == "sections: ["   # left for its author
+    assert sheet_import.convert_yaml_sheets() == 0
 
 
 # ── the sheets that were written in notes ───────────────────────────────────
@@ -265,9 +348,9 @@ def test_importing_keeps_saved_values_and_follows_adversary_refs(vault, store):
 
     aria = store["character"].read_raw("aria")
     assert (aria["name"], aria["rev"], aria["resources"]["HP"]["current"]) == ("Aria", 4, 5)
-    assert aria["source"] == "sections:\n  - counters: {HP: 12}\n"
+    assert aria["sheet"]["sections"][0]["counters"][0]["max"] == 12
     assert sorted(m.id for m in store["adversary"].list_all()) == ["Bestiary/bugboar", "Bestiary/bugboar-2", "Bestiary/imp"]
-    assert store["adversary"].read_raw("Bestiary/bugboar")["source"] == "sections:\n  - counters: {HP: 6}\n"
+    assert store["adversary"].read_raw("Bestiary/bugboar")["sheet"]["sections"][0]["counters"][0]["max"] == 6
     assert [c["sheet"] for c in store["encounter"].read_raw("fight")["combatants"]] == ["Bestiary/bugboar-2", "aria"]
 
     store["adversary"].delete("Bestiary/imp")

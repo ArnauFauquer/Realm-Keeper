@@ -1,0 +1,348 @@
+{
+  "type": "character",
+  "doc": {
+    "id": "party/aria",
+    "name": "Aria",
+    "sheet": {
+      "subtitle": null,
+      "image": null,
+      "tags": [],
+      "columns": 2,
+      "text": null,
+      "sections": [
+        {
+          "title": null,
+          "columns": null,
+          "wide": true,
+          "collapsed": false,
+          "tab": null,
+          "counters": [],
+          "stats": [
+            {
+              "title": null,
+              "columns": null,
+              "stats": [
+                {
+                  "label": "Evasión",
+                  "value": 11,
+                  "roll": null
+                },
+                {
+                  "label": "Umbrales",
+                  "value": "6/12",
+                  "roll": null
+                }
+              ]
+            },
+            {
+              "title": "Rasgos",
+              "columns": 6,
+              "stats": [
+                {
+                  "label": "Agilidad",
+                  "value": "0",
+                  "roll": "hf"
+                },
+                {
+                  "label": "Presencia",
+                  "value": "+2",
+                  "roll": "hf+2"
+                }
+              ]
+            }
+          ],
+          "items": []
+        },
+        {
+          "title": null,
+          "columns": null,
+          "wide": false,
+          "collapsed": false,
+          "tab": null,
+          "counters": [
+            {
+              "name": "HP",
+              "max": 6,
+              "min": 0,
+              "start": null,
+              "color": null,
+              "style": null
+            }
+          ],
+          "stats": [],
+          "items": []
+        },
+        {
+          "title": "Spells",
+          "columns": null,
+          "wide": false,
+          "collapsed": false,
+          "tab": "Magic",
+          "counters": [
+            {
+              "name": "Level 1",
+              "max": 4,
+              "min": 0,
+              "start": null,
+              "color": null,
+              "style": null
+            },
+            {
+              "name": "Level 2",
+              "max": 3,
+              "min": 0,
+              "start": null,
+              "color": "#60a5fa",
+              "style": null
+            }
+          ],
+          "stats": [
+            {
+              "title": null,
+              "columns": null,
+              "stats": [
+                {
+                  "label": "Save DC",
+                  "value": 17,
+                  "roll": null
+                },
+                {
+                  "label": "Spell attack",
+                  "value": "+9",
+                  "roll": "1d20+9"
+                }
+              ]
+            }
+          ],
+          "items": [
+            {
+              "name": null,
+              "text": "Fireball",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        },
+        {
+          "title": "Habilidades",
+          "columns": 3,
+          "wide": false,
+          "collapsed": false,
+          "tab": null,
+          "counters": [],
+          "stats": [],
+          "items": [
+            {
+              "name": null,
+              "text": "Arcanos",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            },
+            {
+              "name": null,
+              "text": "Historia",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        },
+        {
+          "title": "Rasgos",
+          "columns": null,
+          "wide": true,
+          "collapsed": true,
+          "tab": null,
+          "counters": [],
+          "stats": [],
+          "items": [
+            {
+              "name": "Arenga",
+              "text": "| Nivel | Dado |\n|---|---|\n| 1 | `1d6` |",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "sheet": {
+      "id": "party/aria",
+      "name": "Aria",
+      "type": "character",
+      "subtitle": null,
+      "image": null,
+      "tags": [],
+      "resources": {
+        "HP": {
+          "max": 6,
+          "min": 0,
+          "start": null,
+          "color": null,
+          "style": null
+        },
+        "Level 1": {
+          "max": 4,
+          "min": 0,
+          "start": null,
+          "color": null,
+          "style": null
+        },
+        "Level 2": {
+          "max": 3,
+          "min": 0,
+          "start": null,
+          "color": "#60a5fa",
+          "style": null
+        }
+      },
+      "stats": [],
+      "sections": [
+        {
+          "title": null,
+          "columns": null,
+          "wide": true,
+          "collapsed": false,
+          "tab": null,
+          "counters": [],
+          "stats": [
+            {
+              "title": null,
+              "columns": null,
+              "stats": [
+                {
+                  "label": "Evasión",
+                  "value": 11,
+                  "roll": null
+                },
+                {
+                  "label": "Umbrales",
+                  "value": "6/12",
+                  "roll": null
+                }
+              ]
+            },
+            {
+              "title": "Rasgos",
+              "columns": 6,
+              "stats": [
+                {
+                  "label": "Agilidad",
+                  "value": "0",
+                  "roll": "hf"
+                },
+                {
+                  "label": "Presencia",
+                  "value": "+2",
+                  "roll": "hf+2"
+                }
+              ]
+            }
+          ],
+          "items": []
+        },
+        {
+          "title": null,
+          "columns": null,
+          "wide": false,
+          "collapsed": false,
+          "tab": null,
+          "counters": [
+            "HP"
+          ],
+          "stats": [],
+          "items": []
+        },
+        {
+          "title": "Spells",
+          "columns": null,
+          "wide": false,
+          "collapsed": false,
+          "tab": "Magic",
+          "counters": [
+            "Level 1",
+            "Level 2"
+          ],
+          "stats": [
+            {
+              "title": null,
+              "columns": null,
+              "stats": [
+                {
+                  "label": "Save DC",
+                  "value": 17,
+                  "roll": null
+                },
+                {
+                  "label": "Spell attack",
+                  "value": "+9",
+                  "roll": "1d20+9"
+                }
+              ]
+            }
+          ],
+          "items": [
+            {
+              "name": null,
+              "text": "Fireball",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        },
+        {
+          "title": "Habilidades",
+          "columns": 3,
+          "wide": false,
+          "collapsed": false,
+          "tab": null,
+          "counters": [],
+          "stats": [],
+          "items": [
+            {
+              "name": null,
+              "text": "Arcanos",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            },
+            {
+              "name": null,
+              "text": "Historia",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        },
+        {
+          "title": "Rasgos",
+          "columns": null,
+          "wide": true,
+          "collapsed": true,
+          "tab": null,
+          "counters": [],
+          "stats": [],
+          "items": [
+            {
+              "name": "Arenga",
+              "text": "| Nivel | Dado |\n|---|---|\n| 1 | `1d6` |",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        }
+      ],
+      "columns": 2,
+      "text": null
+    },
+    "warnings": []
+  }
+}

@@ -57,8 +57,8 @@ describe('useCharacters', () => {
   })
 
   it('saves its sheet; the counters follow it on the server', async () => {
-    await use().patch('aria', { source: 'sections: []' })
-    expect(commands.patch).toHaveBeenCalledWith('aria', { source: 'sections: []' })
+    await use().patch('aria', { sheet: { sections: [] } })
+    expect(commands.patch).toHaveBeenCalledWith('aria', { sheet: { sections: [] } })
     expect(commit).toHaveBeenCalledWith('aria', expect.anything())
   })
 })

@@ -24,7 +24,7 @@ from services.doc_registry import (
 from services.fences import FencedBlock, iter_fenced_blocks
 from services.markdown_parser import MarkdownParser
 from models.sheet import SheetSpec
-from services.sheet_parser import DOCUMENT_FIELDS, SheetParseError, parse_sheet_source
+from services.sheet_parser import DOCUMENT_FIELDS, SheetParseError, body_from_spec, parse_sheet_source, upgrade_legacy_source
 from services.sheet_refs import rename_sheet_refs
 
 logger = logging.getLogger(__name__)
@@ -99,9 +99,9 @@ def find_note_sheets(vault_path: Path) -> List[NoteSheet]:
 
 def _import_character(found: NoteSheet) -> bool:
     existing = characters_collection.read_raw(found.doc_id)
-    if existing is not None and existing.get("source"):
+    if existing is not None and (existing.get("sheet") or existing.get("source")):
         return False  # already a sheet: a second block with the same id, or a run that stopped halfway
-    data = {**(existing or {}), "id": found.doc_id, "name": found.sheet.name, "source": found.source}
+    data = {**(existing or {}), "id": found.doc_id, "name": found.sheet.name, "sheet": body_from_spec(found.sheet)}
     data.setdefault("rev", 0)
     CHARACTER.prepare(data, None)  # its counters, keeping the saved values
     characters_collection.write_raw(found.doc_id, CHARACTER.model.model_validate(data).model_dump(mode="json"))
@@ -111,7 +111,7 @@ def _import_character(found: NoteSheet) -> bool:
 def _import_adversary(found: NoteSheet) -> bool:
     if adversary_collection.read_raw(found.doc_id) is not None:
         return False
-    data = {"id": found.doc_id, "name": found.sheet.name, "source": found.source}
+    data = {"id": found.doc_id, "name": found.sheet.name, "sheet": body_from_spec(found.sheet)}
     ADVERSARY.prepare(data, None)
     adversary_collection.write_raw(found.doc_id, ADVERSARY.model.model_validate(data).model_dump(mode="json"))
     return True
@@ -160,6 +160,33 @@ def import_note_sheets(vault_path: Path) -> None:
             )
     except Exception:
         logger.exception("Could not import the sheets written in notes")
+
+
+def convert_yaml_sheets() -> int:
+    """Characters and adversaries stored when a sheet was YAML (`source`) get
+    it as JSON (`sheet`), what the sheet builder edits. Run at startup, before
+    anything serves them; one that is already JSON is left alone, so it does
+    nothing after the first time. Returns how many it converted. A sheet that
+    can't be read is logged and left as it was."""
+    converted = 0
+    for collection, sheet_type in ((characters_collection, "character"), (adversary_collection, "adversary")):
+        try:
+            ids = collection.ids(collection.backend.list_keys(collection.root))
+        except Exception:
+            logger.exception(f"Could not list the {collection.doctype.prefix} to convert their sheets")
+            continue
+        for doc_id in ids:
+            try:
+                doc = collection.read_raw(doc_id)
+                if doc is None or not upgrade_legacy_source(doc, sheet_type):
+                    continue
+                collection.write_raw(doc_id, doc)
+                converted += 1
+            except Exception as e:
+                logger.warning(f"Could not convert the sheet of the {sheet_type} {doc_id}: {e}")
+    if converted:
+        logger.info(f"Converted {converted} YAML sheets to JSON")
+    return converted
 
 
 def rewrite_notes(vault_path: Path) -> List[Path]:
