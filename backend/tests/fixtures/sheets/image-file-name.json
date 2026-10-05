@@ -4,7 +4,7 @@
     "name": "Ghoul",
     "type": "adversary",
     "subtitle": null,
-    "image": null,
+    "image": "/api/observatory/images/9f8e7d6c-ghoul%20%28pale%29.png",
     "tags": [],
     "resources": {},
     "stats": [],
@@ -12,8 +12,5 @@
     "columns": null,
     "text": null
   },
-  "warnings": [
-    "Unknown field 'resource'",
-    "image must be the URL of an Observatory image, as copied from the Observatory"
-  ]
+  "warnings": []
 }

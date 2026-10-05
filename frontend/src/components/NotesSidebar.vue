@@ -27,40 +27,30 @@
       </header>
 
       <nav class="primary-nav" aria-label="Vault tools">
-        <button class="search-trigger" @click="isSearchModalOpen = true">
+        <button class="search-trigger" :aria-keyshortcuts="SEARCH_SHORTCUT_ARIA" @click="isSearchModalOpen = true">
           <span class="mdi mdi-magnify" aria-hidden="true"></span>
-          <span>Search Notes</span>
+          <span class="search-trigger-label">Search</span>
+          <kbd class="search-trigger-key" aria-hidden="true">{{ SEARCH_SHORTCUT }}</kbd>
         </button>
-        <!-- Charts, vistas and the asset library are behind login, like the player. -->
-        <div v-if="user" class="tool-row">
-          <button class="tool-btn" @click="openCharts">
-            <span class="mdi mdi-map-marker-radius" aria-hidden="true"></span>
-            <span>Charts</span>
+        <!-- The Observatory (every document and image) is behind login, like the player. -->
+        <div v-if="user" class="observatory-tile">
+          <button class="observatory-trigger" @click="openObservatory()">
+            <span class="observatory-mark" aria-hidden="true"><span class="mdi mdi-telescope"></span></span>
+            <span class="observatory-label">Observatory</span>
+            <span class="mdi mdi-chevron-right observatory-go" aria-hidden="true"></span>
           </button>
-          <button class="tool-btn" @click="openVistas">
-            <span class="mdi mdi-image-frame" aria-hidden="true"></span>
-            <span>Vistas</span>
-          </button>
-          <button class="tool-btn" @click="openAssetLibrary">
-            <span class="mdi mdi-folder-multiple-image" aria-hidden="true"></span>
-            <span>Assets</span>
-          </button>
-          <button class="tool-btn" @click="openEncounters">
-            <span class="mdi mdi-sword-cross" aria-hidden="true"></span>
-            <span>Encounters</span>
-          </button>
-          <button class="tool-btn" @click="openBattlemaps">
-            <span class="mdi mdi-grid" aria-hidden="true"></span>
-            <span>Battlemaps</span>
-          </button>
-          <button class="tool-btn" @click="openCharacters">
-            <span class="mdi mdi-account-heart-outline" aria-hidden="true"></span>
-            <span>Characters</span>
-          </button>
-          <button class="tool-btn" @click="openAdversaries">
-            <span class="mdi mdi-skull-outline" aria-hidden="true"></span>
-            <span>Adversaries</span>
-          </button>
+          <div class="observatory-kinds" role="group" aria-label="Open the Observatory on">
+            <button
+              v-for="kind in OBSERVATORY_SHORTCUTS"
+              :key="kind.type"
+              class="observatory-kind"
+              :title="`All ${kind.plural}`"
+              :aria-label="`All ${kind.plural}`"
+              @click="openObservatoryKind(kind.type)"
+            >
+              <span class="mdi" :class="kind.icon" aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -231,7 +221,12 @@
     <BattlemapsModal />
     <CharactersModal />
     <AdversariesModal />
-    <AssetLibraryModal :is-open="isAssetLibraryOpen" @close="closeAssetLibrary" />
+    <ObservatoryModal
+      :is-open="isObservatoryOpen"
+      :start-path="observatoryPath || ''"
+      :start-kind="observatoryKind"
+      @close="closeObservatory"
+    />
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
       <div class="rk-dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-title">
@@ -281,13 +276,13 @@ import EncountersModal from './EncountersModal.vue'
 import BattlemapsModal from './BattlemapsModal.vue'
 import CharactersModal from './CharactersModal.vue'
 import AdversariesModal from './AdversariesModal.vue'
-import AssetLibraryModal from './AssetLibraryModal.vue'
+import ObservatoryModal from './ObservatoryModal.vue'
 import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
-import { useDocModal } from '@/composables/useDocModal'
-import { useAssetLibraryModal } from '@/composables/useAssetLibraryModal'
+import { useObservatoryModal } from '@/composables/useObservatoryModal'
+import { DOC_TYPES } from '@/utils/docTypes'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
@@ -311,13 +306,12 @@ async function copyScreenLink() {
   if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
-const { open: openCharts } = useDocModal('chart')
-const { open: openVistas } = useDocModal('vista')
-const { open: openEncounters } = useDocModal('encounter')
-const { open: openBattlemaps } = useDocModal('battlemap')
-const { open: openCharacters } = useDocModal('character')
-const { open: openAdversaries } = useDocModal('adversary')
-const { isOpen: isAssetLibraryOpen, open: openAssetLibrary, close: closeAssetLibrary } = useAssetLibraryModal()
+const {
+  isOpen: isObservatoryOpen, targetId: observatoryPath, kind: observatoryKind,
+  open: openObservatory, openKind: openObservatoryKind, close: closeObservatory
+} = useObservatoryModal()
+// A shortcut per kind of document, in the order the Observatory lists them.
+const OBSERVATORY_SHORTCUTS = ['chart', 'vista', 'encounter', 'battlemap', 'character', 'adversary'].map((type) => DOC_TYPES[type])
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
   togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
@@ -359,6 +353,18 @@ const {
 const expandedFolders = ref(new Set())
 const isOpen = ref(false)
 const isSearchModalOpen = ref(false)
+// Search opens from anywhere with Ctrl+K (Cmd+K on a Mac), as in most apps.
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
+const SEARCH_SHORTCUT = IS_MAC ? '⌘K' : 'Ctrl K'
+const SEARCH_SHORTCUT_ARIA = IS_MAC ? 'Meta+K' : 'Control+K'
+const onSearchShortcut = (event) => {
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === 'k') {
+    event.preventDefault()
+    isSearchModalOpen.value = true
+  }
+}
+onMounted(() => window.addEventListener('keydown', onSearchShortcut))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSearchShortcut))
 const isPlayerModalOpen = ref(false)
 const searchModalRef = ref(null)
 const scrollIndicator = ref(null)
@@ -541,14 +547,16 @@ onBeforeUnmount(() => {
   border-bottom: 1px solid var(--border-light);
 }
 
+/* Search: a field-like control, sunken where the Observatory tile is raised,
+   with the same corners so the two read as one block. */
 .search-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
   min-height: var(--control-md);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-md);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
   background: var(--surface-sunken);
   color: var(--text-secondary);
@@ -558,58 +566,160 @@ onBeforeUnmount(() => {
 }
 
 .search-trigger .mdi {
-  font-size: 1.1rem;
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.search-trigger-label {
+  flex: 1;
+}
+
+.search-trigger-key {
+  display: inline-flex;
+  align-items: center;
+  height: 1.375rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--border-medium);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1;
 }
 
 .search-trigger:hover {
-  border-color: var(--border-medium);
+  border-color: var(--accent-a45);
   color: var(--text-primary);
 }
 
-.tool-row {
-  display: grid;
-  /* As many tools as fit a row, however many there are. */
-  grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
-  gap: var(--space-1);
+.search-trigger:hover .mdi {
+  color: var(--accent-soft);
 }
 
-.tool-btn {
+/* Where every document and image is: a small patch of night sky with the way
+   in, and a shortcut to each kind of document under it. */
+.observatory-tile {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--accent-a30);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 90% at 100% 0%, var(--accent-a20), transparent 62%),
+    var(--surface-raised);
+}
+
+/* A few fixed stars, top right, behind everything. */
+.observatory-tile::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: 30%;
+  z-index: -1;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow:
+    28px 14px 0 0 rgba(255, 255, 255, 0.5),
+    46px 4px 0 0 rgba(255, 255, 255, 0.35),
+    62px 22px 0 0 rgba(255, 255, 255, 0.7),
+    14px 26px 0 -0.5px rgba(255, 255, 255, 0.4),
+    -22px 6px 0 -0.5px rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
+.observatory-trigger {
+  display: flex;
   align-items: center;
-  gap: 2px;
-  padding: var(--space-2) var(--space-1);
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--control-md);
+  padding: 0 var(--space-1) 0 2px;
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
-  color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 500;
+  color: var(--text-primary);
+  font-size: var(--text-md, 0.9375rem);
+  font-weight: 600;
+  text-align: left;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.observatory-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-a30);
+  color: #ddd3ff;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.observatory-label {
+  flex: 1;
+}
+
+.observatory-go {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+
+.observatory-trigger:hover .observatory-go {
+  color: var(--text-primary);
+  transform: translateX(2px);
+}
+
+.observatory-trigger:active,
+.observatory-kind:active {
+  transform: translateY(1px);
+}
+
+.observatory-kinds {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.observatory-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.875rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a12);
+  color: var(--accent-soft);
+  font-size: 1.05rem;
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
     transform var(--duration-fast) var(--ease-out);
 }
 
-.tool-btn .mdi {
-  font-size: 1.3rem;
-  line-height: 1.2;
-  color: var(--text-muted);
-  transition: color var(--duration-fast) var(--ease-out);
+.observatory-kind:hover,
+.observatory-kind:focus-visible {
+  background: var(--accent-a30);
+  color: #f1edff;
 }
 
-.tool-btn:hover {
-  background: var(--hover-tint);
-  color: var(--text-primary);
+@media (prefers-reduced-motion: reduce) {
+  .observatory-trigger:hover .observatory-go {
+    transform: none;
+  }
 }
 
-.tool-btn:hover .mdi {
-  color: var(--accent-hover);
-}
-
-.tool-btn:active {
-  transform: translateY(1px);
-}
 
 /* ── Tree ──────────────────────────────────────────────────────── */
 .tree-header {

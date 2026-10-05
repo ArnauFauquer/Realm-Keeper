@@ -28,10 +28,10 @@ Two ideas shape most of the code:
    ┌────────────────────────────────────────────────────────────────────────────────┐
    │ FastAPI (one process)                                                          │
    │  notes ── MarkdownService ── Git                   screen ── ConnectionManager │
-   │  documents ── make_doc_router ── DocCollection        ▲ BattlemapScreen        │
+   │  Observatory ── make_doc_router ── DocCollection      ▲ BattlemapScreen        │
    │  live documents ── DocHub.mutate ─────────────────────┘ (projection)           │
    └───────┬──────────────────────────────┬─────────────────────────────────────────┘
-           │ git pull / commit / push     │ S3 (player/, asset-library/, charts/ ...)
+           │ git pull / commit / push     │ S3 (player/, observatory/)               
            ▼                              ▼
       vault repository               bucket (MinIO, Ceph RGW, AWS S3…)
 ```
@@ -41,32 +41,41 @@ Two ideas shape most of the code:
 | Data                          | Store | Key / location                                   |
 | ----------------------------- | ----- | ------------------------------------------------ |
 | Notes                         | Git   | `.md` files in the vault                         |
-| Charts                        | S3    | `charts/<folders>/<id>/chart.json`               |
-| Vistas                        | S3    | `vistas/<folders>/<id>/vista.json`               |
-| Encounters                    | S3    | `encounters/<folders>/<id>/encounter.json`       |
-| Battlemaps                    | S3    | `battlemaps/<folders>/<id>/battlemap.json`       |
-| Characters                    | S3    | `characters/<folders>/<id>/character.json`       |
-| Adversaries                   | S3    | `adversaries/<folders>/<id>/adversary.json`      |
+| Documents (every kind)        | S3    | `observatory/<folders>/<slug>.<kind>.json`       |
+| Images                        | S3    | `observatory/<folders>/<uid>-<name>`             |
+| Empty folders                 | S3    | `observatory/<folders>/.keep`                    |
 | Audio                         | S3    | `player/<album>/<track>`                         |
-| Images                        | S3    | `asset-library/<folders>/<uuid>-<file>`          |
 
-One top-level prefix per kind of thing, and nothing else at the top of the
-bucket: a kind's prefix is its `DocType.prefix` (also its URL under `/api/`),
-`player/` and `asset-library/` belong to `storage_service.py`. A track's key as the
-player and the notes see it is `<album>/<track>`: the `player/` in front is only
-where it is stored, so notes that name a song don't care where it lives. Nothing
-in a note or document names an *asset's* storage key, though: they name its URL,
-`/api/asset-library/assets/asset-library/...`, which is why that prefix keeps its
-name. A track key can only ever reach `player/` and an asset key only
-`asset-library/`; documents are reachable only through their own routes.
+Two top-level prefixes, and nothing else at the top of the bucket. `observatory/`
+is one tree of folders shared by every kind of document and the images they
+draw (`services/observatory.py`), so a folder can hold an adventure's map, its
+chart, its vistas and its encounters; a kind's files are told apart by their
+`.<kind>.json` ending (`DocType.suffix`), and two of different kinds may share a
+slug. `player/` belongs to `storage_service.py`. A track's key as the player and
+the notes see it is `<album>/<track>`: the `player/` in front is only where it
+is stored, so notes that name a song don't care where it lives. A sound effect
+(`sfx:<album>/<track>` in a note) is just a track too: the browser plays it
+on an `<audio>` of its own (`composables/useSoundEffects.js`), over the music
+rather than instead of it, so any track can be either.
 
-Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead, with the
-same prefixes as folders (local development and tests).
+Nothing in a note or a document names an image's storage key either: they name
+its URL, `/api/observatory/images/<uid>-<name>`, and the image is found by the
+`uid` alone (eight hex digits, given at upload; a rename keeps it). So renaming
+or moving an image, or a folder full of them, breaks nothing. Which key holds
+which uid is an index in memory (`Observatory.image_key`), read from the store
+when first needed and again when asked for a uid it doesn't know (at most every
+two seconds). The image route serves images only: a document beside them is read
+through its own kind's routes, a track through the player's.
 
-`backend/scripts/migrate_storage_layout.py` moves a bucket that has the older
-layout (albums at the top level, documents under `docs/`) to this one; see the
-README. It is a one-time tool, not something the app does or keeps compatible
-with: the app reads and writes only this layout.
+Without an S3 endpoint the tree goes to `DOCS_LOCAL_PATH` instead, as folders
+(local development and tests).
+
+`backend/scripts/migrate_to_observatory.py` moves a bucket that has the previous
+layout (one prefix per kind, `<kind>s/<folders>/<slug>/<kind>.json`, and the
+images under `asset-library/`) to this one, rewriting image URLs in documents,
+and with `--vault` in the notes; see the README. It is a one-time tool, not
+something the app does or keeps compatible with: the app reads and writes only
+this layout.
 
 ## Backend
 
@@ -122,9 +131,9 @@ the other.
 **Importing the sheets notes used to hold.** Earlier versions wrote sheets in
 notes, as ` ```sheet ` blocks. On startup, after the legacy charts and vistas,
 `services/sheet_import.py` `import_note_sheets` makes a document of each valid
-block, once (marker `adversaries/.imported-from-notes`), without touching the
-vault: a character goes to `characters/<sheet id>`, merged with the values it had
-saved there; an adversary to `adversaries/<note's folder>/<sheet id>` (`-2`,
+block, once (marker `observatory/.imported-from-notes`), without touching the
+vault: a character goes to `<sheet id>` at the top of the tree, merged with the
+values it had saved there; an adversary to `<note's folder>/<sheet id>` (`-2`,
 `-3`… on a collision), and the encounters and maps that named it
 `<note id>#<sheet id>` are repointed. `backend/scripts/sheets_to_documents.py
 <vault>` then replaces each block in a vault checkout with its link; it is run
@@ -133,24 +142,39 @@ once after the deploy and deleted.
 ### Documents: one layer for every kind
 
 Charts, vistas, characters, adversaries, encounters and battlemaps are the same
-thing with different models: a JSON document in a folder tree. They are written
-once.
+thing with different models: a JSON document in the Observatory's folder tree.
+They are written once.
 
 | Piece                | File                         | What it is                                                                 |
 | -------------------- | ---------------------------- | -------------------------------------------------------------------------- |
 | `DocType`            | `services/doc_type.py`       | Declarative spec of a kind: prefix, models, locked fields, which fields may hold images, image routes, live or not, a `prepare` hook |
-| `DocBackend`         | `services/doc_backend.py`    | `get/put/exists/list_keys/delete_prefix/move_prefix`; S3 or a local folder |
-| `DocCollection`      | `services/doc_collection.py` | Folders, create (unique slug), save, rename, move, delete, over a backend  |
+| `DocBackend`         | `services/doc_backend.py`    | Text (`get/put`) and files (`put_file/open`), `exists/delete/move`, and prefixes (`list_keys/delete_prefix/move_prefix`); S3 or a local folder |
+| `DocCollection`      | `services/doc_collection.py` | Create (unique slug), save, rename, move, delete, add (an import) one kind's documents |
+| `Observatory`        | `services/observatory.py`    | The shared tree: a folder's contents (every kind and the images), folders, images by uid, the zip backup |
 | `make_doc_router`    | `routes/doc_router.py`       | Every HTTP route of a kind, generated from its `DocType`; an `on_moved` hook |
-| registry             | `services/doc_registry.py`   | Declares `CHART`, `VISTA`, `CHARACTER`, `ADVERSARY`, `ENCOUNTER`, `BATTLEMAP`, the collections and the hub |
+| `make_observatory_router` | `routes/observatory.py` | `/api/observatory`: listing, folders, images, `/export`, `/import` |
+| registry             | `services/doc_registry.py`   | Declares `CHART`, `VISTA`, `CHARACTER`, `ADVERSARY`, `ENCOUNTER`, `BATTLEMAP`, the collections, the Observatory and the hub |
 
-A document is the folder named by its slug plus one JSON file; an id is
+A document is one file, `<folders>/<slug>.<kind>.json`; its id is
 `<folders>/<slug>`, and an empty folder is kept by a `.keep` marker. Where a
-document is stored is authoritative over the `id` written in it.
+document is stored is authoritative over the `id` written in it. Folders belong
+to no kind: moving or deleting one (`routes/observatory.py`) lets go of the live
+documents inside first, as a single document's move does, then runs each kind's
+`on_moved` for the ids that changed.
+
+**Export and import.** `GET /api/observatory/export?path=` is a zip of a folder
+(the whole tree by default), named from that folder, after the live documents
+are flushed. `POST /api/observatory/import` takes files and a folder: images,
+documents (`<name>.<kind>.json`, validated as a save would be) and zips of them,
+whose own subfolders go inside it. Nothing there is replaced: a document whose
+slug is taken gets the next free one, and an image keeps its uid only where it
+is free (so the documents that came with it still find it), otherwise it gets a
+new one. What is left out comes back with why. A zip over 20,000 files or 4 GiB
+is refused before anything is read from it.
 
 Two rules are enforced for every kind, in one place (`DocType`):
 
-- **Images must come from the asset library** (`image_fields`). A paired screen
+- **Images must come from the Observatory** (`image_fields`). A paired screen
   may read exactly those and nothing else, so no document can make the app
   fetch an arbitrary URL on a viewer's behalf.
 - **Fields set through their own route are locked** on a save (`locked_fields`,
@@ -166,8 +190,9 @@ Two hooks let a kind do more without its own collection or routes:
   document. Sheets use it (see *Sheets* and *Characters*).
 - **`make_doc_router(..., on_moved=)`** is awaited with `{old_id: new_id}` and the
   user after a move, a folder rename or a folder move, once the documents are in
-  their new place. `routes/doc_follow.py` `following(kind, ...)` is the one the
-  kinds a note can show use (charts, vistas, characters, adversaries): it rewrites
+  their new place. `routes/doc_follow.py` `ON_MOVED` holds it for the kinds a
+  note can show (charts, vistas, characters, adversaries), built with
+  `following(kind, ...)`, and the Observatory's folder routes use the same: it rewrites
   the notes' `` `kind:<id>` `` links in one commit, then runs whatever else it is
   given — for sheets, `services/sheet_refs.py` `follow_moved_sheets`, which
   repoints encounter combatants (of that type) and battlemap tokens. A failure
@@ -181,7 +206,7 @@ are described next.
 the vault (`_charts/`, `_vistas/`). On startup `DocCollection.import_legacy`
 copies them into the bucket, once per kind: nothing in the vault is touched, a
 document already in the bucket is never replaced, and a marker
-(`<kind>/.imported-from-vault`) stops a document deleted afterwards from coming back
+(`observatory/.<kind>s-imported-from-vault`) stops a document deleted afterwards from coming back
 at the next start. Without the marker (a failed first try) it simply runs again.
 
 ### Live documents
@@ -315,12 +340,21 @@ src/
   field is its picture, which fields a save sends, whether it can go on the
   screen or be embedded in a note (`embeddable`), and whether it is a sheet
   (`sheet`). `inlineRefs.js` (the `chart:<id>`, `character:<id>`… refs in notes),
-  `DocumentEmbed`, `SheetEmbed`, `DocumentModal` and the gallery all read from it.
-- **`api/docs.js`** `createDocApi(prefix)` is the client of every kind (tree,
-  fetch, save, create, rename, move, folders, image routes, and the live
-  `commands`).
-- **`components/DocumentModal.vue`** is the one shell for every kind: a folder
-  gallery (`FolderGallery`, shared with the asset library) and an `editor` slot.
+  `DocumentEmbed`, `SheetEmbed`, `DocumentModal` and the Observatory all read from it.
+- **`api/docs.js`** `createDocApi(prefix)` is the client of every kind (fetch,
+  save, create, rename, move, image routes, and the live `commands`);
+  **`api/observatory.js`** is the Observatory's (listing, folders, images, backup).
+- **`components/ObservatoryModal.vue`** is where documents and images are found:
+  a folder of the shared tree (`FolderGallery`), every kind side by side, a
+  filter by kind, **New ▾** for any kind, Import (also by dropping files from the
+  computer onto it, through `FolderGallery`'s `drop-files`) and Export.
+  Opening a document opens its kind's editor (`useDocModal(kind).open(id)`); an
+  image opens in a viewer. As a picker (`picker-mode`, from an editor choosing a
+  map or an icon) it shows only images, starting in the document's own folder.
+  `useObservatoryModal().open(path)` opens the main one at a folder.
+- **`components/DocumentModal.vue`** is the one editor shell for every kind,
+  opened on a document, with an `editor` slot; its back arrow goes to the
+  Observatory, in the document's folder.
   A *live* kind's editor owns its document. A *saved* kind (`kind.saved`) gets
   the document loaded for it, edits it in place and calls `markDirty()`; the
   shell adds Save, the unsaved-changes guard, Send to screen / Go live
@@ -353,25 +387,29 @@ src/
    live, an entry in the hub). Say which fields hold images and which are locked.
 3. A route module: `router = make_doc_router(TYPE, collection, hub)`, included
    in `main.py`; add its prefix to `config/cache.py` if a stale copy would hurt.
-   If a note can show it, pass `on_moved=following("<kind>")` so its links
+   If a note can show it, add `following("<kind>")` to `ON_MOVED` in
+   `routes/doc_follow.py` and pass `on_moved=ON_MOVED["<kind>"]` so its links
    follow a move.
 4. An entry in `utils/docTypes.js`, a client in `api/docs.js`, and a thin
    `*Modal.vue` around `DocumentModal` with the editor in its slot.
+5. Its collection in the `Observatory`'s map (`doc_registry.py`) and its prefix
+   in `scripts/migrate_to_observatory.py`'s `DOC_PREFIXES` while that script lives.
 
-Nothing else — listing, folders, rename, move, delete, image checks and, for a
-live kind, sync, persistence and the screens' hook — comes with it.
+Nothing else — its place in the Observatory, folders, rename, move, delete,
+backup, image checks and, for a live kind, sync, persistence and the screens'
+hook — comes with it.
 
 ## Security
 
 - **Login for everything but notes.** Reading notes is public; charts, vistas,
   characters, adversaries (and the sheet catalog), encounters, battlemaps, the
-  asset library, the player and every write need a signed-in user from the
+  Observatory, the player and every write need a signed-in user from the
   allow-list. A note that shows a sheet shows a signed-out reader only a
   "Sign in" placeholder. A paired screen
   reads only what is on it (see above).
 - **State-changing requests and WebSocket handshakes are origin-checked**
   (`config/csrf.py`), including `PATCH`, which the live commands use.
-- **Documents can't name arbitrary URLs for images** (library images only), and
+- **Documents can't name arbitrary URLs for images** (Observatory images only), and
   a hidden token never reaches a screen: the projection is built before sending.
 - **No roles yet.** Every signed-in user may do everything; `DocHub.authorize` is
   the one place a role check will go.

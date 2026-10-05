@@ -3,11 +3,11 @@ import { DOC_TYPES, EMBEDDABLE_TYPES, embedIcon, savePayload, screenPayload } fr
 import { docRefMarkdown, parseDocRef, parseInlineRef, renderInlineRef } from '@/utils/inlineRefs'
 
 const chart = {
-  id: 'regions/tavern', name: 'Tavern', description: 'Where it starts', image_url: '/api/asset-library/assets/m.png',
+  id: 'regions/tavern', name: 'Tavern', description: 'Where it starts', image_url: '/api/observatory/images/1a2b3c4d-m.png',
   pins: [{ id: 'p' }], paths: [], annotations: [], updated_at: 'then', extra: 'not edited here'
 }
 const vista = {
-  id: 'night', name: 'Night', description: null, background_url: '/api/asset-library/assets/b.png',
+  id: 'night', name: 'Night', description: null, background_url: '/api/observatory/images/1a2b3c4d-b.png',
   vanishing_point: { x: 1, y: 2 }, background_offset_y: 30, assets: [{ id: 'a' }], updated_at: 'then'
 }
 
@@ -26,13 +26,13 @@ describe('what a save and a screen are sent', () => {
 
   it('shows a chart on the screen by its id, its picture and what is edited', () => {
     expect(screenPayload(DOC_TYPES.chart, chart)).toEqual({
-      chart_id: 'regions/tavern', image_url: '/api/asset-library/assets/m.png', pins: [{ id: 'p' }], paths: [], annotations: []
+      chart_id: 'regions/tavern', image_url: '/api/observatory/images/1a2b3c4d-m.png', pins: [{ id: 'p' }], paths: [], annotations: []
     })
   })
 
   it("shows a vista with its background, whose field is not the chart's", () => {
     expect(screenPayload(DOC_TYPES.vista, vista)).toEqual({
-      vista_id: 'night', background_url: '/api/asset-library/assets/b.png',
+      vista_id: 'night', background_url: '/api/observatory/images/1a2b3c4d-b.png',
       vanishing_point: { x: 1, y: 2 }, background_offset_y: 30, assets: [{ id: 'a' }]
     })
   })

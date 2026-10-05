@@ -19,7 +19,7 @@ from routes.screen import router as screen_router
 from routes.player import router as player_router
 from routes.charts import router as charts_router
 from routes.vistas import router as vistas_router
-from routes.asset_library import router as asset_library_router
+from routes.observatory import router as observatory_router
 
 from config.settings import settings
 from config.logging import setup_logging
@@ -188,7 +188,7 @@ app.include_router(screen_router)  # the socket needs login or a paired screen; 
 app.include_router(player_router, dependencies=[Depends(require_auth)])
 app.include_router(charts_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
 app.include_router(vistas_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
-app.include_router(asset_library_router)  # login, or a paired screen for what it shows (routes/screen_access.py)
+app.include_router(observatory_router)  # login, or a paired screen for the images it shows (routes/screen_access.py)
 
 @app.get("/")
 async def root():

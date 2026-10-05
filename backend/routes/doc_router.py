@@ -1,7 +1,7 @@
-"""The HTTP routes of a kind of document, generated from its DocType: the list,
-create, folder, move, rename, read, save and delete routes, the ones that set
-its images, and — for live documents — the commands that edit them (see
-services/sync_hub.py).
+"""The HTTP routes of a kind of document, generated from its DocType: the list
+of them all, create, move, rename, read, save and delete routes, the ones that set its
+images, and — for live documents — the commands that edit them (see
+services/sync_hub.py). Its folders are the Observatory's (routes/observatory.py).
 
 Every route needs a signed-in user, except reading a document, which `viewer`
 decides (a paired screen may read what is on screen).
@@ -19,7 +19,6 @@ from routes.auth import current_user, require_auth
 from routes.errors import storage_unavailable
 from services import doc_commands
 from services.doc_collection import DocCollection, DocNotFound
-from services.doc_paths import sanitize_folder_name
 from services.doc_type import DocType
 from services.sync_hub import DocHub
 
@@ -52,19 +51,6 @@ class CreateBody(BaseModel):
     name: str
     description: Optional[str] = None
     folder_path: str = ""
-
-
-class FolderBody(BaseModel):
-    path: str
-
-
-class FolderRenameBody(BaseModel):
-    name: str
-
-
-class FolderMoveBody(BaseModel):
-    path: str
-    dest_parent_path: str = ""
 
 
 class MoveBody(BaseModel):
@@ -101,9 +87,9 @@ def make_doc_router(
     viewer: Callable[[Request, str], None] = login_only,
     on_moved: Optional[Callable[[Dict[str, str], dict], Awaitable[None]]] = None,
 ) -> APIRouter:
-    """`on_moved({old_id: new_id}, user)` is awaited once documents have been
-    given another id (moved, or their folder renamed or moved): whatever
-    refers to them by id follows."""
+    """`on_moved({old_id: new_id}, user)` is awaited once a document has been
+    given another id (moved): whatever refers to it by id follows. (Moving a
+    folder does the same, from routes/observatory.py.)"""
     router = APIRouter(prefix=f"/api/{doctype.prefix}", tags=[doctype.prefix])
     kind = doctype.kind
     # Ahead of every route that belongs to one document.
@@ -116,32 +102,10 @@ def make_doc_router(
         event = await hub.mutate(kind, doc_id, fn, user=user, command=command)
         return event or {"type": "noop"}
 
-    async def forget_under(folder: str) -> List[str]:
-        """Lets go of every live document inside a folder that is about to move
-        or go, and returns the ids of all its documents (see `discard`)."""
-        folder = folder.strip("/")
-        ids = [meta.id for meta in await blocking(collection.list_all) if meta.id.startswith(f"{folder}/")]
-        if doctype.live:
-            for doc_id in ids:
-                await hub.forget(kind, doc_id)
-        return ids
-
     async def moved(moves: Dict[str, str], user: dict) -> None:
         moves = {old: new for old, new in moves.items() if old != new}
         if on_moved and moves:
             await on_moved(moves, user)
-
-    def folder_moves(ids: List[str], old_folder: str, new_folder: str) -> Dict[str, str]:
-        old_folder = old_folder.strip("/")
-        return {doc_id: f"{new_folder}{doc_id[len(old_folder):]}" for doc_id in ids}
-
-    def renamed_folder(path: str, name: Optional[str] = None, parent: Optional[str] = None) -> str:
-        """Where a folder ends up (DocCollection.move_folder decides the same)."""
-        path = path.strip("/")
-        old_parent, _, leaf = path.rpartition("/")
-        parent = old_parent if parent is None else parent.strip("/")
-        leaf = leaf if name is None else sanitize_folder_name(name)
-        return f"{parent}/{leaf}" if parent else leaf
 
     def discard(ids: List[str]) -> None:
         """Once the documents are moved or deleted: a command that arrived in
@@ -151,12 +115,7 @@ def make_doc_router(
             hub.discard(kind, doc_id)
 
     # Declared ahead of the "/{doc_id:path}" routes below: those would
-    # otherwise swallow "/folders/..." and "/all" as a document id.
-
-    @router.get("")
-    @guarded
-    async def list_tree(path: str = "", user: dict = Depends(require_auth)):
-        return await blocking(collection.list_tree, path)
+    # otherwise swallow "/all" as a document id.
 
     @router.get("/all")
     @guarded
@@ -177,38 +136,6 @@ def make_doc_router(
     @guarded
     async def create(body: CreateBody, user: dict = Depends(require_auth)):
         return await blocking(collection.create, body.name, body.description, body.folder_path)
-
-    @router.post("/folders")
-    @guarded
-    async def create_folder(body: FolderBody, user: dict = Depends(require_auth)):
-        await blocking(collection.create_folder, body.path)
-        return {"status": "success"}
-
-    @router.post("/folders/move")
-    @guarded
-    async def move_folder(body: FolderMoveBody, user: dict = Depends(require_auth)):
-        gone = await forget_under(body.path)
-        await blocking(collection.move_folder, body.path, body.dest_parent_path, None)
-        discard(gone)
-        await moved(folder_moves(gone, body.path, renamed_folder(body.path, parent=body.dest_parent_path)), user)
-        return {"status": "success"}
-
-    @router.put("/folders/{path:path}")
-    @guarded
-    async def rename_folder(path: str, body: FolderRenameBody, user: dict = Depends(require_auth)):
-        gone = await forget_under(path)
-        await blocking(collection.move_folder, path, None, body.name)
-        discard(gone)
-        await moved(folder_moves(gone, path, renamed_folder(path, name=body.name)), user)
-        return {"status": "success"}
-
-    @router.delete("/folders/{path:path}")
-    @guarded
-    async def delete_folder(path: str, user: dict = Depends(require_auth)):
-        gone = await forget_under(path)
-        await blocking(collection.delete_folder, path)
-        discard(gone)
-        return {"status": "success"}
 
     @router.post("/move")
     @guarded

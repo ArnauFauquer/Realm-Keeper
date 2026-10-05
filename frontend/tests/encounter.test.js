@@ -5,7 +5,7 @@ import {
 
 const BUGBOAR = {
   ref: 'Bestiary/bugboar', id: 'Bestiary/bugboar', name: 'Bugboar', type: 'adversary',
-  image: '/api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png',
+  image: '/api/observatory/images/1a2b3c4d-bugboar.png',
   resources: {
     HP: { max: 6, min: 0, start: null, color: 'red', style: null },
     Stress: { max: 3, min: 0, start: 0, color: null, style: 'pips' }

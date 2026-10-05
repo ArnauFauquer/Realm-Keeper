@@ -15,7 +15,7 @@ const BattlemapScreen = (await import('@/components/BattlemapScreen.vue')).defau
 const projection = (overrides = {}) => ({
   battlemap_id: 'cave',
   name: 'Cave',
-  image_url: '/api/asset-library/assets/asset-library/cave.png',
+  image_url: '/api/observatory/images/1a2b3c4d-cave.png',
   grid: { type: 'square', size: 70, distance: 5, unit: 'ft' },
   tokens: [
     { id: 'orc', name: 'Orc', x: 2, y: 3, size: 1, image_url: null, color: null, meters: [{ name: 'HP', current: 2, max: 6, min: 0 }] },

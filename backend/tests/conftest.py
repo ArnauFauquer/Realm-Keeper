@@ -34,9 +34,17 @@ import pytest  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 
+class _Body(io.BytesIO):
+    """A response body, as botocore's StreamingBody reads."""
+
+    def iter_chunks(self, chunk_size=1024):
+        while chunk := self.read(chunk_size):
+            yield chunk
+
+
 class FakeS3:
     """Just enough of boto3's S3 client for the document backend, the player's
-    and asset library's storage functions, and the layout migration."""
+    storage functions, and the migration to the Observatory."""
 
     def __init__(self, objects=None):
         self.objects = {key: value if isinstance(value, bytes) else value.encode() for key, value in (objects or {}).items()}
@@ -48,7 +56,7 @@ class FakeS3:
     def get_object(self, Bucket, Key, Range=None):
         if Key not in self.objects:
             raise self._missing("GetObject")
-        return {"Body": io.BytesIO(self.objects[Key]), "ContentLength": len(self.objects[Key])}
+        return {"Body": _Body(self.objects[Key]), "ContentLength": len(self.objects[Key])}
 
     def put_object(self, Bucket, Key, Body, ContentType=None, **_):
         self.objects[Key] = Body if isinstance(Body, bytes) else Body.encode()

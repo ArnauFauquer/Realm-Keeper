@@ -19,10 +19,10 @@ from services.doc_collection import DocCollection, DocNotFound
 from services.doc_registry import BATTLEMAP, CHARACTER, ENCOUNTER
 from services.sync_hub import DocHub
 
-LIB = "/api/asset-library/assets/asset-library/"
-MAP_IMAGE = f"{LIB}maps/cave.png"
-ORC_IMAGE = f"{LIB}tokens/orc.png"
-DRAGON_IMAGE = f"{LIB}tokens/dragon.png"
+LIB = "/api/observatory/images/"
+MAP_IMAGE = f"{LIB}bb000001-cave.png"
+ORC_IMAGE = f"{LIB}bb000002-orc.png"
+DRAGON_IMAGE = f"{LIB}bb000003-dragon.png"
 
 
 # ── the model ───────────────────────────────────────────────────────────────
@@ -294,21 +294,17 @@ def client():
 
 @pytest.fixture
 def gm(client, monkeypatch):
-    class _Body:
-        def iter_chunks(self, chunk_size):
-            yield b"png"
-
-    monkeypatch.setattr(storage_service, "get_library_asset_stream", lambda key: {"Body": _Body(), "ContentLength": 3})
+    import io
+    from services.doc_registry import observatory
+    for url in (MAP_IMAGE, ORC_IMAGE, DRAGON_IMAGE):
+        observatory.backend.put_file(f"observatory/maps/{url.removeprefix(LIB)}", io.BytesIO(b"png"), "image/png")
+    observatory._forget_index()   # put straight in the store, not uploaded
     monkeypatch.setattr(screen.manager, "current_state", None)
     monkeypatch.setattr(screen.manager, "live_draft", None)
     client.cookies.clear()
     client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
     yield client
     client.cookies.clear()
-
-
-def _key(url):
-    return url.removeprefix("/api/asset-library/assets/")
 
 
 def test_a_map_and_its_tokens_over_http(gm):
@@ -358,9 +354,9 @@ def test_a_paired_screen_sees_the_map_and_only_the_images_it_may(gm, client):
     assert gm.post("/api/screen/battlemap", json={"battlemap_id": "screen-cave"}).status_code == 200
 
     _paired(client)
-    assert client.get(f"/api/asset-library/assets/{_key(MAP_IMAGE)}").status_code == 200
-    assert client.get(f"/api/asset-library/assets/{_key(ORC_IMAGE)}").status_code == 200
-    assert client.get(f"/api/asset-library/assets/{_key(DRAGON_IMAGE)}").status_code == 401   # hidden: not on screen
+    assert client.get(MAP_IMAGE).status_code == 200
+    assert client.get(ORC_IMAGE).status_code == 200
+    assert client.get(DRAGON_IMAGE).status_code == 401   # hidden: not on screen
     assert client.get("/api/battlemaps/screen-cave").status_code == 401    # the map itself stays behind login
 
 

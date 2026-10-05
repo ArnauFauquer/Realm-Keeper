@@ -1,5 +1,12 @@
 <template>
-  <div class="folder-gallery" ref="galleryRef">
+  <div
+    class="folder-gallery"
+    :class="{ 'files-over': filesOver }"
+    ref="galleryRef"
+    @dragover="onGalleryDragOver"
+    @dragleave="onGalleryDragLeave"
+    @drop="onGalleryDrop"
+  >
     <nav class="breadcrumb" aria-label="Folder path">
       <button
         class="breadcrumb-item"
@@ -7,7 +14,7 @@
         @click="$emit('navigate', '')"
         @dragover.prevent="dragOver('')"
         @dragleave="dragLeave('')"
-        @drop.prevent="onDrop('')"
+        @drop.prevent.stop="onDrop('', $event)"
       >
         <span class="mdi" :class="rootIcon"></span> {{ rootLabel }}
       </button>
@@ -19,7 +26,7 @@
           @click="$emit('navigate', crumb.path)"
           @dragover.prevent="dragOver(crumb.path)"
           @dragleave="dragLeave(crumb.path)"
-          @drop.prevent="onDrop(crumb.path)"
+          @drop.prevent.stop="onDrop(crumb.path, $event)"
         >
           {{ crumb.name }}
         </button>
@@ -40,11 +47,12 @@
         <button class="rk-icon-btn" aria-label="Create folder" @click="submitNewFolder"><span class="mdi mdi-check"></span></button>
         <button class="rk-icon-btn" aria-label="Cancel" @click="creatingFolder = false"><span class="mdi mdi-close"></span></button>
       </div>
-      <button v-else class="rk-btn gallery-action-btn" @click="startNewFolder">
+      <button v-else-if="showNewFolder" class="rk-btn gallery-action-btn" @click="startNewFolder">
         <span class="mdi mdi-folder-plus-outline"></span> New folder
       </button>
       <slot name="actions" />
     </div>
+    <slot name="filters" />
 
     <!-- Skeleton cards share .gallery-card's footprint so the grid doesn't jump. -->
     <div v-if="loading" class="gallery-grid" role="status" aria-live="polite">
@@ -72,13 +80,13 @@
         :key="folder"
         class="gallery-card folder-card"
         :class="{ 'drag-over': dragOverTarget === folderPath(folder) }"
-        :draggable="canEdit && renamingFolder !== folder"
+        :draggable="canEdit && movable && renamingFolder !== folder"
         @click="renamingFolder !== folder && $emit('enter-folder', folder)"
         @dragstart="startDrag({ type: 'folder', name: folder })"
         @dragend="endDrag"
         @dragover.prevent="dragOver(folderPath(folder))"
         @dragleave="dragLeave(folderPath(folder))"
-        @drop.prevent="onDrop(folderPath(folder))"
+        @drop.prevent.stop="onDrop(folderPath(folder), $event)"
       >
         <div v-if="canEdit" class="gallery-card-actions">
           <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool" title="Rename folder" aria-label="Rename folder" @click.stop="startRename(folder)">
@@ -110,14 +118,14 @@
         v-for="item in items"
         :key="itemKey(item)"
         class="gallery-card"
-        :draggable="canEdit && renamingItem !== itemKey(item)"
+        :draggable="canEdit && movable && renamingItem !== itemKey(item)"
         @click="renamingItem !== itemKey(item) && $emit('open-item', item)"
         @dragstart="startDrag({ type: 'item', item })"
         @dragend="endDrag"
       >
         <div v-if="canEdit" class="gallery-card-actions">
           <button
-            v-if="itemCopyText"
+            v-if="itemCopyText && itemCopyText(item)"
             class="rk-icon-btn rk-icon-btn--sm gallery-card-tool"
             :title="copiedItem === itemKey(item) ? 'Copied!' : 'Copy'"
             :aria-label="copiedItem === itemKey(item) ? 'Copied' : 'Copy reference'"
@@ -147,7 +155,12 @@
             @blur="submitItemRename(item)"
           />
           <span v-else class="gallery-card-name">{{ item.name }}</span>
-          <span v-if="item.description" class="gallery-card-desc">{{ item.description }}</span>
+          <!-- Where it is, in a list from many folders; otherwise what it is about. -->
+          <span v-if="item.location !== undefined" class="gallery-card-desc gallery-card-location">
+            <span class="mdi" :class="item.location ? 'mdi-folder-outline' : 'mdi-telescope'" aria-hidden="true"></span>
+            <span class="gallery-card-location-text">{{ item.location || rootLabel }}</span>
+          </span>
+          <span v-else-if="item.description" class="gallery-card-desc">{{ item.description }}</span>
         </div>
       </div>
     </div>
@@ -165,8 +178,8 @@ const props = defineProps({
   itemKey: { type: Function, required: true },
   // When set, an item card also gets a copy button that copies this
   // function's return value to the clipboard (e.g. a markdown image tag, or
-  // a `chart:<id>` embed reference). Omitted for item types with no
-  // sensible "paste into a note" representation.
+  // a `chart:<id>` embed reference). It returns null for an item with no
+  // sensible "paste into a note" representation, which gets no button.
   itemCopyText: { type: Function, default: null },
   currentPath: { type: String, default: '' },
   loading: { type: Boolean, default: false },
@@ -176,12 +189,21 @@ const props = defineProps({
   rootIcon: { type: String, default: 'mdi-home-outline' },
   loadingText: { type: String, default: 'Loading...' },
   emptyIcon: { type: String, default: 'mdi-folder-open-outline' },
-  emptyText: { type: String, default: 'Nothing here yet.' }
+  emptyText: { type: String, default: 'Nothing here yet.' },
+  // Files dragged in from the computer can be dropped here: on the gallery
+  // (into the folder on screen) or on a folder or a crumb (into that one),
+  // which emits `drop-files` (files, destination path).
+  acceptsFiles: { type: Boolean, default: false },
+  // Without its own New folder button, a caller offers it elsewhere and opens
+  // the same inline form with the exposed startNewFolder().
+  showNewFolder: { type: Boolean, default: true },
+  // false where dragging would mean nothing (a flat list from many folders).
+  movable: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([
   'navigate', 'enter-folder', 'open-item', 'delete-folder', 'delete-item',
-  'create-folder', 'rename-folder', 'rename-item', 'move'
+  'create-folder', 'rename-folder', 'rename-item', 'move', 'drop-files'
 ])
 
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
@@ -213,9 +235,40 @@ function folderPath(folder) {
   return props.currentPath ? `${props.currentPath}/${folder}` : folder
 }
 
-function onDrop(destPath) {
+const filesOver = ref(false)
+const carriesFiles = (event) => props.acceptsFiles && props.canEdit && [...(event.dataTransfer?.types || [])].includes('Files')
+
+function droppedFiles(event, destPath) {
+  if (!carriesFiles(event)) return false
+  filesOver.value = false
+  dragOverTarget.value = null
+  const files = [...event.dataTransfer.files]
+  if (files.length) emit('drop-files', files, destPath)
+  return true
+}
+
+function onDrop(destPath, event) {
+  if (event && droppedFiles(event, destPath)) return
   drop(destPath, (item, dest) => emit('move', item, dest))
 }
+
+function onGalleryDragOver(event) {
+  if (!carriesFiles(event)) return
+  event.preventDefault()
+  filesOver.value = true
+}
+
+function onGalleryDragLeave(event) {
+  if (!galleryRef.value?.contains(event.relatedTarget)) filesOver.value = false
+}
+
+function onGalleryDrop(event) {
+  if (!carriesFiles(event)) return
+  event.preventDefault()
+  droppedFiles(event, props.currentPath)
+}
+
+defineExpose({ startNewFolder })
 
 function startNewFolder() {
   creatingFolder.value = true
@@ -279,6 +332,13 @@ function copyItem(item) {
   gap: var(--space-5);
 }
 
+/* Files dragged in from the computer: the folder on screen takes them. */
+.folder-gallery.files-over {
+  outline: 2px dashed var(--accent-strong);
+  outline-offset: var(--space-2);
+  border-radius: var(--radius-md);
+}
+
 /* ── Breadcrumb ────────────────────────────────────────────────── */
 .breadcrumb {
   display: flex;
@@ -332,6 +392,7 @@ function copyItem(item) {
 /* ── Header actions ────────────────────────────────────────────── */
 .gallery-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
@@ -449,6 +510,7 @@ function copyItem(item) {
 }
 
 .gallery-card-thumb {
+  position: relative;
   aspect-ratio: 16 / 10;
   display: flex;
   align-items: center;
@@ -469,6 +531,22 @@ function copyItem(item) {
   font-size: 2.5rem;
   color: var(--text-secondary);
   opacity: 0.5;
+}
+
+.gallery-card-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gallery-card-location .mdi {
+  flex-shrink: 0;
+}
+
+.gallery-card-location-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gallery-card-info {

@@ -1,7 +1,7 @@
 // What goes into an encounter when a sheet is added: the same copy whether the
 // sheet is a catalog entry (GET /api/sheets) or one a note is showing.
 
-const LIBRARY_PREFIX = '/api/asset-library/assets/'
+const LIBRARY_PREFIX = '/api/observatory/images/'
 
 /** A counter as the live documents keep it: its definition plus where it stands. */
 export function counterFromSpec(spec) {
@@ -18,7 +18,7 @@ function counters(resources) {
   return Object.fromEntries(Object.entries(resources || {}).map(([name, spec]) => [name, counterFromSpec(spec)]))
 }
 
-// Combatants and tokens may only draw library images (others can't be fetched
+// Combatants and tokens may only draw Observatory images (others can't be fetched
 // on a screen's behalf); a sheet's image can be any URL.
 const libraryImage = (image) => (image && image.startsWith(LIBRARY_PREFIX) ? image : null)
 

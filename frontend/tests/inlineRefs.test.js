@@ -23,6 +23,15 @@ describe('parseDiceRef', () => {
     expect(parseDiceRef('roll:nope')).toBeNull()
   })
 
+  it('reads sfx: tracks as sound effects, not as an album called "sfx:…"', () => {
+    expect(parseInlineRef('sfx:Efectos/puerta.mp3')).toEqual({
+      kind: 'sfx', key: 'Efectos/puerta.mp3', album: 'Efectos', filename: 'puerta.mp3'
+    })
+    expect(parseInlineRef('SFX: Efectos/grito.ogg')).toMatchObject({ kind: 'sfx', key: 'Efectos/grito.ogg' })
+    expect(parseInlineRef('Efectos/puerta.mp3')).toMatchObject({ kind: 'song' })
+    expect(parseInlineRef('sfx:puerta.mp3')).toBeNull()
+  })
+
   it('leaves bare keywords as ordinary code', () => {
     expect(parseInlineRef('dis')).toBeNull()
     expect(parseInlineRef('roll:dis')).toEqual({ kind: 'dice', formula: 'dis' })

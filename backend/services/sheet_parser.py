@@ -13,7 +13,8 @@ import yaml
 from pydantic import ValidationError
 
 from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
-from services.storage_service import ASSET_LIBRARY_PREFIX, ASSET_LIBRARY_URL_PREFIX
+from services.observatory import image_uid, image_url, is_image_name
+from services.storage_service import IMAGE_URL_PREFIX
 
 SHEET_TYPES = ("character", "adversary")
 # A sheet is a few dozen lines. The limit keeps a block pasted by mistake (or a
@@ -64,20 +65,20 @@ def _tags(value: Any) -> List[str]:
 
 
 def normalize_image(value: Any) -> Tuple[Optional[str], Optional[str]]:
-    """(url, warning). Library images are stored as the app's relative URL, so
-    one pasted with the site's address in front (or as a bare library key)
-    still matches what a chart pin or a map token may use."""
+    """(url, warning). Observatory images are stored as the app's relative URL,
+    so one pasted with the site's address in front (or as the image's bare file
+    name, "1a2b3c4d-boar.png") still matches what a chart pin or a map token may use."""
     image = _text(value)
     if not image:
         return None, None
-    marker = image.find(ASSET_LIBRARY_URL_PREFIX)
+    marker = image.find(IMAGE_URL_PREFIX)
     if marker != -1:
         return image[marker:], None
-    if image.startswith(ASSET_LIBRARY_PREFIX):
-        return ASSET_LIBRARY_URL_PREFIX + image, None
+    if image_uid(image) and is_image_name(image) and "/" not in image:
+        return image_url(image), None
     if re.match(r"^https?://", image, re.IGNORECASE):
         return image, None
-    return None, "image must be the URL of an asset library image, as copied from the library"
+    return None, "image must be the URL of an Observatory image, as copied from the Observatory"
 
 
 def _integer(value: Any, what: str) -> int:

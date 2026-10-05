@@ -190,9 +190,10 @@
       </div>
     </div>
 
-    <AssetLibraryModal
+    <ObservatoryModal
       :is-open="libraryModalOpen"
       picker-mode
+      :start-path="folderOf(vista.id)"
       @close="libraryModalOpen = false"
       @select="onLibrarySelect"
     />
@@ -202,7 +203,8 @@
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { resolveUrl } from '@/utils/resolveUrl'
-import AssetLibraryModal from './AssetLibraryModal.vue'
+import ObservatoryModal from './ObservatoryModal.vue'
+import { folderOf } from '@/composables/useObservatoryModal'
 
 const props = defineProps({
   vista: { type: Object, required: true },
@@ -317,7 +319,7 @@ function loadBackgroundNaturalSize(url) {
 }
 watch(() => props.vista.background_url, loadBackgroundNaturalSize, { immediate: true })
 
-// Quoted: asset library keys keep their original names ("Hijos Del Fango/…"),
+// Quoted: an image URL saved before the Observatory may hold a space ("Hijos Del Fango/…"),
 // and an unquoted CSS url() with a space is invalid, dropping the background.
 const backgroundStyle = computed(() => ({
   backgroundImage: props.vista.background_url

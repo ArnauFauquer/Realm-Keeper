@@ -1,13 +1,13 @@
-"""The documents of one DocType, in folders, over a DocBackend: list a level of
-the tree, create with a unique slug, save, rename, move, delete, and the same
-for folders. Written once for every kind.
+"""The documents of one DocType: create with a unique slug, read, save, rename,
+move and delete. Written once for every kind.
 
-A document is a folder named by its slug that holds one JSON file:
-    <prefix>/<folders...>/<slug>/<item_filename>
-where <prefix> is the kind's own top-level prefix in the bucket ("charts",
-"encounters"...). Folders are just the directories above it; an empty one is
-kept by a ".keep" marker. Raises ValueError for anything the caller got wrong (DocNotFound for a
-missing one) and lets storage errors through.
+Every kind shares one tree of folders, the Observatory's (services/observatory.py),
+which also holds the images; a document is one file in it:
+    observatory/<folders...>/<slug>.<kind>.json
+so a chart and an encounter of the same name can sit side by side. The folders
+themselves (listing, creating, moving, deleting them) are the Observatory's.
+Raises ValueError for anything the caller got wrong (DocNotFound for a missing
+one) and lets storage errors through.
 """
 import json
 import logging
@@ -19,17 +19,14 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, ValidationError
 
 from services.doc_backend import DocBackend
-from services.doc_paths import sanitize_folder_name, sanitize_folder_path, sanitize_id, slugify
+from services.doc_paths import sanitize_folder_path, sanitize_id, slugify
 from services.doc_type import DocType, validate_library_urls
+from services.storage_service import OBSERVATORY_PREFIX
 
 logger = logging.getLogger(__name__)
 
 FOLDER_MARKER = ".keep"
-LEGACY_FOLDER_MARKER = ".gitkeep"       # what the vault used to keep an empty folder with
-LEGACY_MARKER = ".imported-from-vault"  # in a kind's prefix: its vault documents were copied
-# "assets" and "folders" are fixed routes under every resource: a document or
-# folder at the top level with one of those names would be unreachable.
-RESERVED_TOP_SEGMENTS = {"assets", "folders"}
+LEGACY_FOLDER_MARKER = ".gitkeep"   # what the vault used to keep an empty folder with
 
 
 class DocNotFound(ValueError):
@@ -43,31 +40,36 @@ def _first_error(e: ValidationError) -> str:
 
 
 class DocCollection:
-    def __init__(self, doctype: DocType, backend: DocBackend):
+    def __init__(self, doctype: DocType, backend: DocBackend, root: str = OBSERVATORY_PREFIX):
         self.doctype = doctype
         self.backend = backend
-        self.root = f"{doctype.prefix}/"
+        self.root = root
+        # In the tree's top level, where no folder can be: its vault documents were copied.
+        self.legacy_marker = f"{root}.{doctype.prefix}-imported-from-vault"
 
     # ── keys ────────────────────────────────────────────────────────────
 
-    def _item_prefix(self, doc_id: str) -> str:
-        return f"{self.root}{sanitize_id(doc_id)}/"
-
-    def _item_key(self, doc_id: str) -> str:
-        return f"{self._item_prefix(doc_id)}{self.doctype.item_filename}"
+    def key(self, doc_id: str) -> str:
+        return f"{self.root}{sanitize_id(doc_id)}{self.doctype.suffix}"
 
     def _check_not_reserved(self, doc_id: str) -> None:
-        top, _, _ = doc_id.partition("/")
-        if top in RESERVED_TOP_SEGMENTS:
-            raise ValueError(f"'{top}' is a reserved name at the top level")
         leaf = doc_id.rsplit("/", 1)[-1]
         if leaf in self.doctype.reserved_names:
             raise ValueError(f"'{leaf}' is a reserved name")
 
+    def ids(self, keys: List[str]) -> List[str]:
+        """Ids of every document of this kind among `keys` (full backend keys)."""
+        suffix = self.doctype.suffix
+        return sorted(
+            key[len(self.root):-len(suffix)] for key in keys
+            if key.startswith(self.root) and key.endswith(suffix) and len(key) > len(self.root) + len(suffix)
+            and not key.rsplit("/", 1)[-1].startswith(".")
+        )
+
     # ── reading ─────────────────────────────────────────────────────────
 
     def read_raw(self, doc_id: str) -> Optional[Dict[str, Any]]:
-        text = self.backend.get(self._item_key(doc_id))
+        text = self.backend.get(self.key(doc_id))
         if text is None:
             return None
         raw = json.loads(text)
@@ -91,48 +93,26 @@ class DocCollection:
             logger.error(f"Error reading {self.doctype.kind} {doc_id}: {e}")
             return None
 
-    def _item_ids(self, keys: List[str]) -> List[str]:
-        """Ids of every document among `keys` (full backend keys)."""
-        suffix = f"/{self.doctype.item_filename}"
-        return sorted(key[len(self.root):-len(suffix)] for key in keys if key.endswith(suffix))
-
-    def _read_metadata(self, ids: List[str]) -> List[BaseModel]:
+    def read_metadata(self, ids: List[str]) -> List[BaseModel]:
+        """What a gallery needs of each of `ids`, by name; unreadable ones are left out."""
         with ThreadPoolExecutor(max_workers=8) as pool:
             found = [m for m in pool.map(self._metadata, ids) if m is not None]
         found.sort(key=lambda m: (m.name or "").lower())
         return found
 
-    def list_tree(self, path: str = "") -> Dict[str, Any]:
-        """The folders and documents directly under `path` (not recursive)."""
-        path = sanitize_folder_path(path)
-        base = f"{path}/" if path else ""
-        suffix = self.doctype.item_filename
-        direct, folders = set(), set()
-        relatives = [key[len(self.root + base):] for key in self.backend.list_keys(self.root + base)]
-        for rel in relatives:
-            name, _, rest = rel.partition("/")
-            if rest == suffix:
-                direct.add(name)
-        for rel in relatives:
-            name, _, rest = rel.partition("/")
-            if rest and name not in direct:
-                folders.add(name)
-        items = self._read_metadata([f"{base}{name}" for name in sorted(direct)])
-        return {"folders": sorted(folders, key=str.lower), self.doctype.items_key: items}
-
     def list_all(self) -> List[BaseModel]:
         """Every document, at any depth."""
-        return self._read_metadata(self._item_ids(self.backend.list_keys(self.root)))
+        return self.read_metadata(self.ids(self.backend.list_keys(self.root)))
 
     # ── writing ─────────────────────────────────────────────────────────
 
     def write_raw(self, doc_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """Stores `data`, stamped with the time. Returns what was stored."""
         data = {**data, "updated_at": datetime.now(timezone.utc).isoformat()}
-        self.backend.put(self._item_key(doc_id), json.dumps(data, indent=2, ensure_ascii=False))
+        self.backend.put(self.key(doc_id), json.dumps(data, indent=2, ensure_ascii=False))
         return data
 
-    def _validated(self, data: Dict[str, Any], previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def validated(self, data: Dict[str, Any], previous: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """`data` as it will be stored (see DocType.prepare: `previous` is what
         is stored now, None for a new document)."""
         if self.doctype.prepare:
@@ -151,9 +131,7 @@ class DocCollection:
         that would read as one of the kind's routes ("Image") is not free."""
         base = f"{folder_path}/" if folder_path else ""
         slug, suffix = base_slug, 2
-        while slug in self.doctype.reserved_names or self.backend.exists(
-            f"{self.root}{base}{slug}/{self.doctype.item_filename}"
-        ):
+        while slug in self.doctype.reserved_names or self.backend.exists(self.key(f"{base}{slug}")):
             slug = f"{base_slug}-{suffix}"
             suffix += 1
         return slug
@@ -166,7 +144,18 @@ class DocCollection:
         slug = self._unique_slug(slugify(name, self.doctype.kind), folder_path)
         doc_id = f"{folder_path}/{slug}" if folder_path else slug
         self._check_not_reserved(doc_id)
-        data = self._validated({"id": doc_id, "name": name, "description": description})
+        data = self.validated({"id": doc_id, "name": name, "description": description})
+        return self.doctype.model.model_validate(self.write_raw(doc_id, data))
+
+    def add(self, folder_path: str, slug: str, data: Dict[str, Any]) -> BaseModel:
+        """Stores a document brought in from elsewhere (an import) in
+        `folder_path`, under `slug` or, if that is taken, the next free one."""
+        folder_path = sanitize_folder_path(folder_path)
+        slug = self._unique_slug(slugify(slug, self.doctype.kind), folder_path)
+        doc_id = f"{folder_path}/{slug}" if folder_path else slug
+        self._check_not_reserved(doc_id)
+        name = data.get("name") if isinstance(data.get("name"), str) and data["name"].strip() else slug
+        data = self.validated({**data, "id": doc_id, "name": name.strip()})
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def _require(self, doc_id: str) -> Dict[str, Any]:
@@ -181,12 +170,12 @@ class DocCollection:
         data = {**fields, "id": existing["id"]}
         for name in self.doctype.locked_fields:
             data[name] = existing.get(name)
-        data = self._validated(data, existing)
+        data = self.validated(data, existing)
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def set_field(self, doc_id: str, field_name: str, value: Any) -> BaseModel:
         existing = self._require(doc_id)
-        data = self._validated({**existing, field_name: value}, existing)
+        data = self.validated({**existing, field_name: value}, existing)
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def rename(self, doc_id: str, name: str) -> BaseModel:
@@ -197,7 +186,7 @@ class DocCollection:
 
     def delete(self, doc_id: str) -> None:
         self._require(doc_id)
-        self.backend.delete_prefix(self._item_prefix(doc_id))
+        self.backend.delete(self.key(doc_id))
 
     def move_item(self, doc_id: str, dest_folder_path: str) -> str:
         """Moves a document into `dest_folder_path`, keeping its own slug.
@@ -209,7 +198,7 @@ class DocCollection:
         if new_id == doc_id:
             return doc_id
         self._check_not_reserved(new_id)
-        self.backend.move_prefix(self._item_prefix(doc_id), self._item_prefix(new_id))
+        self.backend.move(self.key(doc_id), self.key(new_id))
         return new_id
 
     # ── what the vault (git) used to hold ───────────────────────────────
@@ -230,18 +219,18 @@ class DocCollection:
         root = Path(vault_path) / legacy if legacy else None
         if root is None or not root.is_dir():
             return 0
-        marker = f"{self.root}{LEGACY_MARKER}"
-        if self.backend.exists(marker):
+        if self.backend.exists(self.legacy_marker):
             return 0
 
         copied = 0
+        legacy_filename = f"{self.doctype.kind}.json"
         for file in sorted(root.rglob("*")):
             if not file.is_file():
                 continue
             folder = file.parent.relative_to(root).as_posix()
             folder = "" if folder == "." else folder
             try:
-                if file.name == self.doctype.item_filename:
+                if file.name == legacy_filename:
                     copied += self._import_legacy_file(file, sanitize_id(folder))
                 elif file.name == LEGACY_FOLDER_MARKER and folder:
                     key = f"{self.root}{sanitize_folder_path(folder)}/{FOLDER_MARKER}"
@@ -249,7 +238,7 @@ class DocCollection:
                         self.backend.put(key, "")
             except ValueError as e:
                 logger.warning(f"Skipped {file} while importing {self.doctype.prefix}: {e}")
-        self.backend.put(marker, json.dumps({
+        self.backend.put(self.legacy_marker, json.dumps({
             "imported_at": datetime.now(timezone.utc).isoformat(), "documents": copied,
         }))
         if copied:
@@ -257,53 +246,10 @@ class DocCollection:
         return copied
 
     def _import_legacy_file(self, file: Path, doc_id: str) -> int:
-        key = self._item_key(doc_id)
+        key = self.key(doc_id)
         if self.backend.exists(key):
             return 0
         text = file.read_text(encoding="utf-8")
         json.loads(text)  # a document that can't be read here couldn't be read later either
         self.backend.put(key, text)
         return 1
-
-    # ── folders ─────────────────────────────────────────────────────────
-
-    def create_folder(self, path: str) -> None:
-        path = sanitize_folder_path(path)
-        if not path:
-            raise ValueError("Folder path is required")
-        self._check_not_reserved(path)
-        if self.backend.list_keys(f"{self.root}{path}/"):
-            raise ValueError(f"A folder or {self.doctype.kind} already exists at '{path}'")
-        self.backend.put(f"{self.root}{path}/{FOLDER_MARKER}", "")
-
-    def move_folder(
-        self, path: str, new_parent_path: Optional[str] = None, new_name: Optional[str] = None,
-    ) -> None:
-        """Renames and/or reparents the folder at `path`. Only `new_name`
-        renames it in place; only `new_parent_path` moves it under another
-        parent keeping its name."""
-        path = sanitize_folder_path(path)
-        if not path:
-            raise ValueError("Folder path is required")
-        parent, _, leaf = path.rpartition("/")
-        dest_parent = sanitize_folder_path(new_parent_path) if new_parent_path is not None else parent
-        dest_name = sanitize_folder_name(new_name) if new_name is not None else leaf
-        new_path = f"{dest_parent}/{dest_name}" if dest_parent else dest_name
-        if new_path == path:
-            return
-        if new_path == dest_parent or new_path.startswith(f"{path}/"):
-            raise ValueError("Cannot move a folder into itself or one of its own subfolders")
-        self._check_not_reserved(new_path)
-        self.backend.move_prefix(f"{self.root}{path}/", f"{self.root}{new_path}/")
-
-    def delete_folder(self, path: str) -> List[str]:
-        """Deletes a folder with everything in it. Returns the ids of the
-        documents that were inside."""
-        path = sanitize_folder_path(path)
-        if not path:
-            raise ValueError("Folder path is required")
-        keys = self.backend.list_keys(f"{self.root}{path}/")
-        if not keys:
-            raise ValueError(f"Folder not found: {path}")
-        self.backend.delete_prefix(f"{self.root}{path}/")
-        return self._item_ids(keys)

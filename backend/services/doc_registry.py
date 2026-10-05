@@ -1,6 +1,7 @@
 """The kinds of document the app stores, and the one place that holds them:
-the backend they live in, a collection per kind, and the hub that serves the
-live ones. Notes are the only thing that lives elsewhere (in git)."""
+the backend they live in, a collection per kind, the Observatory (the tree of
+folders they share with the images) and the hub that serves the live ones.
+Notes are the only thing that lives elsewhere (in git)."""
 import logging
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from models.vista import Vista, VistaMetadata
 from services.doc_backend import default_doc_backend
 from services.doc_collection import DocCollection
 from services.doc_type import DocType
+from services.observatory import Observatory
 from services.sheet_docs import sheet_preparer
 from services.sync_hub import DocHub
 
@@ -22,7 +24,7 @@ logger = logging.getLogger(__name__)
 # A chart is a map with pins, paths and notes; a vista is a scene staged for the
 # table screen. Edited whole and saved, not live: see `live` in DocType.
 CHART = DocType(
-    kind="chart", prefix="charts", item_filename="chart.json",
+    kind="chart", prefix="charts",
     model=Chart, metadata_model=ChartMetadata, items_key="charts",
     locked_fields=("image_url",), asset_routes={"image": "image_url"},
     image_fields=("image_url", "pins[].icon_url"),
@@ -30,7 +32,7 @@ CHART = DocType(
 )
 
 VISTA = DocType(
-    kind="vista", prefix="vistas", item_filename="vista.json",
+    kind="vista", prefix="vistas",
     model=Vista, metadata_model=VistaMetadata, items_key="vistas",
     locked_fields=("background_url",), asset_routes={"background": "background_url"},
     image_fields=("background_url", "assets[].image_url"),
@@ -38,14 +40,14 @@ VISTA = DocType(
 )
 
 ENCOUNTER = DocType(
-    kind="encounter", prefix="encounters", item_filename="encounter.json",
+    kind="encounter", prefix="encounters",
     model=Encounter, metadata_model=EncounterMetadata, items_key="encounters",
     image_fields=("combatants[].image_url",),
     live=True, collections=("combatants",), patchable=("name", "description"),
 )
 
 BATTLEMAP = DocType(
-    kind="battlemap", prefix="battlemaps", item_filename="battlemap.json",
+    kind="battlemap", prefix="battlemaps",
     model=Battlemap, metadata_model=BattlemapMetadata, items_key="battlemaps",
     image_fields=("image_url", "tokens[].image_url"),
     live=True, collections=("tokens",), patchable=("name", "description", "image_url", "grid", "encounter"),
@@ -56,14 +58,14 @@ BATTLEMAP = DocType(
 # copied into an encounter each time it is added. Both are their sheet's YAML
 # (`source`); see models/sheet_doc.py.
 CHARACTER = DocType(
-    kind="character", prefix="characters", item_filename="character.json",
+    kind="character", prefix="characters",
     model=Character, metadata_model=SheetDocMetadata, items_key="characters",
     live=True, patchable=("name", "description", "source"), resources_field="resources",
     prepare=sheet_preparer("character"),
 )
 
 ADVERSARY = DocType(
-    kind="adversary", prefix="adversaries", item_filename="adversary.json",
+    kind="adversary", prefix="adversaries",
     model=Adversary, metadata_model=SheetDocMetadata, items_key="adversaries",
     prepare=sheet_preparer("adversary"),
 )
@@ -75,6 +77,14 @@ encounter_collection = DocCollection(ENCOUNTER, doc_backend)
 characters_collection = DocCollection(CHARACTER, doc_backend)
 adversary_collection = DocCollection(ADVERSARY, doc_backend)
 battlemap_collection = DocCollection(BATTLEMAP, doc_backend)
+
+observatory = Observatory(doc_backend, {
+    collection.doctype.kind: collection
+    for collection in (
+        chart_collection, vista_collection, encounter_collection, battlemap_collection,
+        characters_collection, adversary_collection,
+    )
+})
 
 hub = DocHub({
     ENCOUNTER.kind: encounter_collection,

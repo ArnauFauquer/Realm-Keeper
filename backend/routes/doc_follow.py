@@ -1,13 +1,15 @@
 """What follows a document whose id changed (it was moved, or its folder
 renamed or moved): the notes that show it (`chart:<id>`, `character:<id>`...)
-and, for a sheet, the encounters and maps that use it. make_doc_router's
-`on_moved` for the kinds a note can show."""
+and, for a sheet, the encounters and maps that use it. ON_MOVED holds it for
+each kind a note can show: make_doc_router's `on_moved`, and what the
+Observatory's folder routes run."""
 import asyncio
 import logging
 from typing import Awaitable, Callable, Dict
 
 from routes.notes import md_service_instance
 from services.markdown_service import NoteSaveError
+from services.sheet_refs import follow_moved_sheets
 
 logger = logging.getLogger(__name__)
 
@@ -30,3 +32,11 @@ def following(kind: str, *also: OnMoved) -> OnMoved:
         for hook in also:
             await hook(moves, user)
     return follow
+
+
+ON_MOVED: Dict[str, OnMoved] = {
+    "chart": following("chart"),
+    "vista": following("vista"),
+    "character": following("character", follow_moved_sheets("character")),
+    "adversary": following("adversary", follow_moved_sheets("adversary")),
+}

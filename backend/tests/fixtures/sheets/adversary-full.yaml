@@ -1,7 +1,7 @@
 name: Bugboar
 type: adversary
 subtitle: Tier 1 · Bruiser
-image: /api/asset-library/assets/asset-library/Bestiary/1a2b3c4d-bugboar.png
+image: /api/observatory/images/1a2b3c4d-bugboar.png
 tags: [goblinoid, brute]
 stats:
   Difficulty: 14

@@ -1,0 +1,655 @@
+<template>
+  <div v-if="isOpen" class="rk-scrim" :class="{ 'picker-scrim': pickerMode }" @click.self="close">
+    <div class="rk-dialog observatory-modal" role="dialog" aria-modal="true" :aria-label="title">
+      <DocumentModalHeader
+        :view="view === 'viewer' ? 'editor' : 'gallery'"
+        icon="mdi-telescope"
+        :gallery-title="title"
+        :item-title="activeImage?.name"
+        :can-edit="canEdit"
+        :show-save="false"
+        :can-send-to-screen="!!activeImage"
+        :sending-to-screen="sendingToScreen"
+        :copy-text="activeImage ? imageMarkdown(activeImage) : null"
+        @back="backToGallery"
+        @send-to-screen="sendToScreen"
+        @close="close"
+      />
+
+      <div v-if="view === 'gallery'" class="observatory-body">
+        <FolderGallery
+          ref="galleryRef"
+          :folders="folders"
+          :items="shownItems"
+          :movable="!kindView"
+          :item-key="itemKey"
+          :item-copy-text="copyText"
+          :current-path="currentPath"
+          :loading="loading"
+          :error="error"
+          :can-edit="canEdit"
+          root-label="Observatory"
+          root-icon="mdi-telescope"
+          loading-text="Loading the Observatory..."
+          empty-icon="mdi-star-four-points-outline"
+          :empty-text="emptyText"
+          accepts-files
+          :show-new-folder="pickerMode"
+          @drop-files="(files, dest) => importInto(dest, files)"
+          @navigate="goToPath"
+          @enter-folder="enterFolder"
+          @open-item="openItem"
+          @delete-folder="onDeleteFolder"
+          @delete-item="onDeleteItem"
+          @create-folder="onCreateFolder"
+          @rename-folder="onRenameFolder"
+          @rename-item="onRenameItem"
+          @move="onMove"
+        >
+          <template #actions>
+            <div v-if="newKind" class="new-item-form">
+              <input
+                ref="newInputRef"
+                v-model="newName"
+                class="rk-input inline-input"
+                :placeholder="`${newKind.label} name`"
+                :aria-label="`${newKind.label} name`"
+                @keyup.enter="submitNew"
+                @keyup.esc="newKind = null"
+              />
+              <button class="rk-icon-btn" :aria-label="`Create ${newKind.label}`" @click="submitNew"><span class="mdi mdi-check"></span></button>
+              <button class="rk-icon-btn" aria-label="Cancel" @click="newKind = null"><span class="mdi mdi-close"></span></button>
+            </div>
+            <div v-else-if="!pickerMode" ref="newMenuRef" class="new-menu">
+              <button class="rk-btn rk-btn--primary" :aria-expanded="newMenuOpen" aria-haspopup="menu" @click="newMenuOpen = !newMenuOpen">
+                <span class="mdi mdi-plus"></span> New <span class="mdi mdi-chevron-down new-caret" aria-hidden="true"></span>
+              </button>
+              <div v-if="newMenuOpen" class="new-menu-list" role="menu">
+                <button class="new-menu-item" role="menuitem" @click="startNewFolder">
+                  <span class="mdi mdi-folder-outline" aria-hidden="true"></span> Folder
+                </button>
+                <div class="new-menu-divider" role="separator"></div>
+                <button v-for="kind in DOC_KINDS" :key="kind.type" class="new-menu-item" role="menuitem" @click="startNew(kind)">
+                  <span class="mdi" :class="kind.icon" aria-hidden="true"></span> {{ capitalize(kind.label) }}
+                </button>
+              </div>
+            </div>
+            <span v-if="!pickerMode" class="actions-spacer" aria-hidden="true"></span>
+            <!-- Moving files in and out of the folder on screen: one group. -->
+            <div class="io-group" role="group" aria-label="Files">
+              <label
+                class="rk-btn io-btn"
+                :class="{ busy: importing }"
+                :title="pickerMode ? 'Upload images into this folder' : 'Bring images, documents (.chart.json, .vista.json...) or an exported zip into this folder. You can also drop files here.'"
+              >
+                <span v-if="importing" class="rk-spinner" aria-hidden="true"></span>
+                <span v-else class="mdi mdi-tray-arrow-up"></span>
+                <span>{{ importing ? 'Importing...' : 'Import' }}</span>
+                <input type="file" :accept="pickerMode ? 'image/*' : IMPORTABLE" multiple hidden :disabled="importing" @change="onFilesSelected" />
+              </label>
+              <a
+                v-if="!pickerMode"
+                class="rk-btn io-btn"
+                :href="observatoryApi.exportUrl(currentPath)"
+                download
+                :title="currentPath ? `Download “${currentPath}” as a zip, to import anywhere` : 'Download everything as a zip, to import anywhere'"
+              >
+                <span class="mdi mdi-tray-arrow-down"></span> Export
+              </a>
+            </div>
+          </template>
+
+          <template #filters>
+            <div v-if="leftOut.length" class="rk-alert import-report" role="status">
+              <span class="mdi mdi-alert-circle-outline"></span>
+              <div>
+                <p>{{ leftOut.length }} file{{ leftOut.length === 1 ? ' was' : 's were' }} not imported:</p>
+                <ul>
+                  <li v-for="skip in leftOut" :key="skip.path"><code>{{ skip.path }}</code>: {{ skip.reason }}</li>
+                </ul>
+              </div>
+              <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss" @click="leftOut = []"><span class="mdi mdi-close"></span></button>
+            </div>
+            <!-- The folders, or everything of one kind wherever it is. -->
+            <div v-if="!pickerMode" class="kind-filter" role="group" aria-label="Show">
+              <button class="kind-chip" :class="{ active: !kindView }" :aria-pressed="!kindView" @click="goToPath(kindView ? '' : currentPath)">
+                <span class="mdi mdi-folder-outline" aria-hidden="true"></span> Folders
+              </button>
+              <button
+                v-for="kind in KINDS"
+                :key="kind.type"
+                class="kind-chip"
+                :class="{ active: kindView === kind.type }"
+                :aria-pressed="kindView === kind.type"
+                @click="showKind(kind.type)"
+              >
+                <span class="mdi" :class="kind.icon" aria-hidden="true"></span> {{ kind.title }}
+              </button>
+            </div>
+          </template>
+
+          <template #thumb="{ item }">
+            <template v-if="thumbUrl(item)">
+              <img :src="resolveUrl(thumbUrl(item))" :alt="item.name" />
+              <!-- On a picture, what kind of document it is goes in the corner. -->
+              <span v-if="item.kind !== 'image'" class="kind-badge">
+                <span class="mdi kind-badge-icon" :class="kindOf(item).icon" aria-hidden="true"></span>
+                <span>{{ capitalize(kindOf(item).label) }}</span>
+              </span>
+            </template>
+            <span v-else class="mdi" :class="kindOf(item).icon" :title="capitalize(kindOf(item).label)"></span>
+          </template>
+        </FolderGallery>
+      </div>
+
+      <div v-else class="viewer-view">
+        <img v-if="activeImage" :src="resolveUrl(activeImage.url)" :alt="activeImage.name" />
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup>
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import FolderGallery from './FolderGallery.vue'
+import DocumentModalHeader from './DocumentModalHeader.vue'
+import { docApi } from '@/api/docs'
+import { observatoryApi } from '@/api/observatory'
+import { post } from '@/api/http'
+import { apiUrl } from '@/config/env'
+import { useAuth } from '@/composables/useAuth'
+import { useDocModal } from '@/composables/useDocModal'
+import { DOC_TYPES, IMAGE_KIND } from '@/utils/docTypes'
+import { docRefMarkdown } from '@/utils/inlineRefs'
+import { absoluteUrl, resolveUrl } from '@/utils/resolveUrl'
+
+// The Observatory: every document (charts, vistas, encounters, battlemaps,
+// characters, adversaries) and every image, in one tree of folders, so an
+// adventure's map, its chart and its encounters can live together. Opening a
+// document hands it to its kind's editor (DocumentModal), whose Back comes
+// here again; an image opens in a viewer that can send it to the screen.
+//
+// As a picker (`pickerMode`, from an editor choosing a map or an icon) it shows
+// only folders and images, and picking one emits `select` with { name, image_url }.
+const props = defineProps({
+  isOpen: { type: Boolean, default: false },
+  pickerMode: { type: Boolean, default: false },
+  // The folder it opens at: a picker opens beside the document being edited.
+  startPath: { type: String, default: '' },
+  // Or everything of one kind, wherever it is (a sidebar shortcut).
+  startKind: { type: String, default: null }
+})
+
+const emit = defineEmits(['close', 'select'])
+
+const DOC_KINDS = Object.values(DOC_TYPES)
+// What Import takes: images, documents as exported, and zips of them.
+const IMPORTABLE = 'image/*,.json,.zip,application/zip'
+const KINDS = [...DOC_KINDS, IMAGE_KIND]
+
+const { user } = useAuth()
+const canEdit = computed(() => !!user.value)
+const title = computed(() => (props.pickerMode ? 'Choose an image' : 'Observatory'))
+
+const folders = ref([])
+const items = ref([])
+const loading = ref(false)
+const error = ref(null)
+const currentPath = ref('')
+const kindView = ref(null)
+const view = ref('gallery')
+const activeImage = ref(null)
+const sendingToScreen = ref(false)
+const importing = ref(false)
+const leftOut = ref([])
+const newMenuOpen = ref(false)
+const newMenuRef = ref(null)
+const galleryRef = ref(null)
+const newKind = ref(null)
+const newName = ref('')
+const newInputRef = ref(null)
+
+const kindOf = (item) => (item.kind === 'image' ? IMAGE_KIND : DOC_TYPES[item.kind])
+const itemKey = (item) => `${item.kind}:${item.id}`
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
+
+// A flat list from many folders says where each one is.
+const shownItems = computed(() => {
+  if (kindView.value) return items.value.map((item) => ({ ...item, location: item.folder }))
+  return props.pickerMode ? items.value.filter((item) => item.kind === 'image') : items.value
+})
+const emptyText = computed(() => {
+  if (props.pickerMode) return 'No images here. Upload one, or look in another folder.'
+  if (kindView.value) return `No ${kindOf({ kind: kindView.value }).plural} yet.`
+  return 'Nothing here yet. Create a document, import images or documents (or drop them here) or add a folder.'
+})
+
+function thumbUrl(item) {
+  if (item.kind === 'image') return item.url
+  const field = DOC_TYPES[item.kind]?.imageField
+  return field ? item[field] : null
+}
+
+// CommonMark link destinations can't hold a bare space: the URL comes quoted.
+const imageMarkdown = (image) => `![${image.name.replace(/\.[^.]+$/, '')}](${absoluteUrl(image.url)})`
+
+function copyText(item) {
+  if (item.kind === 'image') return imageMarkdown(item)
+  return DOC_TYPES[item.kind]?.embeddable ? docRefMarkdown(item.kind, item.id) : null
+}
+
+watch(() => props.isOpen, (open) => {
+  if (!open) return
+  view.value = 'gallery'
+  activeImage.value = null
+  leftOut.value = []
+  if (props.startKind && !props.pickerMode) showKind(props.startKind)
+  else goToPath(props.startPath || '')
+}, { immediate: true })
+
+async function fetchLevel(path = currentPath.value) {
+  loading.value = true
+  error.value = null
+  const kind = kindView.value
+  try {
+    const listing = kind ? await observatoryApi.listKind(kind) : await observatoryApi.list(path)
+    if (path !== currentPath.value || kind !== kindView.value) return // moved on while it loaded
+    folders.value = listing.folders
+    items.value = listing.items
+  } catch (err) {
+    // A folder that is gone (moved by someone else): show the top instead.
+    if (err.response?.status === 404 && path) return goToPath('')
+    failure(err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const failure = (err) => { error.value = err.response?.data?.detail || err.message }
+const folderPath = (folder) => (currentPath.value ? `${currentPath.value}/${folder}` : folder)
+
+// Each change happens in the level on screen, then shows it again.
+async function changing(change) {
+  try {
+    await change()
+  } catch (err) {
+    failure(err)
+    return
+  }
+  await fetchLevel()
+}
+
+function goToPath(path) {
+  currentPath.value = path
+  kindView.value = null
+  fetchLevel(path)
+}
+
+// Everything of one kind; what is made from here goes at the top.
+function showKind(kind) {
+  currentPath.value = ''
+  kindView.value = kind
+  fetchLevel('')
+}
+
+function enterFolder(folder) {
+  goToPath(folderPath(folder))
+}
+
+function close() {
+  newMenuOpen.value = false
+  newKind.value = null
+  emit('close')
+}
+
+function openItem(item) {
+  if (item.kind === 'image') {
+    if (props.pickerMode) {
+      emit('select', { name: item.name.replace(/\.[^.]+$/, ''), image_url: item.url })
+      return
+    }
+    activeImage.value = item
+    view.value = 'viewer'
+    return
+  }
+  close()
+  useDocModal(item.kind).open(item.id)
+}
+
+function backToGallery() {
+  view.value = 'gallery'
+  activeImage.value = null
+}
+
+async function sendToScreen() {
+  if (!activeImage.value) return
+  try {
+    await post(`${apiUrl}/api/screen/display`, { url: resolveUrl(activeImage.value.url), title: activeImage.value.name })
+    sendingToScreen.value = true
+    setTimeout(() => { sendingToScreen.value = false }, 2000)
+  } catch (err) {
+    console.error('Failed to send the image to the screen:', err)
+  }
+}
+
+// ── making things ───────────────────────────────────────────────────────
+
+function startNewFolder() {
+  newMenuOpen.value = false
+  galleryRef.value?.startNewFolder()
+}
+
+function startNew(kind) {
+  newMenuOpen.value = false
+  newKind.value = kind
+  newName.value = ''
+  nextTick(() => newInputRef.value?.focus())
+}
+
+async function submitNew() {
+  const kind = newKind.value
+  const name = newName.value.trim()
+  if (!kind || !name) return
+  newKind.value = null
+  try {
+    const created = await docApi(kind.type).create(name, '', currentPath.value)
+    close()
+    useDocModal(kind.type).open(created.id)
+  } catch (err) {
+    failure(err)
+  }
+}
+
+function onOutsideClick(event) {
+  if (newMenuOpen.value && !newMenuRef.value?.contains(event.target)) newMenuOpen.value = false
+}
+document.addEventListener('click', onOutsideClick, true)
+onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick, true))
+
+function onFilesSelected(event) {
+  const files = Array.from(event.target.files)
+  event.target.value = ''
+  importInto(currentPath.value, files)
+}
+
+// Into the folder on screen (the Import button, or files dropped on the
+// gallery) or one of its folders (dropped on it). Nothing there is replaced: a
+// document whose name is taken comes in as a copy beside it. A picker only
+// takes images.
+async function importInto(folder, files) {
+  if (props.pickerMode) files = files.filter((file) => file.type.startsWith('image/'))
+  if (!files.length) return
+  importing.value = true
+  leftOut.value = []
+  try {
+    const { items: added, skipped } = await observatoryApi.importFiles(folder, files)
+    leftOut.value = skipped
+    const images = added.filter((item) => item.kind === 'image')
+    if (props.pickerMode && images.length === 1 && files.length === 1 && folder === currentPath.value) openItem(images[0])
+    else await fetchLevel()
+  } catch (err) {
+    failure(err)
+  } finally {
+    importing.value = false
+  }
+}
+
+// ── changing things ─────────────────────────────────────────────────────
+
+function onDeleteItem(item) {
+  const what = item.kind === 'image' ? 'image' : DOC_TYPES[item.kind].label
+  if (!window.confirm(`Delete ${what} "${item.name}"? This cannot be undone.`)) return
+  changing(() => (item.kind === 'image' ? observatoryApi.removeImage(item.id) : docApi(item.kind).remove(item.id)))
+}
+
+function onRenameItem(item, name) {
+  changing(() => (item.kind === 'image' ? observatoryApi.renameImage(item.id, name) : docApi(item.kind).rename(item.id, name)))
+}
+
+function onCreateFolder(name) {
+  changing(() => observatoryApi.createFolder(folderPath(name)))
+}
+
+function onRenameFolder(folder, name) {
+  changing(() => observatoryApi.renameFolder(folderPath(folder), name))
+}
+
+function onDeleteFolder(folder) {
+  if (!window.confirm(`Delete folder "${folder}" and everything inside it: documents and images?`)) return
+  changing(() => observatoryApi.removeFolder(folderPath(folder)))
+}
+
+function onMove(dragItem, destPath) {
+  if (dragItem.type === 'folder') {
+    const sourcePath = folderPath(dragItem.name)
+    if (sourcePath === destPath) return
+    changing(() => observatoryApi.moveFolder(sourcePath, destPath))
+    return
+  }
+  const { item } = dragItem
+  changing(() => (item.kind === 'image' ? observatoryApi.moveImage(item.id, destPath) : docApi(item.kind).move(item.id, destPath)))
+}
+</script>
+
+<style scoped>
+/* As a picker it opens on top of a document's editor, so it sits one layer up. */
+.picker-scrim {
+  z-index: var(--z-modal-nested);
+}
+
+.observatory-modal {
+  width: min(100%, 1400px);
+  height: 90dvh;
+}
+
+.observatory-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+}
+
+.new-item-form {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.actions-spacer {
+  flex: 1;
+}
+
+.new-menu {
+  position: relative;
+}
+
+.new-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 5;
+  min-width: 12rem;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.new-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.new-menu-item:hover,
+.new-menu-item:focus-visible {
+  background: var(--hover-tint);
+}
+
+.new-menu-item .mdi {
+  color: var(--text-secondary);
+}
+
+.new-menu-divider {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border-light);
+}
+
+.new-caret {
+  margin-left: calc(var(--space-1) * -1);
+  opacity: 0.8;
+}
+
+/* Import and Export, joined: one control for files in and out. */
+.io-group {
+  display: inline-flex;
+}
+
+.io-btn {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.io-group .io-btn:not(:only-child):first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.io-group .io-btn:not(:only-child):last-child {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.io-group .io-btn:hover {
+  position: relative;
+  z-index: 1;
+}
+
+/* On a phone the two groups share one row: the compact button size. */
+@media (max-width: 640px) {
+  .new-menu > .rk-btn,
+  .io-btn {
+    min-height: var(--control-sm);
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+  }
+}
+
+.kind-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.kind-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.kind-chip:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.kind-chip.active {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: var(--accent-contrast);
+}
+
+/* What kind of document it is, in the corner of its card: a small label that
+   stays readable on any picture. */
+.kind-badge {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1.5rem;
+  padding: 0 var(--space-2) 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  background: rgba(10, 11, 28, 0.78);
+  backdrop-filter: blur(6px);
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* The gallery sizes and dims the placeholder glyphs of a thumbnail; not this one. */
+.kind-badge .mdi.kind-badge-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 1;
+  color: var(--accent);
+}
+
+.import-report {
+  align-items: flex-start;
+}
+
+.import-report > div {
+  flex: 1;
+}
+
+.import-report p {
+  margin: 0;
+}
+
+.import-report ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.busy {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.io-btn .rk-spinner {
+  width: 14px;
+  height: 14px;
+}
+
+.viewer-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-6);
+}
+
+.viewer-view img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+}
+</style>

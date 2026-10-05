@@ -6,7 +6,7 @@
     </div>
     <div v-else-if="status === 'gone'" class="tracker-state" role="alert">
       <span class="mdi mdi-file-question-outline"></span>
-      <span>This encounter was moved or deleted. Go back to the list to find it.</span>
+      <span>This encounter was moved or deleted. Look for it in the Observatory.</span>
     </div>
     <div v-else-if="status === 'error'" class="tracker-state tracker-error" role="alert">
       <span class="mdi mdi-alert-circle-outline"></span>

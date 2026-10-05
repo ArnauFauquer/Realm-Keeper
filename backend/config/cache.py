@@ -68,11 +68,11 @@ class CacheControlMiddleware:
                 # Login state must never be cached (stale /me would show a
                 # logged-out user as logged in, or vice versa).
                 return "no-store, must-revalidate"
-            if path.startswith("/api/asset-library/assets/"):
-                # The binary image itself, keyed by its own filename — safe to
-                # cache hard like /assets/, but only in the viewer's own
-                # browser: it's behind login (or a paired screen), so shared
-                # caches must not keep it, and the service worker skips it.
+            if path.startswith("/api/observatory/images/"):
+                # The binary image itself, found by a uid no other upload ever
+                # gets — safe to cache hard like /assets/, but only in the
+                # viewer's own browser: it's behind login (or a paired screen),
+                # so shared caches must not keep it, and the service worker skips it.
                 return "private, max-age=31536000, immutable"
             if path.startswith("/api/sheets") or path.startswith("/api/adversaries"):
                 # A sheet just saved must show up in the next picker and in the
@@ -88,7 +88,7 @@ class CacheControlMiddleware:
             if (
                 path.startswith("/api/vistas")
                 or path.startswith("/api/charts")
-                or path.startswith("/api/asset-library")
+                or path.startswith("/api/observatory")
             ):
                 # A GM repositions/saves and immediately hits "Send to
                 # screen" — the screen's fetch of this same vista/chart must

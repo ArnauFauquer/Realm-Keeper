@@ -18,13 +18,13 @@ const BattlemapCanvas = (await import('@/components/BattlemapCanvas.vue')).defau
 
 const GRID = { type: 'square', size: 70, offset_x: 0, offset_y: 0, snap: true, visible: true, color: '#fff', opacity: 0.3, distance: 5, unit: 'ft', measure: 'grid' }
 const TOKENS = [
-  { id: 'orc', name: 'Orc', x: 2, y: 3, size: 1, image_url: '/api/asset-library/assets/asset-library/orc.png', meters: [{ name: 'HP', current: 3, max: 6, min: 0 }] },
+  { id: 'orc', name: 'Orc', x: 2, y: 3, size: 1, image_url: '/api/observatory/images/1a2b3c4d-orc.png', meters: [{ name: 'HP', current: 3, max: 6, min: 0 }] },
   { id: 'dragon', name: 'Dragon', x: 6, y: 6, size: 3, hidden: true, color: '#a33a3a', meters: [] },
   { id: 'quiet', name: 'Bugboar 2', x: 1, y: 1 }
 ]
 
 const mountCanvas = (props = {}) => mount(BattlemapCanvas, {
-  props: { imageUrl: '/api/asset-library/assets/asset-library/cave.png', grid: GRID, tokens: TOKENS, editable: true, ...props }
+  props: { imageUrl: '/api/observatory/images/1a2b3c4d-cave.png', grid: GRID, tokens: TOKENS, editable: true, ...props }
 })
 
 const pointer = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true })
