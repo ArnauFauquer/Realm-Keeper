@@ -339,10 +339,10 @@ function linkCombatant(combatantId) {
   patchToken({ combatant: combatantId || null, sheet: combatant?.sheet || null, bars: [], show_bars: false })
 }
 
-function toggleBar(name, on) {
-  const bars = selected.value.bars.filter((n) => n !== name)
-  patchToken({ bars: on ? [...bars, name] : bars })
-}
+// One bar in or out, never the whole list, so two people changing the bars
+// at once both count.
+const toggleBar = (name, on) =>
+  send(commands.editList(id, 'tokens', selected.value.id, 'bars', on ? { add: [name] } : { remove: [name] }))
 
 // A token being dragged is sent as it moves, at most every MOVE_INTERVAL ms,
 // so everyone sees it travel; where it is dropped is sent at once.

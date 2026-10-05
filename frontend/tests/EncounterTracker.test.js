@@ -5,7 +5,7 @@ import * as fake from './helpers/fakeSyncedDoc'
 
 const { commands, fetchSheets, fetchSheet } = vi.hoisted(() => ({
   commands: {
-    patch: vi.fn(), patchItem: vi.fn(), addItems: vi.fn(), removeItem: vi.fn(), orderItems: vi.fn(), adjust: vi.fn()
+    patch: vi.fn(), patchItem: vi.fn(), addItems: vi.fn(), removeItem: vi.fn(), orderItems: vi.fn(), adjust: vi.fn(), editList: vi.fn()
   },
   fetchSheets: vi.fn(),
   fetchSheet: vi.fn()
@@ -99,12 +99,14 @@ describe('EncounterTracker', () => {
     const input = card.find('.condition-input')
     input.element.value = 'Poisoned'
     await input.trigger('keyup.enter')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'a', {
-      conditions: [expect.objectContaining({ name: 'Poisoned' })]
+    // Added and removed one by one, never as the whole list (two people adding
+    // at once would otherwise lose one).
+    expect(commands.editList).toHaveBeenLastCalledWith('fight', 'combatants', 'a', 'conditions', {
+      add: [expect.objectContaining({ name: 'Poisoned' })]
     })
 
     await cards(wrapper)[1].find('.condition-remove').trigger('click')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('fight', 'combatants', 'b', { conditions: [] })
+    expect(commands.editList).toHaveBeenLastCalledWith('fight', 'combatants', 'b', 'conditions', { remove: ['c1'] })
   })
 
   it("has no rounds, turns or initiative: the order is the table's own", () => {

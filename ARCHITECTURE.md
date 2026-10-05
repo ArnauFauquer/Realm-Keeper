@@ -240,8 +240,11 @@ it change. `services/sync_hub.py` (`DocHub`) is built for that.
 - **Commands are typed REST calls**, not a generic patch protocol:
   `POST/PATCH/DELETE /<id>/<collection>[/<entity>]`, `…/order`, and
   `…/<entity>/adjust {resource, by}` — a *relative* change clamped to the
-  counter's `min`/`max`, so two people hitting the same counter both count.
-  Clients never write a whole live document.
+  counter's `min`/`max`, so two people hitting the same counter both count —
+  and `…/<entity>/list {field, add, remove}`, entries in or out of an entity's
+  list (a combatant's conditions, a token's bars) for the same reason: two
+  people adding a condition at once both add one, where writing the whole list
+  would keep only the last. Clients never write a whole live document.
 - **The socket only talks one way.** `/ws/sync` (login required) carries events
   server → client; nobody sends anything on it. An event is
   `{type: "doc", doc: "encounter:fight", rev, set, upsert, remove, order}`: whole

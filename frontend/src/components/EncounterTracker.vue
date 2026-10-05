@@ -286,11 +286,13 @@ function addCondition(c, event) {
   if (!name) return
   event.target.value = ''
   const condition = { id: `${Date.now().toString(36)}${conditionSeq++}`, name }
-  patchCombatant(c, { conditions: [...c.conditions, condition] })
+  send(commands.editList(id, 'combatants', c.id, 'conditions', { add: [condition] }))
 }
 
+// Conditions go in and out one by one, never as the whole list: two people
+// adding one at once both add theirs.
 const removeCondition = (c, condition) =>
-  patchCombatant(c, { conditions: c.conditions.filter((item) => item.id !== condition.id) })
+  send(commands.editList(id, 'combatants', c.id, 'conditions', { remove: [condition.id] }))
 
 const addFromSheet = (sheet, count) => send(commands.addItems(id, 'combatants', combatantsFromSheet(sheet, count, doc.value.combatants)))
 

@@ -167,6 +167,20 @@ def make_doc_router(
                 lambda d: doc_commands.adjust_resource(d, doctype, name, entity_id, body.resource, body.by),
             )
 
+        class ListBody(BaseModel):
+            # Which list of the entity, and what goes in or out of it.
+            field: str = Field(min_length=1, max_length=64)
+            add: List[Any] = Field(default_factory=list, max_length=50)
+            remove: List[Any] = Field(default_factory=list, max_length=50)
+
+        @router.post(f"{on}/{name}/{{entity_id}}/list", name=f"edit_list_{name}")
+        @guarded
+        async def edit_list(entity_id: str, body: ListBody, doc_id: str, user: dict = Depends(require_auth)):
+            return await change(
+                doc_id, user, "edit_list",
+                lambda d: doc_commands.edit_list(d, doctype, name, entity_id, body.field, body.add, body.remove),
+            )
+
         @router.patch(f"{on}/{name}/{{entity_id}}", name=f"patch_{name}")
         @guarded
         async def patch_item(entity_id: str, body: Dict[str, Any], doc_id: str, user: dict = Depends(require_auth)):
