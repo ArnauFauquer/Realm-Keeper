@@ -19,6 +19,22 @@ describe('sanitizeHtml', () => {
     expect(sanitizeHtml('<iframe srcdoc="<script>alert(1)</script>"></iframe>')).not.toContain('srcdoc')
   })
 
+  it("never lets an iframe of the app's own origin keep it alongside scripts", () => {
+    const sandboxOf = (html) => {
+      const template = document.createElement('template')
+      template.innerHTML = sanitizeHtml(html)
+      return template.content.querySelector('iframe').getAttribute('sandbox').split(' ')
+    }
+    for (const src of ['/note/secret', `${window.location.origin}/api/auth/me`, 'about:blank', '']) {
+      expect(sandboxOf(`<iframe src="${src}"></iframe>`)).not.toContain('allow-same-origin')
+    }
+    expect(sandboxOf('<iframe></iframe>')).not.toContain('allow-same-origin')
+    // Another site's player keeps its own origin, cookies and storage.
+    expect(sandboxOf('<iframe src="https://www.youtube.com/embed/x"></iframe>')).toEqual(
+      ['allow-scripts', 'allow-same-origin', 'allow-popups', 'allow-presentation']
+    )
+  })
+
   it('drops page-wide styles, forms and iframe permission delegation', () => {
     const out = sanitizeHtml('<style>body{display:none}</style><form action="https://evil.test"><input name="password"><button>Sign in</button></form><iframe src="https://evil.test" allow="camera; clipboard-read"></iframe><span style="color:red">red</span>')
     expect(out).not.toMatch(/<style|<form|<input|<button|allow=/)

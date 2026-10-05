@@ -1,5 +1,4 @@
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { screenApi } from '@/api/screen'
 
 const SCREEN_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>Screen</span>'
 const SENT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg><span>Sent!</span>'
@@ -28,19 +27,21 @@ export function wrapImagesForScreen(root) {
   })
 }
 
-/** Sends the image next to a "Screen" button, and says so on the button for a moment. */
+/** Sends the image next to a "Screen" button; true once it is on the screen. */
 export async function sendImageToScreen(btn) {
   const img = btn.closest('.img-screen-wrapper')?.querySelector('img')
-  if (!img) return
+  if (!img) return false
   try {
-    await post(`${apiUrl}/api/screen/display`, { url: img.src, title: img.alt || '' })
-    btn.innerHTML = SENT_ICON
-    btn.classList.add('sent')
-    setTimeout(() => {
-      btn.classList.remove('sent')
-      btn.innerHTML = SCREEN_ICON
-    }, 2000)
+    await screenApi.display(img.src, img.alt || '')
+    return true
   } catch (err) {
     console.error('Failed to send to screen:', err)
+    return false
   }
+}
+
+/** Shows (or stops showing) "Sent!" on a "Screen" button. */
+export function showSent(btn, sent) {
+  btn.innerHTML = sent ? SENT_ICON : SCREEN_ICON
+  btn.classList.toggle('sent', sent)
 }

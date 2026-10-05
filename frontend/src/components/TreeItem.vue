@@ -53,7 +53,7 @@
 </template>
 
 <script>
-import { noteRoute } from '@/utils/noteUrls'
+import { noteRoute } from '@/utils/paths'
 
 export default {
   name: 'TreeItem',

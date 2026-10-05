@@ -52,6 +52,7 @@ import { useCharacters } from '@/composables/useCharacters'
 import { useDocModal } from '@/composables/useDocModal'
 import { DOC_TYPES } from '@/utils/docTypes'
 import { parseSheetDoc } from '@/utils/sheet'
+import { errorMessage } from '@/api/http'
 
 // A character or an adversary shown in a note (`character:<id>`,
 // `adversary:<id>`): its sheet, a character's counters live. The note view
@@ -82,7 +83,7 @@ async function loadAdversary() {
     adversary.value = await adversariesApi.fetch(props.id)
   } catch (err) {
     adversary.value = null
-    if (err.response?.status !== 404) loadError.value = err.response?.data?.detail || err.message
+    if (err.response?.status !== 404) loadError.value = errorMessage(err)
   } finally {
     adversaryLoading.value = false
   }

@@ -26,10 +26,11 @@ import { useAuth } from '@/composables/useAuth'
 import { useSoundEffects } from '@/composables/useSoundEffects'
 import { createDocEmbeds } from '@/composables/useDocEmbeds'
 import { findInlineAction, runInlineAction, syncSfxButtons } from '@/composables/useInlineActions'
-import { wrapImagesForScreen } from '@/composables/useImageScreenButtons'
+import { sendImageToScreen, showSent, wrapImagesForScreen } from '@/composables/useImageScreenButtons'
+import { useFlash } from '@/composables/useFlash'
 import { renderMermaidIn } from '@/composables/useMermaid'
 import { hasMermaid } from '@/utils/renderNote'
-import { noteIdFromHref } from '@/utils/noteUrls'
+import { noteIdFromHref } from '@/utils/paths'
 
 const props = defineProps({
   // Sanitized HTML, from utils/renderNote.js.
@@ -82,6 +83,23 @@ onBeforeUnmount(() => {
   embeds.unmountAll()
 })
 
+// "Sent!" shows on the last image sent to the screen, for a moment.
+const sent = useFlash()
+let sentButton = null
+watch(sent.on, (on) => {
+  if (on || !sentButton) return
+  showSent(sentButton, false)
+  sentButton = null
+})
+
+async function sendToScreen(btn) {
+  if (!(await sendImageToScreen(btn))) return
+  if (sentButton && sentButton !== btn) showSent(sentButton, false)
+  sentButton = btn
+  showSent(btn, true)
+  sent.flash()
+}
+
 function onClick(e) {
   const action = findInlineAction(e.target, root.value)
   if (!action) return
@@ -100,7 +118,11 @@ function onClick(e) {
   // Dice, songs, sound effects and the screen are for signed-in users.
   if (!user.value) return
   e.preventDefault()
-  if (action.kind === 'screen') e.stopPropagation()
+  if (action.kind === 'screen') {
+    e.stopPropagation()
+    sendToScreen(action.el)
+    return
+  }
   runInlineAction(action)
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
-const { encodePath, noteApi, noteIdFromHref, noteRawApi, noteRoute } = await import('@/utils/noteUrls')
+const { encodePath, noteApi, noteIdFromHref, noteRawApi, noteRoute } = await import('@/utils/paths')
 
 describe('note urls', () => {
   it('encodes each segment and keeps the slashes', () => {

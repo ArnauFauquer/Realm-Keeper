@@ -38,7 +38,7 @@ import { getNodeColor } from '../config/nodeColors'
 import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { fetchGraph, useGraphData } from '@/composables/useGraphData'
-import { noteRoute } from '@/utils/noteUrls'
+import { noteRoute } from '@/utils/paths'
 
 export default {
   name: 'RightSidebar',

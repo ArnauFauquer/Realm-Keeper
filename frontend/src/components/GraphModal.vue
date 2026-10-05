@@ -131,13 +131,14 @@
 <script>
 import * as d3 from 'd3'
 import { markRaw, shallowRef, computed } from 'vue'
+import { errorMessage } from '@/api/http'
 import { fetchGraph, useGraphData } from '@/composables/useGraphData'
 import { getNodeColor, getColorForType } from '../config/nodeColors'
 import { drawStarfield } from '@/composables/useConstellationGraph'
 import { createConstellationCanvas, decorateNodes } from '@/composables/constellationCanvas'
 import { useLiveScreen } from '@/composables/useLiveScreen'
 import { useAuth } from '@/composables/useAuth'
-import { noteRoute } from '@/utils/noteUrls'
+import { noteRoute } from '@/utils/paths'
 
 // Ticks run synchronously before the first paint so the graph appears almost
 // settled instead of visibly exploding outwards.
@@ -258,7 +259,7 @@ export default {
           this.initGraph()
         })
       } catch (err) {
-        this.error = err.response?.data?.detail || err.message
+        this.error = errorMessage(err)
         this.loading = false
       }
     },

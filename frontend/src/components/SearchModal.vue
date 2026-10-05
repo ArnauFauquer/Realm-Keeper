@@ -136,11 +136,11 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { observatoryApi } from '@/api/observatory'
-import { noteRoute } from '@/utils/noteUrls'
+import { noteRoute } from '@/utils/paths'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
-import { DOC_TYPES, IMAGE_KIND } from '@/utils/docTypes'
+import { DOC_TYPES, IMAGE_KIND, capitalize } from '@/utils/docTypes'
 import { resolveUrl } from '@/utils/resolveUrl'
 
 // Search across everything: the notes (for anyone), and, signed in, what is in
@@ -286,7 +286,6 @@ watch(() => [searchQuery.value.trim(), !!user.value], ([query, signedIn]) => {
 })
 
 const kindOf = (item) => (item.kind === 'image' ? IMAGE_KIND : DOC_TYPES[item.kind])
-const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
 function thumbOf(item) {
   if (item.kind === 'image') return item.url

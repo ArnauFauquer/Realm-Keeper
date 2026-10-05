@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { client } = vi.hoisted(() => ({
   client: { get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }
 }))
-vi.mock('axios', () => ({ default: { create: () => client } }))
+// Every client goes through the app's one HTTP client (api/http.js).
+vi.mock('@/api/http', () => ({ httpClient: client }))
 vi.mock('@/config/env', () => ({ apiUrl: 'https://api.test' }))
 
 const { chartsApi, vistasApi, encountersApi, charactersApi, docApi } = await import('@/api/docs')
@@ -59,6 +60,14 @@ describe('the document clients', () => {
     expect(docApi('chart')).toBe(chartsApi)
     expect(docApi('vista')).toBe(vistasApi)
     expect(docApi('adversary').base).toBe('https://api.test/api/adversaries')
+  })
+
+  it('has a client for every kind utils/docTypes.js describes, at its resource', async () => {
+    const { DOC_TYPES } = await import('@/utils/docTypes')
+    for (const kind of Object.values(DOC_TYPES)) {
+      expect(docApi(kind.type).base).toBe(`https://api.test/api/${kind.resource}`)
+      expect(docApi(kind.type).itemsKey).toBe(kind.resource)
+    }
   })
 })
 

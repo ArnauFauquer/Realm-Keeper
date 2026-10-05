@@ -18,7 +18,7 @@ vi.mock('@/api/observatory', () => ({ observatoryApi }))
 vi.mock('@/api/docs', () => ({
   docApi: (type) => (docClients[type] ||= { create: vi.fn(), rename: vi.fn(), move: vi.fn(), remove: vi.fn() })
 }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ user: ref({ email: 'gm@example.com' }) }) }))
 vi.mock('@/composables/useDocModal', () => ({ useDocModal: (type) => ({ open: (id) => openDoc(type, id) }) }))
@@ -92,6 +92,17 @@ describe('ObservatoryModal — one tree for everything', () => {
     expect(observatoryApi.list).not.toHaveBeenCalled()
     expect(names(wrapper)).toEqual(['Wei'])
     expect(wrapper.find('.kind-chip.active').text()).toBe('Charts')
+  })
+
+  it('goes where it is asked to while already open', async () => {
+    const wrapper = await opened({ startPath: 'act 2' })
+    await wrapper.setProps({ startPath: 'act 3' }) // useObservatoryModal().open('act 3') over it
+    await flushPromises()
+    expect(observatoryApi.list).toHaveBeenLastCalledWith('act 3')
+    observatoryApi.listKind.mockResolvedValue({ folders: [], items: [] })
+    await wrapper.setProps({ startPath: '', startKind: 'vista' })
+    await flushPromises()
+    expect(observatoryApi.listKind).toHaveBeenCalledWith('vista')
   })
 
   it('offers to copy what a note can show: a document it embeds, an image', async () => {
@@ -205,9 +216,11 @@ describe('ObservatoryModal — making and changing things', () => {
   it('moves a card dragged onto a folder, without importing the thumbnail the browser drags along as a file', async () => {
     const { docApi } = await import('@/api/docs')
     const wrapper = await opened({ startPath: 'act 2' })
-    const thumbnail = { types: ['text/uri-list', 'Files'], files: [new File(['a'], 'map.png', { type: 'image/png' })] }
+    const thumbnail = { types: ['text/uri-list', 'Files'], files: [new File(['a'], 'map.png', { type: 'image/png' })], setData: vi.fn() }
     const card = wrapper.findAll('.gallery-card:not(.folder-card)')[1]
     await card.trigger('dragstart', { dataTransfer: thumbnail })
+    // Some data, or Firefox doesn't start the drag at all.
+    expect(thumbnail.setData).toHaveBeenCalledWith('application/x-realm-keeper-move', 'encounter:act 2/ambush')
     await wrapper.find('.folder-gallery').trigger('dragover', { dataTransfer: thumbnail })
     expect(wrapper.find('.folder-gallery').classes()).not.toContain('files-over')
     await wrapper.find('.folder-card').trigger('drop', { dataTransfer: thumbnail })

@@ -223,8 +223,8 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { errorMessage } from '@/api/http'
+import { screenApi } from '@/api/screen'
 import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
 import { useCharacters } from '@/composables/useCharacters'
 import { syncStatus } from '@/composables/syncSocket'
@@ -295,7 +295,7 @@ async function attempt(work) {
     await work
     return true
   } catch (err) {
-    actionError.value = err.response?.data?.detail || err.message
+    actionError.value = errorMessage(err)
     return false
   }
 }
@@ -401,7 +401,7 @@ function onLibrarySelect(item) {
 async function toggleScreen() {
   const wasShowing = onScreen.value
   const done = await attempt(
-    wasShowing ? post(`${apiUrl}/api/screen/clear`, {}) : post(`${apiUrl}/api/screen/battlemap`, { battlemap_id: id })
+    wasShowing ? screenApi.clear() : screenApi.battlemap(id)
   )
   if (done) onScreen.value = !wasShowing
 }

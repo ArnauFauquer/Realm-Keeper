@@ -1,6 +1,7 @@
 import { ref, shallowRef } from 'vue'
-import { getCached } from '@/api/http'
-import { noteApi, noteRawApi } from '@/utils/noteUrls'
+import { errorMessage, getCached } from '@/api/http'
+import { apiUrl } from '@/config/env'
+import { noteApi, noteRawApi } from '@/utils/paths'
 
 /**
  * The note a view shows. Each load() takes a token, and an answer that comes
@@ -25,14 +26,14 @@ export function useNoteLoader() {
     error.value = null
     notFound.value = false
     try {
-      const data = await getCached(noteApi(path), { cacheTtl: 300 })
+      const data = await getCached(apiUrl + noteApi(path), { cacheTtl: 300 })
       if (current !== token) return false
       note.value = data
       return true
     } catch (err) {
       if (current !== token) return false
       if (err.response?.status === 404) notFound.value = true
-      else error.value = err.response?.data?.detail || err.message
+      else error.value = errorMessage(err)
       return false
     } finally {
       if (current === token) loading.value = false
@@ -45,7 +46,7 @@ export function useNoteLoader() {
    */
   async function loadRaw(path) {
     const current = token
-    const data = await getCached(noteRawApi(path), { useCache: false })
+    const data = await getCached(apiUrl + noteRawApi(path), { useCache: false })
     if (current !== token) return null
     return { content: data.content, sha: data.sha ?? null }
   }

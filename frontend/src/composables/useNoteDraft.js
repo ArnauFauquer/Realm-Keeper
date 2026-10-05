@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
-import { getCached, invalidateCached, put } from '@/api/http'
-import { noteApi, noteRawApi } from '@/utils/noteUrls'
+import { errorMessage, getCached, invalidateCached, put } from '@/api/http'
+import { apiUrl } from '@/config/env'
+import { noteApi, noteRawApi } from '@/utils/paths'
 import { notifyNotesChanged } from './useNotes'
 
 /**
@@ -30,9 +31,9 @@ export function useNoteDraft(path, start) {
     try {
       const body = { content: draft.value }
       if (!overwrite) body.base_sha = creating.value ? '' : baseSha.value
-      const reply = await put(noteApi(path()), body)
-      invalidateCached(noteApi(path()))
-      invalidateCached(noteRawApi(path()))
+      const reply = await put(apiUrl + noteApi(path()), body)
+      invalidateCached(apiUrl + noteApi(path()))
+      invalidateCached(apiUrl + noteRawApi(path()))
       notifyNotesChanged()
       original.value = draft.value
       baseSha.value = reply?.sha ?? null
@@ -45,7 +46,7 @@ export function useNoteDraft(path, start) {
         ? (creating.value
             ? 'A note with this name was created while you were writing.'
             : 'Someone else saved this note while you were editing it.')
-        : err.response?.data?.detail || err.message || 'Could not save the note.'
+        : errorMessage(err, 'Could not save the note.')
       return false
     } finally {
       saving.value = false
@@ -57,14 +58,14 @@ export function useNoteDraft(path, start) {
     saving.value = true
     saveError.value = null
     try {
-      const data = await getCached(noteRawApi(path()), { useCache: false })
+      const data = await getCached(apiUrl + noteRawApi(path()), { useCache: false })
       original.value = data.content
       draft.value = data.content
       baseSha.value = data.sha ?? null
       creating.value = false
       conflict.value = false
     } catch (err) {
-      saveError.value = err.response?.data?.detail || err.message || 'Could not load the note.'
+      saveError.value = errorMessage(err, 'Could not load the note.')
     } finally {
       saving.value = false
     }

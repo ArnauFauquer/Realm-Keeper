@@ -6,7 +6,12 @@ const { getCached, put, invalidateCached, notifyNotesChanged } = vi.hoisted(() =
   invalidateCached: vi.fn(),
   notifyNotesChanged: vi.fn()
 }))
-vi.mock('@/api/http', () => ({ getCached, put, invalidateCached }))
+vi.mock('@/api/http', () => ({
+  getCached,
+  put,
+  invalidateCached,
+  errorMessage: (err, fallback) => err?.response?.data?.detail || fallback || err?.message
+}))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 vi.mock('@/composables/useNotes', () => ({ notifyNotesChanged }))
 

@@ -108,11 +108,11 @@
 <script setup>
 import { computed, inject, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getCached } from '@/api/http'
+import { errorMessage, getCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { lockAssetImages } from '@/utils/sanitizeHtml'
 import { renderNote } from '@/utils/renderNote'
-import { noteApi, noteRoute } from '@/utils/noteUrls'
+import { noteApi, noteRoute } from '@/utils/paths'
 import { useAuth } from '@/composables/useAuth'
 import { useMediaQuery } from '@/composables/useMediaQuery'
 import { useNoteLoader } from '@/composables/useNoteLoader'
@@ -195,7 +195,7 @@ async function startEditing() {
     if (!raw || props.notePath !== path) return
     editing.value = { content: raw.content, sha: raw.sha, creating: false }
   } catch (err) {
-    if (props.notePath === path) error.value = err.response?.data?.detail || err.message
+    if (props.notePath === path) error.value = errorMessage(err)
   }
 }
 
@@ -230,7 +230,7 @@ let prefetchTimeout = null
 function prefetchNote(id, timeout) {
   if (prefetched.has(id)) return
   prefetched.add(id)
-  getCached(noteApi(id), { cacheTtl: 300, timeout }).catch(() => {})
+  getCached(apiUrl + noteApi(id), { cacheTtl: 300, timeout }).catch(() => {})
 }
 
 function prefetchLinkedNotes(links) {

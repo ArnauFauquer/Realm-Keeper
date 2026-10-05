@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const getCached = vi.fn()
-vi.mock('@/api/http', () => ({ getCached: (...args) => getCached(...args) }))
+vi.mock('@/api/http', () => ({
+  getCached: (...args) => getCached(...args),
+  errorMessage: (err, fallback) => err?.response?.data?.detail || fallback || err?.message
+}))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 const { useNoteLoader } = await import('@/composables/useNoteLoader')

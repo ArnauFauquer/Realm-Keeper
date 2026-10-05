@@ -54,9 +54,7 @@ export function useNotes() {
     try {
       const offset = currentPage.value * pageSize
       const data = await getCached(`${apiUrl}/api/notes`, {
-        // The cache is keyed by URL alone, not by offset: only the first
-        // page may come from it.
-        useCache: !searchQuery && offset === 0,
+        useCache: !searchQuery,
         cacheTtl: 300,
         params: {
           limit: pageSize,

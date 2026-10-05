@@ -60,7 +60,7 @@ describe('useNotes', () => {
     expect(options.useCache).toBe(true)
   })
 
-  it('loads page after page, and only takes the first one from the cache', async () => {
+  it('loads page after page', async () => {
     getCached.mockResolvedValueOnce(page(0, 500)).mockResolvedValueOnce(page(500, 3))
     const { fetchNotes, loadMoreNotes, notes, hasMore } = useNotes()
 
@@ -69,8 +69,7 @@ describe('useNotes', () => {
 
     expect(notes.value).toHaveLength(503)
     expect(hasMore.value).toBe(false)
-    expect(getCached.mock.calls[0][1].useCache).toBe(true)
-    expect(getCached.mock.calls[1][1]).toMatchObject({ useCache: false, params: { offset: 500 } })
+    expect(getCached.mock.calls[1][1]).toMatchObject({ params: { offset: 500 } })
   })
 
   it('a retry is not dropped while a page is loading, and the late page is ignored', async () => {

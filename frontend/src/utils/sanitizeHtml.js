@@ -1,4 +1,5 @@
 import DOMPurify from 'dompurify'
+import { OBSERVATORY_IMAGE_PREFIX as IMAGE_PATH } from './docTypes'
 
 // Note markdown is rendered with raw HTML enabled (Obsidian vaults lean on
 // it) and injected via v-html, on a page anyone can open — so anything that
@@ -18,10 +19,25 @@ purify.addHook('afterSanitizeAttributes', (node) => {
   }
   // Embeds (YouTube, maps...) still play, but can't navigate the app,
   // open dialogs or be handed permissions (camera, clipboard...) by the note.
+  // Another site's embed keeps its own origin (its player needs its cookies
+  // and storage); one of the app's own origin (a relative src, about:blank,
+  // srcdoc) must not get it: with scripts and the app's origin it could reach
+  // into the page and the session.
   if (node.tagName === 'IFRAME') {
-    node.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-presentation')
+    const sameOrigin = isForeignOrigin(node.getAttribute('src')) ? ' allow-same-origin' : ''
+    node.setAttribute('sandbox', `allow-scripts${sameOrigin} allow-popups allow-presentation`)
   }
 })
+
+function isForeignOrigin(src) {
+  if (!src) return false
+  try {
+    const url = new URL(src, window.location.href)
+    return /^https?:$/.test(url.protocol) && url.origin !== window.location.origin
+  } catch {
+    return false
+  }
+}
 
 const CONFIG = {
   ADD_TAGS: ['iframe'],
@@ -36,8 +52,6 @@ const CONFIG = {
 export function sanitizeHtml(html) {
   return purify.sanitize(html, CONFIG)
 }
-
-const IMAGE_PATH = '/api/observatory/images/'
 
 // Observatory images are behind login, but notes aren't: for a signed-out
 // reader, swap each such <img> for a placeholder instead of a broken image.

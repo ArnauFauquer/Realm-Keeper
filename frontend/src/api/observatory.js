@@ -1,6 +1,6 @@
-import axios from 'axios'
 import { apiUrl } from '@/config/env'
-import { encodePath } from './docs'
+import { encodePath } from '@/utils/paths'
+import { httpClient as client } from './http'
 
 // The Observatory (backend routes/observatory.py): one tree of folders for
 // every document and image. A folder's contents come as { folders, items },
@@ -8,7 +8,6 @@ import { encodePath } from './docs'
 // created, renamed, moved and deleted through their own kind's client
 // (api/docs.js); images and folders through this one.
 const base = `${apiUrl}/api/observatory`
-const client = axios.create({ withCredentials: true })
 const data = (res) => res.data
 
 export const observatoryApi = {
@@ -37,6 +36,7 @@ export const observatoryApi = {
     const form = new FormData()
     form.append('path', path)
     for (const file of files) form.append('files', file)
-    return client.post(`${base}/import`, form).then(data)
+    // A zip of a whole campaign takes as long as it takes: no time limit.
+    return client.post(`${base}/import`, form, { timeout: 0 }).then(data)
   }
 }

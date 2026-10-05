@@ -2,7 +2,6 @@ import { findRangeIndex, readRowRanges, rollVirtual, rowOutcome } from '@/utils/
 import { useDiceRoller } from './useDiceRoller'
 import { usePlayer } from './usePlayer'
 import { useSoundEffects } from './useSoundEffects'
-import { sendImageToScreen } from './useImageScreenButtons'
 
 // What can be clicked in rendered markdown, nearest first. The placeholders
 // come from inlineRefs.js / rollTables.js; the screen buttons from
@@ -32,13 +31,12 @@ export function findInlineAction(target, root) {
   return { kind: action.kind, el, value }
 }
 
-/** Runs a dice / roll-table / song / sfx / screen action found by findInlineAction. */
+/** Runs a dice / roll-table / song / sfx action found by findInlineAction. */
 export function runInlineAction({ kind, el, value }) {
   if (kind === 'dice') return useDiceRoller().roll(value)
   if (kind === 'roll-table') return rollOnTable(el, value)
   if (kind === 'song') return playSong(el, value)
   if (kind === 'sfx') return toggleSfx(el, value)
-  if (kind === 'screen') return sendImageToScreen(el)
 }
 
 async function playSong(el, key) {

@@ -9,7 +9,13 @@ vi.mock('vue-router', () => ({
   onBeforeRouteUpdate: (fn) => { guards.update = fn },
   useRouter: () => ({ push: vi.fn() })
 }))
-vi.mock('@/api/http', () => ({ put, getCached, invalidateCached: vi.fn(), post: vi.fn() }))
+vi.mock('@/api/http', () => ({
+  put,
+  getCached,
+  invalidateCached: vi.fn(),
+  post: vi.fn(),
+  errorMessage: (err, fallback) => err?.response?.data?.detail || fallback || err?.message
+}))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 vi.mock('@/composables/useNotes', () => ({ notifyNotesChanged: vi.fn() }))
 

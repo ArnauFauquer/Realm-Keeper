@@ -56,6 +56,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { fetchSheets } from '@/api/sheets'
+import { errorMessage } from '@/api/http'
 
 // The sheet picker of an encounter: search the characters and adversaries and add them. It
 // only says what to add (`add`, `add-custom`); the tracker does the adding.
@@ -111,7 +112,7 @@ onMounted(async () => {
     sheets.value = await fetchSheets()
     sheets.value.forEach((sheet) => { counts[sheet.ref] = 1 })
   } catch (err) {
-    loadError.value = err.response?.data?.detail || err.message
+    loadError.value = errorMessage(err)
   } finally {
     loading.value = false
   }

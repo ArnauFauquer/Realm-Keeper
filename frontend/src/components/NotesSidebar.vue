@@ -283,7 +283,7 @@ import { DOC_TYPES } from '@/utils/docTypes'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
-import { noteRoute } from '@/utils/noteUrls'
+import { noteRoute } from '@/utils/paths'
 
 // Kept out of the main bundle: most readers never open them, and a reader
 // who isn't signed in can't open most of them at all.
@@ -312,9 +312,8 @@ async function copyScreenLink() {
     console.error('Failed to create screen link:', err)
     return
   }
-  // No clipboard (plain-HTTP LAN, or Safari after the awaited request):
-  // hand the link over for a manual copy rather than silently doing nothing.
-  if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
+  // (Without a clipboard, copy() hands the link over in a prompt.)
+  await copy(link, 'screen-link', 'Screen link. Copy it and open it on the screen device:')
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
 const {
