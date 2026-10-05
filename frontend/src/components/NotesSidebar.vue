@@ -129,42 +129,7 @@
             </button>
           </div>
 
-          <div class="transport">
-            <button
-              class="rk-icon-btn rk-icon-btn--sm"
-              :class="{ 'is-active': isShuffle }"
-              title="Shuffle"
-              aria-label="Shuffle"
-              :aria-pressed="isShuffle"
-              @click="toggleShuffle"
-            >
-              <span class="mdi mdi-shuffle-variant"></span>
-            </button>
-            <button class="rk-icon-btn rk-icon-btn--sm" title="Previous" aria-label="Previous track" @click="playPrev">
-              <span class="mdi mdi-skip-previous"></span>
-            </button>
-            <button
-              class="play-btn"
-              :title="isPlaying ? 'Pause' : 'Play'"
-              :aria-label="isPlaying ? 'Pause' : 'Play'"
-              @click="togglePlay"
-            >
-              <span class="mdi" :class="isPlaying ? 'mdi-pause' : 'mdi-play'"></span>
-            </button>
-            <button class="rk-icon-btn rk-icon-btn--sm" title="Next" aria-label="Next track" @click="playNext">
-              <span class="mdi mdi-skip-next"></span>
-            </button>
-            <button
-              class="rk-icon-btn rk-icon-btn--sm"
-              :class="{ 'is-active': isRepeat }"
-              title="Repeat"
-              aria-label="Repeat"
-              :aria-pressed="isRepeat"
-              @click="toggleRepeat"
-            >
-              <span class="mdi mdi-repeat"></span>
-            </button>
-          </div>
+          <PlayerTransport compact />
 
           <label class="volume">
             <span class="mdi" :class="volume === 0 ? 'mdi-volume-mute' : 'mdi-volume-high'" aria-hidden="true"></span>
@@ -274,6 +239,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import TreeItem from './TreeItem.vue'
+import PlayerTransport from './PlayerTransport.vue'
 import { appVersion } from '../config/env'
 import { useNotes, useNotesChanged } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
@@ -323,8 +289,7 @@ const {
 // A shortcut per kind of document, in the order the Observatory lists them.
 const OBSERVATORY_SHORTCUTS = ['chart', 'vista', 'encounter', 'battlemap', 'character', 'adversary'].map((type) => DOC_TYPES[type])
 const {
-  isPlaying, isRepeat, isShuffle, currentTrack, volume,
-  togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
+  isPlaying, currentTrack, volume, setVolume
 } = usePlayer()
 
 const userInitial = computed(() => user.value?.email?.[0]?.toUpperCase() || '?')
@@ -858,38 +823,6 @@ onBeforeUnmount(() => {
 .track-title.is-idle {
   font-weight: 400;
   color: var(--text-muted);
-}
-
-.transport {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.play-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-md);
-  height: var(--control-md);
-  border: none;
-  border-radius: var(--radius-full);
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-  box-shadow: var(--shadow-accent);
-  transition: background-color var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
-}
-
-.play-btn .mdi {
-  font-size: 1.3rem;
-}
-
-.play-btn:hover {
-  background: var(--accent-strong-hover);
-}
-
-.play-btn:active {
-  transform: scale(0.94);
 }
 
 .volume {

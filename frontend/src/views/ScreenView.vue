@@ -353,7 +353,11 @@ onMounted(async () => {
     density: 3500,
     sizeRanges: [[0.3, 0.9], [0.9, 1.6], [1.6, 2.8]],
     opacityRange: [0.12, 0.55],
-    hueRange: [210, 265]
+    hueRange: [210, 265],
+    // The screen's own backdrop, as it was before it shared this drawing.
+    sizeOdds: [0.65, 0.88],
+    saturation: 55,
+    lightness: 92
   })
   window.addEventListener('resize', sizeDiceWorld)
 
