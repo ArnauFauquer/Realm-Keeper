@@ -11,6 +11,7 @@ one) and lets storage errors through.
 """
 import json
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 FOLDER_MARKER = ".keep"
 LEGACY_FOLDER_MARKER = ".gitkeep"   # what the vault used to keep an empty folder with
+MAX_DOC_BYTES = 1_000_000           # a document, as JSON, however it is stored
 
 
 class DocNotFound(ValueError):
@@ -46,16 +48,25 @@ class DocCollection:
         self.root = root
         # In the tree's top level, where no folder can be: its vault documents were copied.
         self.legacy_marker = f"{root}.{doctype.prefix}-imported-from-vault"
+        # Choosing a free slug and taking it are one step: two documents made
+        # at once with the same name must not both get it (one process).
+        self._naming = threading.Lock()
 
     # ── keys ────────────────────────────────────────────────────────────
 
     def key(self, doc_id: str) -> str:
         return f"{self.root}{sanitize_id(doc_id)}{self.doctype.suffix}"
 
-    def _check_not_reserved(self, doc_id: str) -> None:
-        leaf = doc_id.rsplit("/", 1)[-1]
+    def check_id(self, doc_id: str) -> None:
+        """Refuses an id the kind's routes would read as something else: a slug
+        that is a route's name ("…/adjust"), or a folder named like one of its
+        lists ("a/tokens/b" would be token "b" of map "a")."""
+        *folders, leaf = doc_id.split("/")
         if leaf in self.doctype.reserved_names:
             raise ValueError(f"'{leaf}' is a reserved name")
+        for folder in folders:
+            if folder in self.doctype.collections:
+                raise ValueError(f"A {self.doctype.kind} can't be inside a folder named '{folder}'")
 
     def ids(self, keys: List[str]) -> List[str]:
         """Ids of every document of this kind among `keys` (full backend keys)."""
@@ -73,6 +84,8 @@ class DocCollection:
         if text is None:
             return None
         raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError(f"{self.doctype.kind.capitalize()} {doc_id} can't be read")
         # Where the document is stored is authoritative: a folder rename or a
         # move leaves the id written in the file stale.
         raw["id"] = sanitize_id(doc_id)
@@ -124,6 +137,8 @@ class DocCollection:
             raise ValueError(_first_error(e))
         validated = model.model_dump(mode="json")
         validate_library_urls(validated, self.doctype)
+        if len(json.dumps(validated)) > MAX_DOC_BYTES:
+            raise ValueError("The document is too large")
         return validated
 
     def _unique_slug(self, base_slug: str, folder_path: str) -> str:
@@ -136,33 +151,41 @@ class DocCollection:
             suffix += 1
         return slug
 
+    def _add_new(self, folder_path: str, slug: str, data: Dict[str, Any]) -> BaseModel:
+        """Stores `data` as a new document in `folder_path`, under `slug` or,
+        if that is taken, the next free one. `data` gets its id and is
+        validated as a new document (named after its slug if it has no name)."""
+        folder_path = sanitize_folder_path(folder_path)
+        with self._naming:
+            slug = self._unique_slug(slugify(slug, self.doctype.kind), folder_path)
+            doc_id = f"{folder_path}/{slug}" if folder_path else slug
+            self.check_id(doc_id)
+            data = self.validated({**data, "id": doc_id, "name": data.get("name") or slug})
+            return self.doctype.model.model_validate(self.write_raw(doc_id, data))
+
     def create(self, name: str, description: Optional[str] = None, folder_path: str = "") -> BaseModel:
         name = (name or "").strip()
         if not name:
             raise ValueError("A name is required")
-        folder_path = sanitize_folder_path(folder_path)
-        slug = self._unique_slug(slugify(name, self.doctype.kind), folder_path)
-        doc_id = f"{folder_path}/{slug}" if folder_path else slug
-        self._check_not_reserved(doc_id)
-        data = self.validated({"id": doc_id, "name": name, "description": description})
-        return self.doctype.model.model_validate(self.write_raw(doc_id, data))
+        return self._add_new(folder_path, name, {"name": name, "description": description})
 
     def add(self, folder_path: str, slug: str, data: Dict[str, Any]) -> BaseModel:
         """Stores a document brought in from elsewhere (an import) in
         `folder_path`, under `slug` or, if that is taken, the next free one."""
-        folder_path = sanitize_folder_path(folder_path)
-        slug = self._unique_slug(slugify(slug, self.doctype.kind), folder_path)
-        doc_id = f"{folder_path}/{slug}" if folder_path else slug
-        self._check_not_reserved(doc_id)
-        name = data.get("name") if isinstance(data.get("name"), str) and data["name"].strip() else slug
-        data = self.validated({**data, "id": doc_id, "name": name.strip()})
-        return self.doctype.model.model_validate(self.write_raw(doc_id, data))
+        name = data.get("name") if isinstance(data.get("name"), str) and data["name"].strip() else None
+        return self._add_new(folder_path, slug, {**data, "name": name.strip() if name else None})
 
     def _require(self, doc_id: str) -> Dict[str, Any]:
         raw = self.read_raw(doc_id)
         if raw is None:
             raise DocNotFound(f"{self.doctype.kind.capitalize()} not found: {doc_id}")
         return raw
+
+    def _require_stored(self, doc_id: str) -> None:
+        """Like `_require`, without reading it: a document that can't be read
+        (a damaged file) can still be moved or deleted."""
+        if not self.backend.exists(self.key(doc_id)):
+            raise DocNotFound(f"{self.doctype.kind.capitalize()} not found: {doc_id}")
 
     def save(self, doc_id: str, fields: Dict[str, Any]) -> BaseModel:
         """Replaces a document with `fields`, keeping its locked fields."""
@@ -185,19 +208,19 @@ class DocCollection:
         return self.set_field(doc_id, "name", name)
 
     def delete(self, doc_id: str) -> None:
-        self._require(doc_id)
+        self._require_stored(doc_id)
         self.backend.delete(self.key(doc_id))
 
     def move_item(self, doc_id: str, dest_folder_path: str) -> str:
         """Moves a document into `dest_folder_path`, keeping its own slug.
         Returns its new id."""
         doc_id = sanitize_id(doc_id)
-        self._require(doc_id)
+        self._require_stored(doc_id)
         dest = sanitize_folder_path(dest_folder_path)
         new_id = f"{dest}/{doc_id.rsplit('/', 1)[-1]}" if dest else doc_id.rsplit("/", 1)[-1]
         if new_id == doc_id:
             return doc_id
-        self._check_not_reserved(new_id)
+        self.check_id(new_id)
         self.backend.move(self.key(doc_id), self.key(new_id))
         return new_id
 
