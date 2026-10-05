@@ -14,10 +14,6 @@
       ref="viewportRef"
       :class="{ 'mode-asset': editable && mode === 'asset' }"
       @click="onStageClick"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
-      @pointerleave="onPointerUp"
     >
       <!-- Fixed-aspect stage, letterboxed within the viewport so a scene lines
            up identically wherever it's shown (the editor modal is rarely the
@@ -64,7 +60,7 @@
                 class="rotate-handle"
                 title="Drag to rotate"
                 @pointerdown.stop="startRotate($event, asset)"
-                @click.stop="justDragged = false"
+                @click.stop
                 @mousedown.stop.prevent
                 @touchstart.stop
               >
@@ -75,7 +71,7 @@
                 title="Drag or scroll to resize"
                 @pointerdown.stop="startScale($event, asset)"
                 @wheel.stop.prevent="onScaleWheel($event, asset)"
-                @click.stop="justDragged = false"
+                @click.stop
                 @mousedown.stop.prevent
                 @touchstart.stop
               ></div>
@@ -95,8 +91,8 @@
             :class="{ raised: selectedAsset.elevation }"
             :style="elevationHandleStyle"
             title="Drag vertically to raise/lower without resizing (double-click to reset)"
-            @pointerdown.stop="startDrag('elevation', selectedAsset.id)"
-            @click.stop="justDragged = false"
+            @pointerdown.stop="startDrag($event, 'elevation', selectedAsset.id)"
+            @click.stop
             @dblclick.stop="resetElevation(selectedAsset)"
             @mousedown.stop.prevent
             @touchstart.stop
@@ -109,8 +105,8 @@
           class="vanishing-point"
           :style="vanishingPointStyle"
           title="Vanishing point. Drag to calibrate perspective for this background"
-          @pointerdown.stop="startDrag('vanishingPoint', null)"
-          @click.stop="justDragged = false"
+          @pointerdown.stop="startDrag($event, 'vanishingPoint', null)"
+          @click.stop
           @mousedown.stop.prevent
           @touchstart.stop
         >
@@ -205,6 +201,7 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
+import { usePointerDrag } from '@/composables/usePointerDrag'
 
 const props = defineProps({
   vista: { type: Object, required: true },
@@ -243,16 +240,13 @@ const mode = ref('select')
 const selectedId = ref(null)
 const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
 
-let dragState = null
-let dragMoved = false
-// True for the one click event that immediately follows a real drag (asset
-// move, rotate, scale, or vanishing point). That click's target often lands
-// just outside the dragged element — e.g. an asset is anchored at its foot
-// point, so dropping it right on that point can hit the background by a
-// pixel — which would otherwise bubble to onStageClick and deselect
-// whatever was just placed. Consumed (and reset) by whichever click handler
-// runs next, so it never leaks into an unrelated later click.
-let justDragged = false
+// How far, in screen pixels, a press may wander and still be a click. The
+// click that follows a real drag (asset move, rotate, scale, vanishing point)
+// is swallowed by usePointerDrag: it often lands just outside the dragged
+// element (an asset is anchored at its foot, so dropping it right on that
+// point can hit the background by a pixel), and would otherwise reach
+// onStageClick and deselect whatever was just placed.
+const DRAG_THRESHOLD_PX = 3
 let resizeObserver = null
 
 function updateFrameRect() {
@@ -508,7 +502,6 @@ function clientToPercent(evt) {
 
 function onStageClick(evt) {
   if (!props.editable) return
-  if (justDragged) { justDragged = false; return }
   if (mode.value !== 'asset') {
     selectedId.value = null
     return
@@ -550,11 +543,10 @@ function onAssetPointerDown(evt, asset) {
   // selected by cycling but never dragged.
   const ids = assetIdsAt(evt.clientX, evt.clientY)
   pressedOnSelected = !!selectedId.value && ids.includes(selectedId.value)
-  startDrag('asset', pressedOnSelected ? selectedId.value : asset.id)
+  startDrag(evt, 'asset', pressedOnSelected ? selectedId.value : asset.id)
 }
 
 function onAssetClick(evt, asset) {
-  if (justDragged) { justDragged = false; return }
   if (!props.editable) return
   if (pressedOnSelected) {
     // Click again on the selection → step one layer deeper, wrapping back
@@ -569,35 +561,66 @@ function onAssetClick(evt, asset) {
   selectedId.value = asset.id
 }
 
-function startDrag(kind, id) {
-  dragState = { kind, id }
-  dragMoved = false
+// What a drag changes, and which of its fields: put back as they were if the
+// browser cancels the gesture.
+const DRAG_FIELDS = {
+  asset: ['x', 'y'],
+  elevation: ['elevation'],
+  rotate: ['rotation'],
+  scale: ['width_pct'],
+  vanishingPoint: ['x', 'y'],
+  backgroundPan: ['background_offset_y']
+}
+
+function dragTarget(state) {
+  if (state.kind === 'vanishingPoint') return props.vista.vanishing_point
+  if (state.kind === 'backgroundPan') return props.vista
+  return props.vista.assets.find(a => a.id === state.id)
+}
+
+// Only the button and the pointer that started a drag move things; the moves
+// are followed on the window, so passing over the toolbar or the panel (or
+// out of the canvas) doesn't drop what is being dragged.
+const drag = usePointerDrag({
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove: (evt, _event, state) => dragTo(evt, state),
+  onEnd(_state, { moved }) {
+    if (moved) emitChange()
+  },
+  onCancel(state) {
+    const target = dragTarget(state)
+    if (target) Object.assign(target, state.from)
+  }
+})
+
+function beginDrag(evt, state) {
+  const target = dragTarget(state)
+  if (!target) return
+  const from = Object.fromEntries(DRAG_FIELDS[state.kind].map((field) => [field, target[field]]))
+  drag.start(evt, { ...state, from })
+}
+
+function startDrag(evt, kind, id) {
   if (kind === 'asset') selectedId.value = id
+  beginDrag(evt, { kind, id })
 }
 
 function startBackgroundPan(evt) {
   if (!props.editable || mode.value !== 'select') return
-  dragState = {
-    kind: 'backgroundPan',
-    startY: evt.clientY,
-    startOffset: props.vista.background_offset_y ?? 50
-  }
-  dragMoved = false
+  beginDrag(evt, { kind: 'backgroundPan', startY: evt.clientY, startOffset: props.vista.background_offset_y ?? 50 })
 }
 
 function startRotate(evt, asset) {
   const el = evt.currentTarget.closest('.vista-asset')
   if (!el) return
   const rect = el.getBoundingClientRect()
-  dragState = { kind: 'rotate', id: asset.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 }
-  dragMoved = false
   selectedId.value = asset.id
+  beginDrag(evt, { kind: 'rotate', id: asset.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 })
 }
 
 function startScale(evt, asset) {
-  dragState = { kind: 'scale', id: asset.id, startX: evt.clientX, startWidthPct: asset.width_pct }
-  dragMoved = false
   selectedId.value = asset.id
+  beginDrag(evt, { kind: 'scale', id: asset.id, startX: evt.clientX, startWidthPct: asset.width_pct })
 }
 
 function onScaleWheel(evt, asset) {
@@ -605,11 +628,8 @@ function onScaleWheel(evt, asset) {
   emitChange()
 }
 
-function onPointerMove(evt) {
-  if (!dragState) return
-
+function dragTo(evt, dragState) {
   if (dragState.kind === 'backgroundPan') {
-    dragMoved = true
     const range = verticalPanRangePx()
     if (range > 0) {
       const dy = evt.clientY - dragState.startY
@@ -622,7 +642,6 @@ function onPointerMove(evt) {
   }
 
   if (dragState.kind === 'rotate') {
-    dragMoved = true
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset) {
       const angle = Math.atan2(evt.clientY - dragState.cy, evt.clientX - dragState.cx) * (180 / Math.PI) + 90
@@ -632,7 +651,6 @@ function onPointerMove(evt) {
   }
 
   if (dragState.kind === 'scale') {
-    dragMoved = true
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset && frameRect.value.width) {
       // The box is horizontally centered on its anchor (translate(-50%, ...)),
@@ -647,7 +665,6 @@ function onPointerMove(evt) {
 
   const pos = clientToPercent(evt)
   if (!pos) return
-  dragMoved = true
 
   if (dragState.kind === 'asset') {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
@@ -663,13 +680,6 @@ function onPointerMove(evt) {
   }
 }
 
-function onPointerUp() {
-  if (dragState) {
-    justDragged = dragMoved
-    dragState = null
-    if (dragMoved) emitChange()
-  }
-}
 
 function deleteAsset(id) {
   props.vista.assets = props.vista.assets.filter(a => a.id !== id)

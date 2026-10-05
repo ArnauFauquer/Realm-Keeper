@@ -17,10 +17,6 @@
         preserveAspectRatio="xMidYMid meet"
         :class="`mode-${mode}`"
         @click="onCanvasClick"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
-        @pointerleave="onPointerUp"
       >
         <defs>
           <marker
@@ -63,7 +59,7 @@
                 :key="i"
                 class="path-handle"
                 :cx="toPx(pt.x)" :cy="toPy(pt.y)" :r="handleRadius"
-                @pointerdown.stop="startDrag('pathPoint', path.id, i)"
+                @pointerdown.stop="startDrag($event, 'pathPoint', path.id, i)"
                 @mousedown.stop.prevent
                 @touchstart.stop
               />
@@ -94,7 +90,7 @@
               :y="toPy(note.y) - annotationHeightFor(note) / 2"
               :width="annotationWidthFor(note)"
               :height="annotationHeightFor(note)"
-              @pointerdown.stop="editable && startDrag('annotation', note.id)"
+              @pointerdown.stop="editable && startDrag($event, 'annotation', note.id)"
               @click.stop="editable && selectElement('annotation', note.id)"
               @mousedown.stop.prevent
               @touchstart.stop
@@ -134,7 +130,7 @@
             class="chart-pin"
             :class="{ selected: selectedId === pin.id }"
             :transform="`translate(${toPx(pin.x)}, ${toPy(pin.y)})`"
-            @pointerdown.stop="editable && startDrag('pin', pin.id)"
+            @pointerdown.stop="editable && startDrag($event, 'pin', pin.id)"
             @click.stop="onPinClick(pin)"
             @dblclick.stop="onPinDblClick(pin)"
             @mousedown.stop.prevent
@@ -327,6 +323,7 @@ import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
+import { usePointerDrag } from '@/composables/usePointerDrag'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -393,8 +390,8 @@ const editingAnnotationId = ref(null)
 const pinNoteQuery = ref('')
 const pinPickerOpen = ref(false)
 
-let dragState = null
-let dragMoved = false
+// How far, in screen pixels, a press may wander and still be a click.
+const DRAG_THRESHOLD_PX = 3
 
 const resolvedImageUrl = computed(() => resolveUrl(props.chart.image_url))
 
@@ -478,8 +475,8 @@ function selectElement(kind, id) {
   selectedId.value = id
 }
 
+// (The click that ends a drag never gets here: usePointerDrag swallows it.)
 function onPinClick(pin) {
-  if (dragMoved) return
   if (props.editable) {
     selectElement('pin', pin.id)
   } else if (pin.note_path) {
@@ -490,7 +487,7 @@ function onPinClick(pin) {
 // While editing, a single click selects the pin, so a double click is the way
 // through to its note. Viewers already get there with the single click.
 function onPinDblClick(pin) {
-  if (dragMoved || !props.editable || !pin.note_path) return
+  if (!props.editable || !pin.note_path) return
   emit('open-note', pin.note_path)
 }
 
@@ -558,65 +555,64 @@ function onKeydown(evt) {
 window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
-function startDrag(kind, id, pointIndex = null) {
-  dragState = { kind, id, pointIndex }
-  dragMoved = false
+// What a drag moves, found again by id: the chart may have been replaced
+// under it (a save), and the drag goes on with the new copy.
+function dragTarget(state) {
+  if (state.kind === 'pin') return props.chart.pins.find(p => p.id === state.id)
+  if (state.kind === 'pathPoint') return props.chart.paths.find(p => p.id === state.id)?.points[state.pointIndex]
+  return props.chart.annotations.find(a => a.id === state.id)
+}
+
+// Pins, path points and annotations follow the pointer (only the button that
+// started it, and only that pointer); pointercancel puts them back where they were.
+const drag = usePointerDrag({
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(evt, _event, state) {
+    const target = dragTarget(state)
+    if (!target) return
+    if (state.kind === 'annotationResize') {
+      const p = clientToViewBoxPoint(evt)
+      if (!p) return
+      const dist = Math.hypot(p.x - state.centerX, p.y - state.centerY) || 1
+      const scale = state.startScale * (dist / state.startDist)
+      target.scale = Math.min(ANNOTATION_SCALE_MAX, Math.max(ANNOTATION_SCALE_MIN, scale))
+      return
+    }
+    const pos = clientToPercent(evt)
+    if (!pos) return
+    target.x = pos.x
+    target.y = pos.y
+  },
+  onEnd(_state, { moved }) {
+    if (moved) emitChange()
+  },
+  onCancel(state) {
+    const target = dragTarget(state)
+    if (target) Object.assign(target, state.from)
+  }
+})
+
+function startDrag(evt, kind, id, pointIndex = null) {
   selectedId.value = id
+  const state = { kind, id, pointIndex }
+  const target = dragTarget(state)
+  if (target) drag.start(evt, { ...state, from: { x: target.x, y: target.y } })
 }
 
 function startAnnotationResize(note, evt) {
   const center = { x: toPx(note.x), y: toPy(note.y) }
   const p = clientToViewBoxPoint(evt)
   if (!p) return
-  dragState = {
+  selectedId.value = note.id
+  drag.start(evt, {
     kind: 'annotationResize',
     id: note.id,
     centerX: center.x,
     centerY: center.y,
     startDist: Math.hypot(p.x - center.x, p.y - center.y) || 1,
-    startScale: note.scale || 1
-  }
-  dragMoved = false
-  selectedId.value = note.id
-}
-
-function onPointerMove(evt) {
-  if (!dragState) return
-
-  if (dragState.kind === 'annotationResize') {
-    const p = clientToViewBoxPoint(evt)
-    if (!p) return
-    dragMoved = true
-    const note = props.chart.annotations.find(a => a.id === dragState.id)
-    if (note) {
-      const dist = Math.hypot(p.x - dragState.centerX, p.y - dragState.centerY) || 1
-      const scale = dragState.startScale * (dist / dragState.startDist)
-      note.scale = Math.min(ANNOTATION_SCALE_MAX, Math.max(ANNOTATION_SCALE_MIN, scale))
-    }
-    return
-  }
-
-  const pos = clientToPercent(evt)
-  if (!pos) return
-  dragMoved = true
-
-  if (dragState.kind === 'pin') {
-    const pin = props.chart.pins.find(p => p.id === dragState.id)
-    if (pin) { pin.x = pos.x; pin.y = pos.y }
-  } else if (dragState.kind === 'annotation') {
-    const note = props.chart.annotations.find(a => a.id === dragState.id)
-    if (note) { note.x = pos.x; note.y = pos.y }
-  } else if (dragState.kind === 'pathPoint') {
-    const path = props.chart.paths.find(p => p.id === dragState.id)
-    if (path) { path.points[dragState.pointIndex] = pos }
-  }
-}
-
-function onPointerUp() {
-  if (dragState) {
-    dragState = null
-    if (dragMoved) emitChange()
-  }
+    startScale: note.scale || 1,
+    from: { scale: note.scale || 1 }
+  })
 }
 
 const selectedPin = computed(() => props.chart.pins.find(p => p.id === selectedId.value) || null)
