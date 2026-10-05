@@ -370,10 +370,11 @@ def test_dice_roll_carries_the_rollers_slot(client, screen_state, monkeypatch):
         sent.append(message)
 
     monkeypatch.setattr(screen_state, "broadcast", capture)
-    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("ana@example.com"))
-    # The colour comes from the session: a client can't claim someone else's.
-    client.post("/api/screen/dice", json={"formula": "1d20", "total": 7, "diceSlot": 0})
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("ana@example.com", "Ana"))
+    # The colour and name come from the session: a client can't claim someone else's.
+    client.post("/api/screen/dice", json={"formula": "1d20", "total": 7, "diceSlot": 0, "roller": "GM"})
     assert sent[0]["diceSlot"] == 1
+    assert sent[0]["roller"] == "Ana"
 
 
 def test_screen_key_rules(client, screen_state):
