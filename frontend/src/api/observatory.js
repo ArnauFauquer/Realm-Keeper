@@ -21,22 +21,18 @@ export const observatoryApi = {
     client.post(`${base}/folders/move`, { path, dest_parent_path: destParentPath }).then(data),
 
   // An image is named by its file name ("1a2b3c4d-cave.png"), the last part of its URL.
-  uploadImage: (path, file) => {
-    const form = new FormData()
-    form.append('path', path)
-    form.append('file', file)
-    return client.post(`${base}/images`, form).then(data)
-  },
   renameImage: (id, name) => client.post(`${base}/images/rename`, { id, name }).then(data),
   moveImage: (id, folderPath) => client.post(`${base}/images/move`, { id, folder_path: folderPath }).then(data),
   removeImage: (id) => client.delete(`${base}/images/${encodeURIComponent(id)}`).then(data),
 
-  // A backup of a folder (everything at the top), as a zip to download.
+  // A folder (everything, at the top) as a zip to download, named from that folder.
   exportUrl: (path = '') => `${base}/export${path ? `?path=${encodeURIComponent(path)}` : ''}`,
-  // Puts a backup back where it was: { restored, skipped: [{ path, reason }] }.
-  importBackup: (file) => {
+  // Images, documents (name.chart.json...) and zips of them (an export), into
+  // the folder at `path`: { items: [what was added], skipped: [{ path, reason }] }.
+  importFiles: (path, files) => {
     const form = new FormData()
-    form.append('file', file)
+    form.append('path', path)
+    for (const file of files) form.append('files', file)
     return client.post(`${base}/import`, form).then(data)
   }
 }

@@ -151,15 +151,16 @@ def test_a_document_is_one_file_in_the_observatory_tree(collection, tmp_path):
     assert [m.id for m in collection.list_all()] == ["goblins/caves/deeper", "goblins/inside", "zed"]
 
 
-def test_a_backup_is_restored_as_it_was_and_never_over_a_document(collection):
-    data = {"name": "Old fight", "updated_at": "2026-01-01T00:00:00+00:00", "combatants": [{"id": "o", "name": "Orc"}]}
-    assert collection.restore("goblins/old-fight", data)
-    restored = collection.read_raw("goblins/old-fight")
-    assert (restored["name"], restored["updated_at"], restored["combatants"][0]["name"]) == ("Old fight", data["updated_at"], "Orc")
-    assert not collection.restore("goblins/old-fight", {**data, "name": "Other"})
+def test_an_imported_document_is_added_beside_what_is_there(collection):
+    data = {"id": "elsewhere/stale", "name": "Old fight", "combatants": [{"id": "o", "name": "Orc"}]}
+    assert collection.add("goblins", "old-fight", data).id == "goblins/old-fight"
+    assert collection.read_raw("goblins/old-fight")["combatants"][0]["name"] == "Orc"
+    again = collection.add("goblins", "old-fight", {**data, "name": "Other"})
+    assert (again.id, again.name) == ("goblins/old-fight-2", "Other")
     assert collection.read_raw("goblins/old-fight")["name"] == "Old fight"
+    assert collection.add("", "Sin Nombre", {}).name == "sin-nombre"
     with pytest.raises(ValueError):
-        collection.restore("x", {"name": "X", "combatants": [{"id": "o", "name": "1"}, {"id": "o", "name": "2"}]})
+        collection.add("", "x", {"name": "X", "combatants": [{"id": "o", "name": "1"}, {"id": "o", "name": "2"}]})
 
 
 def test_rename_and_delete(collection):

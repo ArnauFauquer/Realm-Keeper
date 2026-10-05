@@ -31,6 +31,8 @@
           loading-text="Loading the Observatory..."
           empty-icon="mdi-star-four-points-outline"
           :empty-text="emptyText"
+          accepts-files
+          @drop-files="(files, dest) => importInto(dest, files)"
           @navigate="goToPath"
           @enter-folder="enterFolder"
           @open-item="openItem"
@@ -65,11 +67,15 @@
                 </button>
               </div>
             </div>
-            <label class="rk-btn gallery-action-btn" :class="{ busy: uploading }">
-              <span v-if="uploading" class="rk-spinner" aria-hidden="true"></span>
+            <label
+              class="rk-btn gallery-action-btn"
+              :class="{ busy: importing }"
+              :title="pickerMode ? 'Upload images into this folder' : 'Bring images, documents (.chart.json, .vista.json...) or an exported zip into this folder'"
+            >
+              <span v-if="importing" class="rk-spinner" aria-hidden="true"></span>
               <span v-else class="mdi mdi-upload"></span>
-              <span>{{ uploading ? 'Uploading...' : 'Upload images' }}</span>
-              <input type="file" accept="image/*" multiple hidden :disabled="uploading" @change="onImagesSelected" />
+              <span>{{ importing ? 'Importing...' : 'Import' }}</span>
+              <input type="file" :accept="pickerMode ? 'image/*' : IMPORTABLE" multiple hidden :disabled="importing" @change="onFilesSelected" />
             </label>
             <template v-if="!pickerMode">
               <span class="actions-spacer" aria-hidden="true"></span>
@@ -77,32 +83,23 @@
                 class="rk-btn gallery-action-btn"
                 :href="observatoryApi.exportUrl(currentPath)"
                 download
-                :title="currentPath ? `Download “${currentPath}” as a zip backup` : 'Download everything as a zip backup'"
+                :title="currentPath ? `Download “${currentPath}” as a zip, to import anywhere` : 'Download everything as a zip, to import anywhere'"
               >
                 <span class="mdi mdi-download"></span> Export
               </a>
-              <label class="rk-btn gallery-action-btn" :class="{ busy: restoring }" title="Put a backup back where it was. Nothing already here is replaced.">
-                <span v-if="restoring" class="rk-spinner" aria-hidden="true"></span>
-                <span v-else class="mdi mdi-backup-restore"></span>
-                <span>{{ restoring ? 'Restoring...' : 'Restore' }}</span>
-                <input type="file" accept=".zip,application/zip" hidden :disabled="restoring" @change="onBackupSelected" />
-              </label>
             </template>
           </template>
 
           <template #filters>
-            <div v-if="restoreReport" class="rk-alert restore-report" role="status">
-              <span class="mdi mdi-backup-restore"></span>
+            <div v-if="leftOut.length" class="rk-alert import-report" role="status">
+              <span class="mdi mdi-alert-circle-outline"></span>
               <div>
-                <p>Restored {{ restoreReport.restored }} file{{ restoreReport.restored === 1 ? '' : 's' }}<template v-if="restoreReport.skipped.length">; {{ restoreReport.skipped.length }} left out</template>.</p>
-                <details v-if="restoreReport.skipped.length">
-                  <summary>What was left out</summary>
-                  <ul>
-                    <li v-for="skip in restoreReport.skipped" :key="skip.path"><code>{{ skip.path }}</code>: {{ skip.reason }}</li>
-                  </ul>
-                </details>
+                <p>{{ leftOut.length }} file{{ leftOut.length === 1 ? ' was' : 's were' }} not imported:</p>
+                <ul>
+                  <li v-for="skip in leftOut" :key="skip.path"><code>{{ skip.path }}</code>: {{ skip.reason }}</li>
+                </ul>
               </div>
-              <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss" @click="restoreReport = null"><span class="mdi mdi-close"></span></button>
+              <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss" @click="leftOut = []"><span class="mdi mdi-close"></span></button>
             </div>
             <div v-if="!pickerMode && presentKinds.length > 1" class="kind-filter" role="group" aria-label="Show">
               <button class="kind-chip" :class="{ active: !filter }" :aria-pressed="!filter" @click="filter = null">All</button>
@@ -172,6 +169,8 @@ const props = defineProps({
 const emit = defineEmits(['close', 'select'])
 
 const DOC_KINDS = Object.values(DOC_TYPES)
+// What Import takes: images, documents as exported, and zips of them.
+const IMPORTABLE = 'image/*,.json,.zip,application/zip'
 const KINDS = [...DOC_KINDS, IMAGE_KIND]
 
 const { user } = useAuth()
@@ -187,9 +186,8 @@ const filter = ref(null)
 const view = ref('gallery')
 const activeImage = ref(null)
 const sendingToScreen = ref(false)
-const uploading = ref(false)
-const restoring = ref(false)
-const restoreReport = ref(null)
+const importing = ref(false)
+const leftOut = ref([])
 const newMenuOpen = ref(false)
 const newMenuRef = ref(null)
 const newKind = ref(null)
@@ -208,7 +206,7 @@ const shownItems = computed(() => {
 const emptyText = computed(() => {
   if (props.pickerMode) return 'No images here. Upload one, or look in another folder.'
   if (filter.value && items.value.length) return `No ${kindOf({ kind: filter.value }).plural} in this folder.`
-  return 'Nothing here yet. Create a document, upload images or add a folder.'
+  return 'Nothing here yet. Create a document, import images or documents (or drop them here) or add a folder.'
 })
 
 function thumbUrl(item) {
@@ -230,7 +228,7 @@ watch(() => props.isOpen, (open) => {
   view.value = 'gallery'
   activeImage.value = null
   filter.value = null
-  restoreReport.value = null
+  leftOut.value = []
   goToPath(props.startPath || '')
 }, { immediate: true })
 
@@ -340,37 +338,31 @@ function onOutsideClick(event) {
 document.addEventListener('click', onOutsideClick, true)
 onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick, true))
 
-// Uploads one at a time, so a slow or failing one doesn't race the others.
-async function onImagesSelected(event) {
+function onFilesSelected(event) {
   const files = Array.from(event.target.files)
   event.target.value = ''
+  importInto(currentPath.value, files)
+}
+
+// Into the folder on screen (the Import button, or files dropped on the
+// gallery) or one of its folders (dropped on it). Nothing there is replaced: a
+// document whose name is taken comes in as a copy beside it. A picker only
+// takes images.
+async function importInto(folder, files) {
+  if (props.pickerMode) files = files.filter((file) => file.type.startsWith('image/'))
   if (!files.length) return
-  uploading.value = true
+  importing.value = true
+  leftOut.value = []
   try {
-    const uploaded = []
-    for (const file of files) uploaded.push(await observatoryApi.uploadImage(currentPath.value, file))
-    if (props.pickerMode && uploaded.length === 1) openItem(uploaded[0])
+    const { items: added, skipped } = await observatoryApi.importFiles(folder, files)
+    leftOut.value = skipped
+    const images = added.filter((item) => item.kind === 'image')
+    if (props.pickerMode && images.length === 1 && files.length === 1 && folder === currentPath.value) openItem(images[0])
     else await fetchLevel()
   } catch (err) {
     failure(err)
   } finally {
-    uploading.value = false
-  }
-}
-
-async function onBackupSelected(event) {
-  const [file] = event.target.files
-  event.target.value = ''
-  if (!file) return
-  if (!window.confirm(`Restore “${file.name}”? What it holds goes back where it was; nothing already in the Observatory is replaced.`)) return
-  restoring.value = true
-  try {
-    restoreReport.value = await observatoryApi.importBackup(file)
-    await fetchLevel()
-  } catch (err) {
-    failure(err)
-  } finally {
-    restoring.value = false
+    importing.value = false
   }
 }
 
@@ -543,19 +535,19 @@ function onMove(dragItem, destPath) {
   color: var(--accent);
 }
 
-.restore-report {
+.import-report {
   align-items: flex-start;
 }
 
-.restore-report > div {
+.import-report > div {
   flex: 1;
 }
 
-.restore-report p {
+.import-report p {
   margin: 0;
 }
 
-.restore-report ul {
+.import-report ul {
   margin: var(--space-2) 0 0;
   padding-left: var(--space-5);
   font-size: var(--text-sm);

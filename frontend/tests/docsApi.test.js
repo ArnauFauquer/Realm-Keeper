@@ -80,10 +80,11 @@ describe('the Observatory client', () => {
     expect(client.delete).toHaveBeenLastCalledWith('https://api.test/api/observatory/images/1a2b3c4d-cave%20map.png')
     await observatoryApi.moveImage('1a2b3c4d-cave.png', 'act 2')
     expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/observatory/images/move', { id: '1a2b3c4d-cave.png', folder_path: 'act 2' })
-    await observatoryApi.uploadImage('act 2', new Blob(['x']))
+    await observatoryApi.importFiles('act 2', [new File(['x'], 'a.png'), new File(['{}'], 'b.chart.json')])
     const [url, form] = client.post.mock.calls.at(-1)
-    expect(url).toBe('https://api.test/api/observatory/images')
+    expect(url).toBe('https://api.test/api/observatory/import')
     expect(form.get('path')).toBe('act 2')
+    expect(form.getAll('files').map((f) => f.name)).toEqual(['a.png', 'b.chart.json'])
   })
 
   it('downloads a backup of a folder, or of everything', () => {

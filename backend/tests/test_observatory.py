@@ -34,7 +34,10 @@ def observatory(tmp_path):
 
 
 def upload(observatory, folder, name, data=PNG):
-    return observatory.upload_image(folder, name, io.BytesIO(data))
+    report = observatory.import_files(folder, [(name, io.BytesIO(data))])
+    if report["skipped"]:
+        raise ValueError(report["skipped"][0]["reason"])
+    return report["items"][0]
 
 
 # ── names ───────────────────────────────────────────────────────────────────
@@ -129,7 +132,7 @@ def test_an_image_put_there_by_another_process_is_found(observatory):
     assert observatory.image_key("0f0f0f0f-late.png") == "observatory/elsewhere/0f0f0f0f-late.png"
 
 
-# ── backup ──────────────────────────────────────────────────────────────────
+# ── export and import ───────────────────────────────────────────────────────
 
 def _zip(entries):
     buffer = io.BytesIO()
@@ -140,73 +143,84 @@ def _zip(entries):
     return buffer
 
 
-def test_a_backup_puts_everything_back_where_it_was(observatory, tmp_path):
+def _items(report):
+    return sorted((item["kind"], item["id"]) for item in report["items"])
+
+
+def test_an_exported_folder_is_imported_into_any_folder(observatory, tmp_path):
     charts = observatory.collections["chart"]
     image = upload(observatory, "act 2", "map.png")
     chart = charts.create("Tavern", folder_path="act 2")
     charts.set_field(chart.id, "image_url", image["url"])
-    observatory.collections["encounter"].create("Fight")
-    observatory.create_folder("empty")
-    observatory.backend.put("observatory/.charts-imported-from-vault", "{}")
+    observatory.collections["encounter"].create("Fight", folder_path="act 2/caves")
+    observatory.create_folder("act 2/empty")
+    observatory.collections["chart"].create("Elsewhere")
 
-    backup = io.BytesIO()
-    assert observatory.export_zip(backup) == 4
-    names = sorted(zipfile.ZipFile(backup).namelist())
-    assert names == sorted(["act 2/tavern.chart.json", f"act 2/{image['id']}", "empty/.keep", "fight.encounter.json"])
+    exported = io.BytesIO()
+    assert observatory.export_zip(exported, "act 2") == 4
+    names = sorted(zipfile.ZipFile(exported).namelist())
+    assert names == sorted(["tavern.chart.json", image["id"], "caves/fight.encounter.json", "empty/.keep"])
 
+    # On another instance: everything comes back as it was, inside the folder it is imported into.
     elsewhere = make_observatory(LocalDocBackend(tmp_path / "other"))
-    backup.seek(0)
-    assert elsewhere.import_zip(backup) == {"restored": 4, "skipped": []}
-    restored = elsewhere.collections["chart"].get("act 2/tavern")
-    assert restored.image_url == image["url"] and restored.updated_at == charts.get("act 2/tavern").updated_at
+    exported.seek(0)
+    report = elsewhere.import_files("campaign", [("act 2.zip", exported)])
+    assert report["skipped"] == []
+    assert _items(report) == [("chart", "campaign/tavern"), ("encounter", "campaign/caves/fight"), ("image", image["id"])]
+    assert elsewhere.collections["chart"].get("campaign/tavern").image_url == image["url"]   # its image kept its uid
     chunks, _length, _type = elsewhere.open_image(image["id"])
     assert b"".join(chunks) == PNG
-    assert elsewhere.list("")["folders"] == ["act 2", "empty"]
-
-    # Again: nothing is replaced.
-    backup.seek(0)
-    report = elsewhere.import_zip(backup)
-    assert report["restored"] == 0 and {s["reason"] for s in report["skipped"]} == {"already there"}
+    assert elsewhere.list("campaign")["folders"] == ["caves", "empty"]
 
 
-def test_a_backup_of_a_folder_is_named_from_the_top(observatory):
-    observatory.collections["chart"].create("Deep", folder_path="a/b")
-    observatory.collections["chart"].create("Out")
-    backup = io.BytesIO()
-    observatory.export_zip(backup, "a")
-    assert zipfile.ZipFile(backup).namelist() == ["a/b/deep.chart.json"]
+def test_importing_never_replaces_what_is_there(observatory):
+    image = upload(observatory, "act 2", "map.png")
+    observatory.collections["chart"].create("Tavern", folder_path="act 2")
+    exported = io.BytesIO()
+    observatory.export_zip(exported, "act 2")
+    exported.seek(0)
+    report = observatory.import_files("act 2", [("again.zip", exported)])
+    # A copy of each: the chart under the next free slug, the image under a new uid.
+    chart_ids = [i["id"] for i in report["items"] if i["kind"] == "chart"]
+    image_ids = [i["id"] for i in report["items"] if i["kind"] == "image"]
+    assert chart_ids == ["act 2/tavern-2"]
+    assert image_ids != [image["id"]] and image_display_name(image_ids[0]) == "map.png"
+    assert len(observatory.list("act 2")["items"]) == 4
 
 
-def test_a_restore_takes_only_what_belongs_in_the_tree(observatory):
-    taken = upload(observatory, "", "taken.png")
-    report = observatory.import_zip(_zip({
+def test_documents_and_images_are_imported_one_by_one(observatory):
+    report = observatory.import_files("act 2", [
+        ("La Taberna.vista.json", io.BytesIO(json.dumps({"name": "La taberna", "assets": []}).encode())),
+        ("sin nombre.chart.json", io.BytesIO(b'{"pins": []}')),
+        ("cave.png", io.BytesIO(PNG)),
+        ("1a2b3c4d-kept.png", io.BytesIO(PNG)),
+        ("notes.txt", io.BytesIO(b"hi")),
+        ("tavern.json", io.BytesIO(b"{}")),
+        ("broken.chart.json", io.BytesIO(b"{not json")),
+        ("evil.chart.json", io.BytesIO(json.dumps({"name": "Evil", "image_url": "https://evil.example/x.png"}).encode())),
+        ("list.vista.json", io.BytesIO(b"[]")),
+    ])
+    kinds = {(i["kind"], i["name"]) for i in report["items"]}
+    assert kinds >= {("vista", "La taberna"), ("chart", "sin-nombre"), ("image", "cave.png"), ("image", "kept.png")}
+    assert len(report["items"]) == 4
+    assert {s["path"] for s in report["skipped"]} == {"notes.txt", "tavern.json", "broken.chart.json", "evil.chart.json", "list.vista.json"}
+    assert observatory.collections["vista"].get("act 2/la-taberna").name == "La taberna"
+    assert "1a2b3c4d-kept.png" in [i["id"] for i in report["items"]]                    # a free uid is kept
+    assert image_uid(next(i["id"] for i in report["items"] if i["name"] == "cave.png"))  # none: it gets one
+
+
+def test_a_zip_takes_only_what_belongs_in_the_tree(observatory, monkeypatch):
+    report = observatory.import_files("", [("odd.zip", _zip({
         "../escape.chart.json": json.dumps({"name": "x"}),
         ".hidden/x.chart.json": json.dumps({"name": "x"}),
-        "notes/readme.txt": "hi",
-        "bad.chart.json": "{not json",
-        "evil.chart.json": json.dumps({"name": "Evil", "image_url": "https://evil.example/x.png"}),
-        f"elsewhere/{taken['id']}": PNG,
-        "hand added.png": PNG,
         "ok/fine.vista.json": json.dumps({"name": "Fine"}),
-    }))
-    assert report["restored"] == 2
-    assert {s["path"] for s in report["skipped"]} == {
-        "../escape.chart.json", ".hidden/x.chart.json", "notes/readme.txt", "bad.chart.json",
-        "evil.chart.json", f"elsewhere/{taken['id']}",
-    }
-    assert observatory.collections["vista"].get("ok/fine").name == "Fine"
-    # An image without a uid gets one, like an upload.
-    added = [i for i in observatory.list("")["items"] if i["name"] == "hand added.png"]
-    assert len(added) == 1 and image_uid(added[0]["id"])
-
-
-def test_a_restore_refuses_what_is_not_a_backup(observatory, monkeypatch):
-    with pytest.raises(ValueError, match="zip"):
-        observatory.import_zip(io.BytesIO(b"not a zip"))
+    })), ("not.zip", io.BytesIO(b"nope"))])
+    assert _items(report) == [("vista", "ok/fine")]
+    assert {s["path"] for s in report["skipped"]} == {"../escape.chart.json", ".hidden/x.chart.json", "not.zip"}
     from services import observatory as module
     monkeypatch.setattr(module, "MAX_IMPORT_FILES", 2)
-    with pytest.raises(ValueError, match="at most"):
-        observatory.import_zip(_zip({"a.png": PNG, "b.png": PNG, "c.png": PNG}))
+    report = observatory.import_files("", [("big.zip", _zip({"a.png": PNG, "b.png": PNG, "c.png": PNG}))])
+    assert report["items"] == [] and "at most" in report["skipped"][0]["reason"]
 
 
 # ── the routes ──────────────────────────────────────────────────────────────
@@ -227,7 +241,8 @@ def api(observatory):
 
 
 def test_images_over_http(api):
-    uploaded = api.post("/api/observatory/images", data={"path": "act 2"}, files={"file": ("map.png", PNG, "text/html")}).json()
+    imported = api.post("/api/observatory/import", data={"path": "act 2"}, files={"files": ("map.png", PNG, "text/html")}).json()
+    uploaded = imported["items"][0]
     served = api.get(uploaded["url"])
     assert served.status_code == 200 and served.content == PNG
     assert served.headers["content-type"] == "image/png"          # from its extension, not the uploader
@@ -238,7 +253,8 @@ def test_images_over_http(api):
     assert api.get(uploaded["url"]).status_code == 200              # still found by its uid
     assert api.delete(f"/api/observatory/images/{renamed['id']}").json() == {"status": "success"}
     assert api.get(uploaded["url"]).status_code == 404
-    assert api.post("/api/observatory/images", files={"file": ("x.svg.html", b"<script>", "image/png")}).status_code == 400
+    refused = api.post("/api/observatory/import", files={"files": ("x.svg.html", b"<script>", "image/png")}).json()
+    assert refused["items"] == [] and refused["skipped"][0]["path"] == "x.svg.html"
 
 
 def test_folders_over_http(api):
@@ -253,7 +269,7 @@ def test_folders_over_http(api):
     assert api.post("/api/observatory/folders", json={"path": "../x"}).status_code == 400
 
 
-def test_backup_over_http(api):
+def test_export_and_import_over_http(api):
     api.post("/api/charts", json={"name": "Tavern", "folder_path": "act 2"})
     exported = api.get("/api/observatory/export")
     assert exported.status_code == 200 and exported.headers["content-type"] == "application/zip"
@@ -261,12 +277,14 @@ def test_backup_over_http(api):
     assert zipfile.ZipFile(io.BytesIO(exported.content)).namelist() == ["act 2/tavern.chart.json"]
     folder = api.get("/api/observatory/export", params={"path": "act 2"})
     assert "filename*=UTF-8''act%202.zip" in folder.headers["content-disposition"]
+    assert zipfile.ZipFile(io.BytesIO(folder.content)).namelist() == ["tavern.chart.json"]
 
-    api.delete("/api/charts/act 2/tavern")
-    restored = api.post("/api/observatory/import", files={"file": ("backup.zip", exported.content, "application/zip")})
-    assert restored.json() == {"restored": 1, "skipped": []}
-    assert api.get("/api/charts/act 2/tavern").json()["name"] == "Tavern"
-    assert api.post("/api/observatory/import", files={"file": ("x.zip", b"nope", "application/zip")}).status_code == 400
+    imported = api.post("/api/observatory/import", data={"path": "act 3"}, files=[
+        ("files", ("act 2.zip", folder.content, "application/zip")),
+        ("files", ("cave.png", PNG, "image/png")),
+    ]).json()
+    assert sorted(i["kind"] for i in imported["items"]) == ["chart", "image"] and imported["skipped"] == []
+    assert api.get("/api/charts/act 3/tavern").json()["name"] == "Tavern"
 
 
 # ── the move of a bucket into the Observatory ───────────────────────────────

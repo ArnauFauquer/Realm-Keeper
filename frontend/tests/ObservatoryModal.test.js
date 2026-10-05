@@ -6,9 +6,9 @@ import { flushPromises, mount } from '@vue/test-utils'
 const { observatoryApi, docClients, openDoc, post } = vi.hoisted(() => ({
   observatoryApi: {
     list: vi.fn(), createFolder: vi.fn(), renameFolder: vi.fn(), removeFolder: vi.fn(), moveFolder: vi.fn(),
-    uploadImage: vi.fn(), renameImage: vi.fn(), moveImage: vi.fn(), removeImage: vi.fn(),
+    renameImage: vi.fn(), moveImage: vi.fn(), removeImage: vi.fn(),
     exportUrl: (path = '') => `/api/observatory/export${path ? `?path=${encodeURIComponent(path)}` : ''}`,
-    importBackup: vi.fn()
+    importFiles: vi.fn()
   },
   docClients: {},
   openDoc: vi.fn(),
@@ -146,39 +146,50 @@ describe('ObservatoryModal — making and changing things', () => {
     expect(wrapper.text()).toContain("A folder already exists at 'caves'")
   })
 
-  it('uploads images into the folder on screen', async () => {
-    observatoryApi.uploadImage.mockResolvedValue({ kind: 'image', id: '9f9f9f9f-a.png', name: 'a.png', url: '/x' })
+  it('imports images, documents and zips into the folder on screen, and says what it left out', async () => {
+    observatoryApi.importFiles.mockResolvedValue({
+      items: [{ kind: 'image', id: '9f9f9f9f-a.png', name: 'a.png', url: '/x' }],
+      skipped: [{ path: 'notes.txt', reason: 'not an image or a document' }]
+    })
     const wrapper = await opened({ startPath: 'act 2' })
-    const input = wrapper.find('input[type="file"][accept="image/*"]')
-    const files = [new File(['a'], 'a.png'), new File(['b'], 'b.png')]
+    const input = wrapper.find('input[type="file"]')
+    expect(input.attributes('accept')).toContain('.json')
+    const files = [new File(['a'], 'a.png'), new File(['{}'], 'tavern.chart.json'), new File(['x'], 'notes.txt')]
     Object.defineProperty(input.element, 'files', { value: files, configurable: true })
     await input.trigger('change')
     await flushPromises()
-    expect(observatoryApi.uploadImage.mock.calls).toEqual([['act 2', files[0]], ['act 2', files[1]]])
+    expect(observatoryApi.importFiles).toHaveBeenCalledWith('act 2', files)
     expect(observatoryApi.list).toHaveBeenCalledTimes(2) // and shows the folder again
+    expect(wrapper.find('.import-report').text()).toContain('notes.txt: not an image or a document')
+  })
+
+  it('imports files dropped from the computer: on the gallery into the folder on screen, on a folder into it', async () => {
+    observatoryApi.importFiles.mockResolvedValue({ items: [], skipped: [] })
+    const wrapper = await opened({ startPath: 'act 2' })
+    const file = new File(['a'], 'a.png', { type: 'image/png' })
+    const dataTransfer = { types: ['Files'], files: [file] }
+    await wrapper.find('.folder-gallery').trigger('dragover', { dataTransfer })
+    expect(wrapper.find('.folder-gallery').classes()).toContain('files-over')
+    await wrapper.find('.folder-gallery').trigger('drop', { dataTransfer })
+    await flushPromises()
+    const lastImport = () => observatoryApi.importFiles.mock.calls.at(-1)
+    expect([lastImport()[0], lastImport()[1].map((f) => f.name)]).toEqual(['act 2', ['a.png']])
+    expect(wrapper.find('.folder-gallery').classes()).not.toContain('files-over')
+    await wrapper.find('.folder-card').trigger('drop', { dataTransfer })
+    await flushPromises()
+    expect([lastImport()[0], lastImport()[1].map((f) => f.name)]).toEqual(['act 2/caves', ['a.png']])
+    expect(observatoryApi.importFiles).toHaveBeenCalledTimes(2)
+    expect(observatoryApi.moveFolder).not.toHaveBeenCalled()
   })
 })
 
-describe('ObservatoryModal — backup', () => {
+describe('ObservatoryModal — export', () => {
   it('downloads the folder on screen as a zip', async () => {
     const wrapper = await opened({ startPath: 'act 2' })
     const link = wrapper.findAll('a').find((a) => a.text().includes('Export'))
     expect(link.attributes('href')).toBe('/api/observatory/export?path=act%202')
     expect(link.attributes('download')).toBeDefined()
-  })
-
-  it('restores a backup and says what it left out', async () => {
-    vi.spyOn(window, 'confirm').mockReturnValue(true)
-    observatoryApi.importBackup.mockResolvedValue({ restored: 3, skipped: [{ path: 'act 2/a.chart.json', reason: 'already there' }] })
-    const wrapper = await opened()
-    const input = wrapper.find('input[type="file"][accept=".zip,application/zip"]')
-    const file = new File(['zip'], 'backup.zip')
-    Object.defineProperty(input.element, 'files', { value: [file], configurable: true })
-    await input.trigger('change')
-    await flushPromises()
-    expect(observatoryApi.importBackup).toHaveBeenCalledWith(file)
-    expect(wrapper.find('.restore-report').text()).toContain('Restored 3 files; 1 left out')
-    expect(wrapper.find('.restore-report').text()).toContain('act 2/a.chart.json: already there')
+    expect(wrapper.text()).not.toContain('Restore')
   })
 })
 
@@ -193,10 +204,13 @@ describe('ObservatoryModal — as a picker', () => {
   })
 
   it('picks an image as soon as it is uploaded', async () => {
-    observatoryApi.uploadImage.mockResolvedValue({ kind: 'image', id: '9f9f9f9f-new.png', name: 'new.png', url: '/api/observatory/images/9f9f9f9f-new.png' })
+    observatoryApi.importFiles.mockResolvedValue({
+      items: [{ kind: 'image', id: '9f9f9f9f-new.png', name: 'new.png', url: '/api/observatory/images/9f9f9f9f-new.png' }], skipped: []
+    })
     const wrapper = await opened({ pickerMode: true })
     const input = wrapper.find('input[type="file"]')
-    Object.defineProperty(input.element, 'files', { value: [new File(['a'], 'new.png')], configurable: true })
+    expect(input.attributes('accept')).toBe('image/*')
+    Object.defineProperty(input.element, 'files', { value: [new File(['a'], 'new.png', { type: 'image/png' })], configurable: true })
     await input.trigger('change')
     await flushPromises()
     await nextTick()

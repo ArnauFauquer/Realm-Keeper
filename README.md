@@ -168,13 +168,16 @@ holding every chart, vista, encounter, battlemap, character and adversary, and
 the images they draw, so an adventure's map, its chart, its scenes and its fights
 can share a folder. **New ▾** makes a document of any kind in the folder you are
 in; opening one opens its editor, whose back arrow comes back to that folder.
-Filter a folder by kind, drag anything (folders too) into another folder, and
-upload images beside the documents that use them.
+Filter a folder by kind and drag anything (folders too) into another folder.
 - An image is found by the uid it got when uploaded, so renaming or moving it —
   or the folder it is in — never breaks the documents and notes that show it.
-- **Export** downloads the folder you are in (everything, at the top) as a zip
-  laid out like the tree; **Restore** puts such a zip back where it was, here or
-  on another instance, adding what is missing and replacing nothing.
+- **Import** brings images, documents (`tavern.chart.json`, `night.vista.json`…)
+  and zips of them into the folder you are in; dragging files from the computer
+  onto the Observatory does the same (onto a folder, into it). Nothing there is
+  replaced: a document whose name is taken comes in as a copy beside it.
+- **Export** downloads the folder you are in (everything, at the top) as a zip of
+  its files and subfolders: import it into any folder, here or on another
+  instance, to bring them all back.
 
 **Game-master tools**
 - **Charts** — maps with pins (icon, color, size, linked note), hand-drawn

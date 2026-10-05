@@ -147,16 +147,16 @@ class DocCollection:
         data = self.validated({"id": doc_id, "name": name, "description": description})
         return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
-    def restore(self, doc_id: str, data: Dict[str, Any]) -> bool:
-        """Stores a document from a backup as it was (its time too), unless
-        there is one there already. Returns whether it stored it."""
-        doc_id = sanitize_id(doc_id)
+    def add(self, folder_path: str, slug: str, data: Dict[str, Any]) -> BaseModel:
+        """Stores a document brought in from elsewhere (an import) in
+        `folder_path`, under `slug` or, if that is taken, the next free one."""
+        folder_path = sanitize_folder_path(folder_path)
+        slug = self._unique_slug(slugify(slug, self.doctype.kind), folder_path)
+        doc_id = f"{folder_path}/{slug}" if folder_path else slug
         self._check_not_reserved(doc_id)
-        if self.backend.exists(self.key(doc_id)):
-            return False
-        data = {**self.validated({**data, "id": doc_id}), "updated_at": data.get("updated_at")}
-        self.backend.put(self.key(doc_id), json.dumps(data, indent=2, ensure_ascii=False))
-        return True
+        name = data.get("name") if isinstance(data.get("name"), str) and data["name"].strip() else slug
+        data = self.validated({**data, "id": doc_id, "name": name.strip()})
+        return self.doctype.model.model_validate(self.write_raw(doc_id, data))
 
     def _require(self, doc_id: str) -> Dict[str, Any]:
         raw = self.read_raw(doc_id)

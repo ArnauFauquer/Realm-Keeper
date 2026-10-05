@@ -1,5 +1,12 @@
 <template>
-  <div class="folder-gallery" ref="galleryRef">
+  <div
+    class="folder-gallery"
+    :class="{ 'files-over': filesOver }"
+    ref="galleryRef"
+    @dragover="onGalleryDragOver"
+    @dragleave="onGalleryDragLeave"
+    @drop="onGalleryDrop"
+  >
     <nav class="breadcrumb" aria-label="Folder path">
       <button
         class="breadcrumb-item"
@@ -7,7 +14,7 @@
         @click="$emit('navigate', '')"
         @dragover.prevent="dragOver('')"
         @dragleave="dragLeave('')"
-        @drop.prevent="onDrop('')"
+        @drop.prevent.stop="onDrop('', $event)"
       >
         <span class="mdi" :class="rootIcon"></span> {{ rootLabel }}
       </button>
@@ -19,7 +26,7 @@
           @click="$emit('navigate', crumb.path)"
           @dragover.prevent="dragOver(crumb.path)"
           @dragleave="dragLeave(crumb.path)"
-          @drop.prevent="onDrop(crumb.path)"
+          @drop.prevent.stop="onDrop(crumb.path, $event)"
         >
           {{ crumb.name }}
         </button>
@@ -79,7 +86,7 @@
         @dragend="endDrag"
         @dragover.prevent="dragOver(folderPath(folder))"
         @dragleave="dragLeave(folderPath(folder))"
-        @drop.prevent="onDrop(folderPath(folder))"
+        @drop.prevent.stop="onDrop(folderPath(folder), $event)"
       >
         <div v-if="canEdit" class="gallery-card-actions">
           <button class="rk-icon-btn rk-icon-btn--sm gallery-card-tool" title="Rename folder" aria-label="Rename folder" @click.stop="startRename(folder)">
@@ -177,12 +184,16 @@ const props = defineProps({
   rootIcon: { type: String, default: 'mdi-home-outline' },
   loadingText: { type: String, default: 'Loading...' },
   emptyIcon: { type: String, default: 'mdi-folder-open-outline' },
-  emptyText: { type: String, default: 'Nothing here yet.' }
+  emptyText: { type: String, default: 'Nothing here yet.' },
+  // Files dragged in from the computer can be dropped here: on the gallery
+  // (into the folder on screen) or on a folder or a crumb (into that one),
+  // which emits `drop-files` (files, destination path).
+  acceptsFiles: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
   'navigate', 'enter-folder', 'open-item', 'delete-folder', 'delete-item',
-  'create-folder', 'rename-folder', 'rename-item', 'move'
+  'create-folder', 'rename-folder', 'rename-item', 'move', 'drop-files'
 ])
 
 const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
@@ -214,8 +225,37 @@ function folderPath(folder) {
   return props.currentPath ? `${props.currentPath}/${folder}` : folder
 }
 
-function onDrop(destPath) {
+const filesOver = ref(false)
+const carriesFiles = (event) => props.acceptsFiles && props.canEdit && [...(event.dataTransfer?.types || [])].includes('Files')
+
+function droppedFiles(event, destPath) {
+  if (!carriesFiles(event)) return false
+  filesOver.value = false
+  dragOverTarget.value = null
+  const files = [...event.dataTransfer.files]
+  if (files.length) emit('drop-files', files, destPath)
+  return true
+}
+
+function onDrop(destPath, event) {
+  if (event && droppedFiles(event, destPath)) return
   drop(destPath, (item, dest) => emit('move', item, dest))
+}
+
+function onGalleryDragOver(event) {
+  if (!carriesFiles(event)) return
+  event.preventDefault()
+  filesOver.value = true
+}
+
+function onGalleryDragLeave(event) {
+  if (!galleryRef.value?.contains(event.relatedTarget)) filesOver.value = false
+}
+
+function onGalleryDrop(event) {
+  if (!carriesFiles(event)) return
+  event.preventDefault()
+  droppedFiles(event, props.currentPath)
 }
 
 function startNewFolder() {
@@ -278,6 +318,13 @@ function copyItem(item) {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+
+/* Files dragged in from the computer: the folder on screen takes them. */
+.folder-gallery.files-over {
+  outline: 2px dashed var(--accent-strong);
+  outline-offset: var(--space-2);
+  border-radius: var(--radius-md);
 }
 
 /* ── Breadcrumb ────────────────────────────────────────────────── */

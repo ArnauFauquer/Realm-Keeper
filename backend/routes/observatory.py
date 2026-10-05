@@ -1,5 +1,6 @@
 """The Observatory's routes (services/observatory.py): a folder's contents, the
-folders themselves, the images, and the backup of the tree as a zip.
+folders themselves, the images, a folder exported as a zip, and files imported
+into one.
 
 Everything needs a login, except reading an image, which a paired screen may
 do for what is on screen (routes/screen_access.py). A document is created,
@@ -142,11 +143,6 @@ def make_observatory_router(
 
     # ── images ──────────────────────────────────────────────────────────
 
-    @router.post("/images")
-    @guarded
-    async def upload_image(path: str = Form(""), file: UploadFile = File(...), user: dict = Depends(require_auth)):
-        return await blocking(observatory.upload_image, path, file.filename, file.file)
-
     @router.post("/images/move")
     @guarded
     async def move_image(body: ImageMoveBody, user: dict = Depends(require_auth)):
@@ -177,8 +173,9 @@ def make_observatory_router(
     @router.get("/export")
     @guarded
     async def export_backup(path: str = "", user: dict = Depends(require_auth)):
-        """The folder at `path` (everything by default) as a zip, to restore
-        with POST /import here or on another instance."""
+        """The folder at `path` (everything by default) as a zip, named from
+        that folder: POST /import brings it back into any folder, here or on
+        another instance."""
         await hub.flush_all()   # what is being played is stored as it is now
         spool = tempfile.SpooledTemporaryFile(max_size=EXPORT_SPOOL_BYTES)
         try:
@@ -202,11 +199,13 @@ def make_observatory_router(
 
     @router.post("/import")
     @guarded
-    async def import_backup(file: UploadFile = File(...), user: dict = Depends(require_auth)):
-        """Restores a backup made by /export: what is in it goes back where it
-        was, and nothing already there is replaced."""
-        report = await blocking(observatory.import_zip, file.file)
-        logger.info(f"Restored {report['restored']} files from a backup; skipped {len(report['skipped'])}")
+    async def import_files(
+        path: str = Form(""), files: List[UploadFile] = File(...), user: dict = Depends(require_auth),
+    ):
+        """Brings images, documents and zips of them (an export) into the folder
+        at `path`; nothing already there is replaced."""
+        report = await blocking(observatory.import_files, path, [(f.filename or "", f.file) for f in files])
+        logger.info(f"Imported {len(report['items'])} files into '{path}'; left out {len(report['skipped'])}")
         return report
 
     return router

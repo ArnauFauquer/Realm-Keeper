@@ -7,8 +7,8 @@ image the documents draw, as files.
 
 so an adventure's map, its chart, its vistas and its encounters can share a
 folder. Here are the folders (listing one, creating, renaming, moving and
-deleting them), the images, and a backup of the whole tree (or a folder of it)
-as a zip with the same layout.
+deleting them), the images, and moving files in and out: a folder exported as
+a zip, and images, documents and zips imported into a folder.
 
 An image is served at /api/observatory/images/<uid>-<name> and found by its
 uid alone (eight hex digits, given at upload): renaming an image keeps its uid
@@ -42,8 +42,8 @@ _UID_RE = re.compile(r"^([0-9a-f]{8})-(.+)$")
 # know: a page asking for a missing image over and over mustn't list the bucket
 # every time.
 INDEX_REFRESH_INTERVAL = 2.0
-# What a restore takes at most: a zip that says it holds more is refused before
-# anything is read from it.
+# What an imported zip may hold at most: one that says it holds more is refused
+# before anything is read from it.
 MAX_IMPORT_FILES = 20_000
 MAX_IMPORT_BYTES = 4 * 1024 ** 3
 
@@ -251,17 +251,6 @@ class Observatory:
             if self._key_of(uid) is None:
                 return uid
 
-    def upload_image(self, folder_path: str, filename: str, file_obj: BinaryIO) -> Dict[str, Any]:
-        """Stores an uploaded image in the folder at `folder_path`. Every upload
-        gets a uid of its own, even one with the name of an image already
-        there: a URL never starts showing other pixels (browsers keep images
-        for good, see config/cache.py)."""
-        filename = _check_image_name(filename)
-        key = f"{self._prefix(folder_path)}{self._new_uid()}-{filename}"
-        self.backend.put_file(key, file_obj, IMAGE_CONTENT_TYPES[_extension(filename)])
-        self._remember(key)
-        return self._image_item(key)
-
     def _remember(self, key: str) -> None:
         with self._index_lock:
             self._index[image_uid(key.rsplit("/", 1)[-1])] = key
@@ -305,18 +294,17 @@ class Observatory:
         chunks, length = opened
         return chunks, length, IMAGE_CONTENT_TYPES[_extension(key)]
 
-    # ── backup ──────────────────────────────────────────────────────────
+    # ── export and import ───────────────────────────────────────────────
 
     def export_zip(self, out: BinaryIO, path: str = "") -> int:
         """Writes a zip of the folder at `path` (the whole tree by default) to
-        `out`, laid out as in the store and named from the top of the tree:
-        restoring it puts every file back where it was. Returns how many files
-        it holds."""
+        `out`: its documents, images and subfolders, named from that folder, so
+        importing it anywhere brings back the same files. Returns how many it holds."""
         base = self._prefix(path)
         count = 0
         with zipfile.ZipFile(out, "w") as archive:
             for key in self.backend.list_keys(base):
-                name = key[len(self.root):]
+                name = key[len(base):]
                 filename = name.rsplit("/", 1)[-1]
                 kind = self._kind_of(filename)
                 if kind is None and filename != FOLDER_MARKER:
@@ -334,70 +322,84 @@ class Observatory:
                 count += 1
         return count
 
-    def import_zip(self, file_obj: BinaryIO) -> Dict[str, Any]:
-        """Restores a backup made by export_zip: every document, image and
-        folder goes back where it was. Nothing already there is replaced; what
-        is skipped, and why, is in the answer: {"restored": n, "skipped": [{path, reason}]}."""
+    def import_files(self, folder_path: str, files: List[Tuple[str, BinaryIO]]) -> Dict[str, Any]:
+        """Brings (file name, file) pairs into the folder at `folder_path`:
+        images, documents (`<name>.<kind>.json`, as a document is exported) and
+        zips of them (an export), whose own folders go inside it. Nothing
+        already there is replaced: a document whose slug is taken gets the next
+        free one, like a new document, and an image whose uid is taken a new
+        uid. Returns {"items": [what was added], "skipped": [{path, reason}]}."""
+        folder_path = sanitize_folder_path(folder_path)
+        report: Dict[str, Any] = {"items": [], "skipped": []}
+        self._forget_index()   # which uids are taken, as the store says now
+        for filename, file_obj in files:
+            if _extension(filename) == ".zip":
+                self._import_zip(folder_path, filename, file_obj, report)
+            else:
+                self._import_one(folder_path, filename, lambda f=file_obj: f, report)
+        return report
+
+    def _import_zip(self, folder_path: str, filename: str, file_obj: BinaryIO, report: Dict[str, Any]) -> None:
         try:
             archive = zipfile.ZipFile(file_obj)
         except zipfile.BadZipFile:
-            raise ValueError("That is not a zip file")
+            report["skipped"].append({"path": filename, "reason": "not a zip file"})
+            return
         with archive:
             entries = [info for info in archive.infolist() if not info.is_dir()]
             if len(entries) > MAX_IMPORT_FILES:
-                raise ValueError(f"A backup may hold {MAX_IMPORT_FILES} files at most")
+                report["skipped"].append({"path": filename, "reason": f"a zip may hold {MAX_IMPORT_FILES} files at most"})
+                return
             if sum(info.file_size for info in entries) > MAX_IMPORT_BYTES:
-                raise ValueError(f"A backup may hold {MAX_IMPORT_BYTES // 1024 ** 3} GiB at most")
-            self._forget_index()   # which uids are taken, as the store says now
-            restored, skipped = 0, []
+                report["skipped"].append({"path": filename, "reason": f"a zip may hold {MAX_IMPORT_BYTES // 1024 ** 3} GiB at most"})
+                return
             for info in entries:
+                inner, _, name = info.filename.replace("\\", "/").strip("/").rpartition("/")
                 try:
-                    if self._restore(archive, info):
-                        restored += 1
-                    else:
-                        skipped.append({"path": info.filename, "reason": "already there"})
-                except (ValueError, KeyError, UnicodeDecodeError) as e:
-                    skipped.append({"path": info.filename, "reason": str(e)})
-        self._forget_index()
-        return {"restored": restored, "skipped": skipped}
+                    inner = sanitize_folder_path(inner)
+                except ValueError as e:
+                    report["skipped"].append({"path": info.filename, "reason": str(e)})
+                    continue
+                folder = "/".join(part for part in (folder_path, inner) if part)
+                self._import_one(folder, name, lambda i=info: archive.open(i), report, shown_as=info.filename)
 
-    def _restore(self, archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bool:
-        folder, _, filename = info.filename.replace("\\", "/").strip("/").rpartition("/")
-        folder = sanitize_folder_path(folder)
-        if filename == FOLDER_MARKER:
-            if not folder:
-                raise ValueError("not in a folder")
-            key = f"{self.root}{folder}/{FOLDER_MARKER}"
-            if self.backend.exists(key):
-                return False
-            self.backend.put(key, "")
-            return True
-        filename = sanitize_folder_name(filename)
-        kind = self._kind_of(filename)
-        if kind is None:
-            raise ValueError("not a document or an image")
-        if kind == IMAGE_KIND:
-            return self._restore_image(archive, info, folder, filename)
-        collection = self.collections[kind]
-        slug = filename[:-len(collection.doctype.suffix)]
-        doc_id = f"{folder}/{slug}" if folder else slug
-        data = json.loads(archive.read(info).decode("utf-8"))
-        if not isinstance(data, dict):
-            raise ValueError("not a document")
-        return collection.restore(doc_id, data)
+    def _import_one(self, folder: str, filename: str, opener, report: Dict[str, Any], shown_as: Optional[str] = None) -> None:
+        """Imports one file into `folder`; `opener()` gives its contents."""
+        try:
+            if filename == FOLDER_MARKER:
+                if folder and not self.backend.list_keys(f"{self.root}{folder}/"):
+                    self.backend.put(f"{self.root}{folder}/{FOLDER_MARKER}", "")
+                return
+            filename = sanitize_folder_name(filename)
+            kind = self._kind_of(filename)
+            if kind is None:
+                raise ValueError("not an image or a document (name.chart.json, name.vista.json...)")
+            if kind == IMAGE_KIND:
+                report["items"].append(self._import_image(folder, filename, opener))
+            else:
+                report["items"].append(self._import_document(folder, filename, kind, opener))
+        except (ValueError, KeyError, UnicodeDecodeError) as e:
+            report["skipped"].append({"path": shown_as or filename, "reason": str(e)})
 
-    def _restore_image(self, archive: zipfile.ZipFile, info: zipfile.ZipInfo, folder: str, filename: str) -> bool:
+    def _import_image(self, folder: str, filename: str, opener) -> Dict[str, Any]:
+        # An exported image keeps its uid where it is free, so the documents
+        # that came with it still find it. Otherwise it gets a new one: a URL
+        # never starts showing other pixels (browsers keep images for good, see
+        # config/cache.py).
         uid = image_uid(filename)
-        if uid is None:
-            # Added to the backup by hand: it gets a uid, like an upload.
-            filename = f"{self._new_uid()}-{filename}"
+        if uid is None or self._key_of(uid) is not None:
+            filename = f"{self._new_uid()}-{image_display_name(filename)}"
         key = f"{self._prefix(folder)}{filename}"
-        existing = self._key_of(uid) if uid else None
-        if existing == key:
-            return False
-        if existing:
-            raise ValueError(f"an image with the same id is at {existing[len(self.root):]}")
-        with archive.open(info) as data:
+        with opener() as data:
             self.backend.put_file(key, data, IMAGE_CONTENT_TYPES[_extension(filename)])
         self._remember(key)
-        return True
+        return self._image_item(key)
+
+    def _import_document(self, folder: str, filename: str, kind: str, opener) -> Dict[str, Any]:
+        collection = self.collections[kind]
+        with opener() as data:
+            document = json.loads(data.read().decode("utf-8"))
+        if not isinstance(document, dict):
+            raise ValueError(f"not a {kind}")
+        added = collection.add(folder, filename[:-len(collection.doctype.suffix)], document)
+        return {**collection.doctype.metadata_model.model_validate(added.model_dump()).model_dump(mode="json"), "kind": kind}

@@ -146,7 +146,7 @@ They are written once.
 | -------------------- | ---------------------------- | -------------------------------------------------------------------------- |
 | `DocType`            | `services/doc_type.py`       | Declarative spec of a kind: prefix, models, locked fields, which fields may hold images, image routes, live or not, a `prepare` hook |
 | `DocBackend`         | `services/doc_backend.py`    | Text (`get/put`) and files (`put_file/open`), `exists/delete/move`, and prefixes (`list_keys/delete_prefix/move_prefix`); S3 or a local folder |
-| `DocCollection`      | `services/doc_collection.py` | Create (unique slug), save, rename, move, delete, restore one kind's documents |
+| `DocCollection`      | `services/doc_collection.py` | Create (unique slug), save, rename, move, delete, add (an import) one kind's documents |
 | `Observatory`        | `services/observatory.py`    | The shared tree: a folder's contents (every kind and the images), folders, images by uid, the zip backup |
 | `make_doc_router`    | `routes/doc_router.py`       | Every HTTP route of a kind, generated from its `DocType`; an `on_moved` hook |
 | `make_observatory_router` | `routes/observatory.py` | `/api/observatory`: listing, folders, images, `/export`, `/import` |
@@ -159,13 +159,15 @@ to no kind: moving or deleting one (`routes/observatory.py`) lets go of the live
 documents inside first, as a single document's move does, then runs each kind's
 `on_moved` for the ids that changed.
 
-**Backup.** `GET /api/observatory/export?path=` is a zip of a folder (the whole
-tree by default), laid out as in the store and named from its top, after the
-live documents are flushed. `POST /api/observatory/import` restores one: each
-file goes back where it was, a document is validated as a save would be (its
-`updated_at` kept), an image keeps its uid (one added by hand gets a new uid),
-and nothing already there is replaced; what is left out comes back with why.
-Zips over 20,000 files or 4 GiB are refused before anything is read.
+**Export and import.** `GET /api/observatory/export?path=` is a zip of a folder
+(the whole tree by default), named from that folder, after the live documents
+are flushed. `POST /api/observatory/import` takes files and a folder: images,
+documents (`<name>.<kind>.json`, validated as a save would be) and zips of them,
+whose own subfolders go inside it. Nothing there is replaced: a document whose
+slug is taken gets the next free one, and an image keeps its uid only where it
+is free (so the documents that came with it still find it), otherwise it gets a
+new one. What is left out comes back with why. A zip over 20,000 files or 4 GiB
+is refused before anything is read from it.
 
 Two rules are enforced for every kind, in one place (`DocType`):
 
@@ -341,7 +343,8 @@ src/
   **`api/observatory.js`** is the Observatory's (listing, folders, images, backup).
 - **`components/ObservatoryModal.vue`** is where documents and images are found:
   a folder of the shared tree (`FolderGallery`), every kind side by side, a
-  filter by kind, **New ▾** for any kind, image uploads, Export and Restore.
+  filter by kind, **New ▾** for any kind, Import (also by dropping files from the
+  computer onto it, through `FolderGallery`'s `drop-files`) and Export.
   Opening a document opens its kind's editor (`useDocModal(kind).open(id)`); an
   image opens in a viewer. As a picker (`picker-mode`, from an editor choosing a
   map or an icon) it shows only images, starting in the document's own folder.
