@@ -6,7 +6,7 @@
     </div>
     <div v-else-if="status === 'gone'" class="editor-state" role="alert">
       <span class="mdi mdi-file-question-outline"></span>
-      <span>This map was moved or deleted. Go back to the list to find it.</span>
+      <span>This map was moved or deleted. Look for it in the Observatory.</span>
     </div>
     <div v-else-if="status === 'error'" class="editor-state editor-error" role="alert">
       <span class="mdi mdi-alert-circle-outline"></span>
@@ -206,7 +206,13 @@
         </div>
       </aside>
 
-      <AssetLibraryModal :is-open="!!libraryTarget" picker-mode @close="libraryTarget = null" @select="onLibrarySelect" />
+      <ObservatoryModal
+        :is-open="!!libraryTarget"
+        picker-mode
+        :start-path="folderOf(id)"
+        @close="libraryTarget = null"
+        @select="onLibrarySelect"
+      />
     </template>
   </div>
 </template>
@@ -214,7 +220,8 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import BattlemapCanvas from './BattlemapCanvas.vue'
-import AssetLibraryModal from './AssetLibraryModal.vue'
+import ObservatoryModal from './ObservatoryModal.vue'
+import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'

@@ -45,6 +45,7 @@
       </button>
       <slot name="actions" />
     </div>
+    <slot name="filters" />
 
     <!-- Skeleton cards share .gallery-card's footprint so the grid doesn't jump. -->
     <div v-if="loading" class="gallery-grid" role="status" aria-live="polite">
@@ -117,7 +118,7 @@
       >
         <div v-if="canEdit" class="gallery-card-actions">
           <button
-            v-if="itemCopyText"
+            v-if="itemCopyText && itemCopyText(item)"
             class="rk-icon-btn rk-icon-btn--sm gallery-card-tool"
             :title="copiedItem === itemKey(item) ? 'Copied!' : 'Copy'"
             :aria-label="copiedItem === itemKey(item) ? 'Copied' : 'Copy reference'"
@@ -165,8 +166,8 @@ const props = defineProps({
   itemKey: { type: Function, required: true },
   // When set, an item card also gets a copy button that copies this
   // function's return value to the clipboard (e.g. a markdown image tag, or
-  // a `chart:<id>` embed reference). Omitted for item types with no
-  // sensible "paste into a note" representation.
+  // a `chart:<id>` embed reference). It returns null for an item with no
+  // sensible "paste into a note" representation, which gets no button.
   itemCopyText: { type: Function, default: null },
   currentPath: { type: String, default: '' },
   loading: { type: Boolean, default: false },
@@ -332,6 +333,7 @@ function copyItem(item) {
 /* ── Header actions ────────────────────────────────────────────── */
 .gallery-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
@@ -449,6 +451,7 @@ function copyItem(item) {
 }
 
 .gallery-card-thumb {
+  position: relative;
   aspect-ratio: 16 / 10;
   display: flex;
   align-items: center;

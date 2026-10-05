@@ -1,6 +1,6 @@
 """What a paired screen (a TV, projector or OBS source with no login) may read.
 
-Charts, vistas and the asset library require login. A screen instead holds a
+Charts, vistas and the Observatory's images require login. A screen instead holds a
 screen key (see services/auth_service.create_screen_key), and that key only
 unlocks whatever the GM is showing on the screens *right now*: the chart or
 vista last sent, the images it's drawn from, or the single image sent with
@@ -14,10 +14,11 @@ from urllib.parse import unquote, urlsplit
 
 from fastapi import HTTPException, Request
 
-from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
 from routes.auth import current_user
 from services.auth_service import SCREEN_COOKIE_NAME, verify_screen_key
 from services.doc_registry import chart_collection, vista_collection
+from services.observatory import image_uid
+from services.storage_service import IMAGE_URL_PREFIX
 
 
 def has_screen_key(cookies) -> bool:
@@ -31,15 +32,15 @@ def _current_state() -> dict:
     return manager.current_state or {}
 
 
-def asset_key_from_url(url: Optional[str]) -> Optional[str]:
-    """The asset library key an image URL points at (relative or absolute,
-    percent-encoded or not), or None if it isn't an asset library URL."""
+def image_uid_from_url(url: Optional[str]) -> Optional[str]:
+    """The uid of the Observatory image a URL points at (relative or absolute,
+    percent-encoded or not), or None if it isn't an Observatory image URL."""
     if not url:
         return None
     path = unquote(urlsplit(url).path)
-    if not path.startswith(ASSET_LIBRARY_URL_PREFIX):
+    if not path.startswith(IMAGE_URL_PREFIX):
         return None
-    return path[len(ASSET_LIBRARY_URL_PREFIX):]
+    return image_uid(path[len(IMAGE_URL_PREFIX):])
 
 
 def displayed_item(kind: str) -> Optional[str]:
@@ -68,12 +69,12 @@ def _shown_urls(state: dict) -> List[Optional[str]]:
     return []
 
 
-def displayed_asset_keys() -> Set[str]:
+def displayed_image_uids() -> Set[str]:
     state = _current_state()
     if _shown["state"] is not state or time.monotonic() > _shown["until"]:
         _shown.update(state=state, until=time.monotonic() + SHOWN_URLS_TTL, urls=_shown_urls(state))
     urls = [*_shown["urls"], *_live_draft_urls()]
-    return {key for key in map(asset_key_from_url, urls) if key}
+    return {uid for uid in map(image_uid_from_url, urls) if uid}
 
 
 def _live_draft_urls() -> list:
@@ -92,7 +93,7 @@ def _live_draft_urls() -> list:
     return []
 
 
-def require_viewer(request: Request, *, chart_id: str = None, vista_id: str = None, asset_key: str = None) -> None:
+def require_viewer(request: Request, *, chart_id: str = None, vista_id: str = None, image: str = None) -> None:
     """Lets a signed-in user through; a paired screen only for what's on
     screen right now. 401 otherwise."""
     if current_user(request):
@@ -102,7 +103,7 @@ def require_viewer(request: Request, *, chart_id: str = None, vista_id: str = No
             return
         if vista_id is not None and displayed_item("vista") == vista_id.strip("/"):
             return
-        if asset_key is not None and asset_key in displayed_asset_keys():
+        if image is not None and image_uid(image) in displayed_image_uids():
             return
     raise HTTPException(status_code=401, detail="Not authenticated")
 

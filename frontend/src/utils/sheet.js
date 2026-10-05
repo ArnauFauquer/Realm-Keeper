@@ -14,8 +14,9 @@ const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags',
 // How many columns a layout may ask for (the sheet's sections, a section's
 // items, a group of stats). Narrow screens fall back to fewer on their own.
 const MAX_COLUMNS = 12
-const ASSET_URL_PREFIX = '/api/asset-library/assets/'
-const ASSET_KEY_PREFIX = 'asset-library/'
+const IMAGE_URL_PREFIX = '/api/observatory/images/'
+// An Observatory image's file name: its uid, then its name ("1a2b3c4d-boar.png").
+const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^/]+\.(png|jpe?g|webp|gif|svg)$/i
 
 export class SheetParseError extends Error {}
 
@@ -43,16 +44,21 @@ function tags(value) {
   return items.map(text).filter(Boolean)
 }
 
-/** [url, warning]: a library image is kept as the app's relative URL, so one
- * pasted with the site's address in front still matches. */
+// Quoted as the backend quotes it (Python's quote(name, safe="")), so both
+// sides make the same URL of a file name.
+const quoteName = (name) =>
+  encodeURIComponent(name).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`)
+
+/** [url, warning]: an Observatory image is kept as the app's relative URL, so
+ * one pasted with the site's address in front (or as its bare file name) still matches. */
 export function normalizeImage(value) {
   const image = text(value)
   if (!image) return [null, null]
-  const marker = image.indexOf(ASSET_URL_PREFIX)
+  const marker = image.indexOf(IMAGE_URL_PREFIX)
   if (marker !== -1) return [image.slice(marker), null]
-  if (image.startsWith(ASSET_KEY_PREFIX)) return [ASSET_URL_PREFIX + image, null]
+  if (IMAGE_FILE_NAME.test(image)) return [IMAGE_URL_PREFIX + quoteName(image), null]
   if (/^https?:\/\//i.test(image)) return [image, null]
-  return [null, 'image must be the URL of an asset library image, as copied from the library']
+  return [null, 'image must be the URL of an Observatory image, as copied from the Observatory']
 }
 
 function integer(value, what) {
@@ -233,7 +239,7 @@ export const SHEET_TEMPLATES = {
   adversary: [
     '# A template: each copy in an encounter has its own values.',
     'subtitle:',
-    'image:                   # URL of an asset library image',
+    'image:                   # URL of an Observatory image',
     'tags: []',
     'sections:',
     '  - counters:            # counters, by name: HP: 6 (a section without a title opens the sheet)',
@@ -251,7 +257,7 @@ export const SHEET_TEMPLATES = {
   character: [
     '# One individual: its counters keep their values, here and in every encounter.',
     'subtitle:',
-    'image:                   # URL of an asset library image',
+    'image:                   # URL of an Observatory image',
     'sections:',
     '  - counters:',
     '      HP: 10',

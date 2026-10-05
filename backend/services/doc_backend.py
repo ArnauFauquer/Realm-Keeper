@@ -1,12 +1,13 @@
-"""Where JSON documents live: charts, vistas, encounters, battlemaps and the
-characters' state. One small interface, two stores:
+"""Where the Observatory's files live: the documents (charts, vistas,
+encounters, battlemaps, characters, adversaries), as JSON text, and the images
+they draw. One small interface, two stores:
 
 - S3 (the bucket the app already uses for audio and images), which survives a
   redeploy and needs no lock or commit: a write is one PUT.
 - A directory on disk, for running without object storage (local development,
   tests).
 
-Keys look like "encounters/goblins/cave-ambush/encounter.json"; a prefix
+Keys look like "observatory/goblins/cave-ambush.encounter.json"; a prefix
 is a key ending in "/". Both stores treat a prefix as a directory: listing,
 deleting and moving work on everything under it.
 """
@@ -15,7 +16,7 @@ import shutil
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import List, Optional
+from typing import BinaryIO, Iterator, List, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
@@ -38,7 +39,23 @@ class DocBackend(ABC):
     def put(self, key: str, text: str) -> None: ...
 
     @abstractmethod
+    def put_file(self, key: str, file_obj: BinaryIO, content_type: str) -> None:
+        """Stores a binary file (an image) read from `file_obj`."""
+
+    @abstractmethod
+    def open(self, key: str) -> Optional[Tuple[Iterator[bytes], int]]:
+        """The bytes stored at `key`, in chunks, and how many there are; or None."""
+
+    @abstractmethod
     def exists(self, key: str) -> bool: ...
+
+    @abstractmethod
+    def delete(self, key: str) -> None: ...
+
+    @abstractmethod
+    def move(self, old_key: str, new_key: str) -> None:
+        """Raises DocBackendError if there is nothing at `old_key` or
+        something already at `new_key`."""
 
     @abstractmethod
     def list_keys(self, prefix: str) -> List[str]:
@@ -70,22 +87,51 @@ class LocalDocBackend(DocBackend):
         path = self._path(key)
         return path.read_text(encoding="utf-8") if path.is_file() else None
 
-    def put(self, key: str, text: str) -> None:
+    def _write(self, key: str, write) -> None:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
         # Written beside the target and renamed over it, so a crash mid-write
-        # can't leave half a document behind.
+        # can't leave half a file behind.
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".tmp-")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
-                f.write(text)
+            with os.fdopen(fd, "wb") as f:
+                write(f)
             os.replace(tmp, path)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise
 
+    def put(self, key: str, text: str) -> None:
+        self._write(key, lambda f: f.write(text.encode("utf-8")))
+
+    def put_file(self, key: str, file_obj: BinaryIO, content_type: str) -> None:
+        self._write(key, lambda f: shutil.copyfileobj(file_obj, f))
+
+    def open(self, key: str) -> Optional[Tuple[Iterator[bytes], int]]:
+        path = self._path(key)
+        if not path.is_file():
+            return None
+
+        def chunks() -> Iterator[bytes]:
+            with path.open("rb") as f:
+                while chunk := f.read(64 * 1024):
+                    yield chunk
+        return chunks(), path.stat().st_size
+
     def exists(self, key: str) -> bool:
         return self._path(key).is_file()
+
+    def delete(self, key: str) -> None:
+        self._path(key).unlink(missing_ok=True)
+
+    def move(self, old_key: str, new_key: str) -> None:
+        old, new = self._path(old_key), self._path(new_key)
+        if not old.is_file():
+            raise DocBackendError("Not found")
+        if new.exists():
+            raise DocBackendError("Something already exists there")
+        new.parent.mkdir(parents=True, exist_ok=True)
+        old.rename(new)
 
     def list_keys(self, prefix: str) -> List[str]:
         base = self._path(prefix)
@@ -128,6 +174,22 @@ class S3DocBackend(DocBackend):
             Bucket=settings.S3_BUCKET_NAME, Key=key, Body=text.encode("utf-8"), ContentType="application/json",
         )
 
+    def put_file(self, key: str, file_obj: BinaryIO, content_type: str) -> None:
+        _check_key(key)
+        storage_service._client().upload_fileobj(
+            file_obj, settings.S3_BUCKET_NAME, key, ExtraArgs={"ContentType": content_type},
+        )
+
+    def open(self, key: str) -> Optional[Tuple[Iterator[bytes], int]]:
+        _check_key(key)
+        try:
+            obj = storage_service._client().get_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+        except ClientError as e:
+            if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+                return None
+            raise
+        return obj["Body"].iter_chunks(chunk_size=64 * 1024), obj["ContentLength"]
+
     def exists(self, key: str) -> bool:
         _check_key(key)
         try:
@@ -137,6 +199,19 @@ class S3DocBackend(DocBackend):
                 return False
             raise
         return True
+
+    def delete(self, key: str) -> None:
+        _check_key(key)
+        storage_service._client().delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+
+    def move(self, old_key: str, new_key: str) -> None:
+        _check_key(old_key)
+        _check_key(new_key)
+        if not self.exists(old_key):
+            raise DocBackendError("Not found")
+        if self.exists(new_key):
+            raise DocBackendError("Something already exists there")
+        storage_service._move_object(old_key, new_key)
 
     def list_keys(self, prefix: str) -> List[str]:
         _check_key(prefix)

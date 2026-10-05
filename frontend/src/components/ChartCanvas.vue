@@ -309,9 +309,10 @@
       </div>
     </div>
 
-    <AssetLibraryModal
+    <ObservatoryModal
       :is-open="libraryModalOpen"
       picker-mode
+      :start-path="folderOf(chart.id)"
       @close="libraryModalOpen = false"
       @select="onLibrarySelect"
     />
@@ -322,7 +323,8 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
 import { resolveUrl } from '@/utils/resolveUrl'
-import AssetLibraryModal from './AssetLibraryModal.vue'
+import ObservatoryModal from './ObservatoryModal.vue'
+import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
 
 const props = defineProps({

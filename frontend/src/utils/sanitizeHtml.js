@@ -37,12 +37,12 @@ export function sanitizeHtml(html) {
   return purify.sanitize(html, CONFIG)
 }
 
-const ASSET_LIBRARY_PATH = '/api/asset-library/assets/'
+const IMAGE_PATH = '/api/observatory/images/'
 
-// Asset library images are behind login, but notes aren't: for a signed-out
+// Observatory images are behind login, but notes aren't: for a signed-out
 // reader, swap each such <img> for a placeholder instead of a broken image.
 export function lockAssetImages(html) {
-  if (!html.includes(ASSET_LIBRARY_PATH)) return html
+  if (!html.includes(IMAGE_PATH)) return html
   const template = document.createElement('template')
   template.innerHTML = html
   for (const img of template.content.querySelectorAll('img')) {
@@ -52,7 +52,7 @@ export function lockAssetImages(html) {
     } catch {
       continue
     }
-    if (!path.startsWith(ASSET_LIBRARY_PATH)) continue
+    if (!path.startsWith(IMAGE_PATH)) continue
     const placeholder = document.createElement('span')
     placeholder.className = 'locked-asset'
     placeholder.innerHTML = '<span class="mdi mdi-lock-outline"></span>Sign in to view this image'

@@ -1,10 +1,10 @@
 <template>
   <div v-if="isOpen" class="rk-scrim" @click.self="closeModal">
-    <div class="rk-dialog document-modal" role="dialog" aria-modal="true" :aria-label="kind.title">
+    <div class="rk-dialog document-modal" role="dialog" aria-modal="true" :aria-label="activeName || kind.title">
       <DocumentModalHeader
-        :view="view"
+        view="editor"
         :icon="kind.icon"
-        :gallery-title="kind.title"
+        gallery-title="Observatory"
         :item-title="activeName"
         :can-edit="canEdit"
         :show-save="saved"
@@ -16,7 +16,7 @@
         :live-supported="!!kind.screen"
         :live="live"
         :copy-text="kind.embeddable && activeId ? docRefMarkdown(kind.type, activeId) : null"
-        @back="backToGallery"
+        @back="backToObservatory"
         @save="saveNow"
         @send-to-screen="sendToScreen"
         @toggle-live="toggleLive(hasUnsavedChanges)"
@@ -24,56 +24,11 @@
       />
 
       <div class="document-body">
-        <div v-if="view === 'gallery'" class="gallery-view">
-          <FolderGallery
-            :folders="folders"
-            :items="items"
-            :item-key="(item) => item.id"
-            :item-copy-text="kind.embeddable ? (item) => docRefMarkdown(kind.type, item.id) : undefined"
-            :current-path="currentPath"
-            :loading="loading"
-            :error="error"
-            :can-edit="canEdit"
-            :root-label="kind.title"
-            :root-icon="kind.icon"
-            :loading-text="`Loading ${kind.plural}...`"
-            :empty-icon="kind.emptyIcon"
-            :empty-text="kind.emptyText"
-            @navigate="goToPath"
-            @enter-folder="enterFolder"
-            @open-item="(item) => openItem(item.id, item.name)"
-            @delete-folder="onDeleteFolder"
-            @delete-item="onDeleteItem"
-            @create-folder="onCreateFolder"
-            @rename-folder="onRenameFolder"
-            @rename-item="onRenameItem"
-            @move="onMove"
-          >
-            <template #actions>
-              <div v-if="showNewInput" class="new-item-form">
-                <input
-                  ref="newInputRef"
-                  v-model="newName"
-                  class="rk-input inline-input"
-                  :placeholder="`${kind.label} name`"
-                  :aria-label="`${kind.label} name`"
-                  @keyup.enter="submitNew"
-                  @keyup.esc="showNewInput = false"
-                />
-                <button class="rk-icon-btn" :aria-label="`Create ${kind.label}`" @click="submitNew"><span class="mdi mdi-check"></span></button>
-                <button class="rk-icon-btn" aria-label="Cancel" @click="showNewInput = false"><span class="mdi mdi-close"></span></button>
-              </div>
-              <button v-else class="rk-btn gallery-action-btn" @click="startNew">
-                <span class="mdi mdi-plus"></span> New {{ kind.label }}
-              </button>
-            </template>
-            <template #thumb="{ item }">
-              <slot name="thumb" :item="item">
-                <img v-if="kind.imageField && item[kind.imageField]" :src="resolveUrl(item[kind.imageField])" :alt="item.name" />
-                <span v-else class="mdi" :class="kind.thumbIcon || kind.icon"></span>
-              </slot>
-            </template>
-          </FolderGallery>
+        <div v-if="loadError" class="load-error">
+          <div class="rk-alert" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>{{ loadError }}</span>
+          </div>
         </div>
 
         <div v-else-if="saved" class="editor-view editor-view--canvas">
@@ -95,7 +50,7 @@
 
         <div v-else class="editor-view">
           <!-- (not `:name`: that would rename the slot itself) -->
-          <slot name="editor" :id="activeId" :title="activeName" :close="closeModal" :back="backToGallery"></slot>
+          <slot name="editor" :id="activeId" :title="activeName" :close="closeModal" :back="backToObservatory"></slot>
         </div>
       </div>
     </div>
@@ -103,33 +58,32 @@
 </template>
 
 <script setup>
-import { computed, nextTick, ref, watch } from 'vue'
-import FolderGallery from './FolderGallery.vue'
+import { computed, ref, watch } from 'vue'
 import DocumentModalHeader from './DocumentModalHeader.vue'
-import { useDocCollection } from '@/composables/useDocCollection'
+import { folderOf, useObservatoryModal } from '@/composables/useObservatoryModal'
 import { useLiveScreen } from '@/composables/useLiveScreen'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import { savePayload, screenPayload } from '@/utils/docTypes'
-import { resolveUrl } from '@/utils/resolveUrl'
 
-// The modal every kind of document shares: a folder gallery to browse, create,
-// rename, move and delete them in, and an editor for the one that is open —
-// which is the only part that differs, so it is the `editor` slot. `kind` is
-// the kind's entry in utils/docTypes.js (how to word it, what its gallery card
-// shows, how it is saved and shown on the screen), `modal` its open/close state
-// (useDocModal.js) and `api` its client (api/docs.js).
+// The editor every kind of document shares, opened on one document (from the
+// Observatory, a note's embed, a sheet's "Open it"): its header, and the
+// editor itself, which is the only part that differs, so it is the `editor`
+// slot. Back goes to the Observatory, in the document's folder. `kind` is the
+// kind's entry in utils/docTypes.js (how to word it, how it is saved and shown
+// on the screen), `modal` its open/close state (useDocModal.js) and `api` its
+// client (api/docs.js).
 //
 // Two ways of editing, by what the kind says:
-// - Live (encounters, battlemaps): the editor owns the document, which the
-//   server holds and changes by commands; there is nothing to save. The slot
-//   gets { id, title, close }.
-// - Saved (charts, vistas: `kind.saved`): this loads the document, the editor
-//   changes it in place and calls `markDirty()`, and a Save button sends it
-//   whole. The slot gets { doc, markDirty, setAsset, id, title, close }, where
-//   setAsset(route, url) sets its picture to a library image. One that is
-//   `kind.screen` can also be sent to the table screen, and mirrored there as
-//   it is edited.
+// - Live (encounters, battlemaps, characters): the editor owns the document,
+//   which the server holds and changes by commands; there is nothing to save.
+//   The slot gets { id, title, close, back }.
+// - Saved (charts, vistas, adversaries: `kind.saved`): this loads the
+//   document, the editor changes it in place and calls `markDirty()`, and a
+//   Save button sends it whole. The slot gets { doc, markDirty, setAsset, id,
+//   title, close }, where setAsset(route, url) sets its picture to an
+//   Observatory image. One that is `kind.screen` can also be sent to the table
+//   screen, and mirrored there as it is edited.
 const props = defineProps({
   kind: { type: Object, required: true },
   modal: { type: Object, required: true },
@@ -137,23 +91,17 @@ const props = defineProps({
   canEdit: { type: Boolean, default: false }
 })
 
-const { folders, items, loading, error, fetchTree, create, remove, move, rename, createFolder, removeFolder, renameFolder, moveFolder } =
-  useDocCollection(props.api)
-
 const saved = !!props.kind.saved
 const isOpen = computed(() => props.modal.isOpen.value)
+const observatory = useObservatoryModal()
 
-const view = ref('gallery')
-const currentPath = ref('')
 const activeId = ref(null)
 const activeName = ref(null)
 const activeDoc = ref(null)
 const loadingDoc = ref(false)
+const loadError = ref(null)
 const hasUnsavedChanges = ref(false)
 const saving = ref(false)
-const showNewInput = ref(false)
-const newName = ref('')
-const newInputRef = ref(null)
 
 // What the screen shows is the document as it is right now, saved or not.
 const screen = props.kind.screen
@@ -170,35 +118,44 @@ watch(isOpen, (open) => {
   const target = props.modal.targetId.value
   props.modal.targetId.value = null
   if (target) {
-    // Opened on one document (a note's embed, a sheet's "Open it"): skip the gallery.
     openItem(target)
-  } else if (view.value === 'gallery') {
-    currentPath.value = ''
-    fetchTree('')
+  } else {
+    // Nothing to edit: the documents are found in the Observatory.
+    props.modal.close()
+    observatory.open()
   }
 })
 
-function showGallery() {
-  view.value = 'gallery'
+function reset() {
   activeId.value = null
   activeName.value = null
   activeDoc.value = null
+  loadError.value = null
   hasUnsavedChanges.value = false
 }
 
-function closeModal() {
-  if (!confirmDiscard()) return
+function leave() {
+  if (!confirmDiscard()) return false
   stopLive({ revert: hasUnsavedChanges.value })
   props.modal.close()
-  showGallery()
+  return true
 }
 
-async function openItem(id, name = null) {
+function closeModal() {
+  if (leave()) reset()
+}
+
+function backToObservatory() {
+  const folder = folderOf(activeId.value)
+  if (!leave()) return
+  reset()
+  observatory.open(folder)
+}
+
+async function openItem(id) {
+  reset()
   activeId.value = id
-  activeName.value = name
-  view.value = 'editor'
   if (saved) return loadDoc(id)
-  if (name) return
   // Opened by id: its name is what the header shows, and the listing has it.
   try {
     const all = await props.api.fetchAll()
@@ -217,18 +174,10 @@ async function loadDoc(id) {
     activeName.value = doc.name
     hasUnsavedChanges.value = false
   } catch (err) {
-    failure(err)
-    showGallery()
+    loadError.value = err.response?.data?.detail || err.message
   } finally {
     loadingDoc.value = false
   }
-}
-
-function backToGallery() {
-  if (!confirmDiscard()) return
-  stopLive({ revert: hasUnsavedChanges.value })
-  showGallery()
-  fetchTree(currentPath.value)
 }
 
 const markDirty = () => { hasUnsavedChanges.value = true }
@@ -247,8 +196,8 @@ async function saveNow() {
   }
 }
 
-// The picture is set through its own route (which checks it is a library image)
-// and at once, not with the rest of the changes on Save.
+// The picture is set through its own route (which checks it is an Observatory
+// image) and at once, not with the rest of the changes on Save.
 async function setAsset(route, url) {
   const doc = activeDoc.value
   if (!doc) return
@@ -257,94 +206,6 @@ async function setAsset(route, url) {
     doc[props.kind.imageField] = updated[props.kind.imageField]
   } catch (err) {
     console.error(`Failed to set the ${props.kind.label}'s picture:`, err)
-  }
-}
-
-const failure = (err) => { error.value = err.response?.data?.detail || err.message }
-
-const folderPath = (folder) => (currentPath.value ? `${currentPath.value}/${folder}` : folder)
-
-function startNew() {
-  showNewInput.value = true
-  nextTick(() => newInputRef.value?.focus())
-}
-
-async function submitNew() {
-  const name = newName.value.trim()
-  if (!name) return
-  newName.value = ''
-  showNewInput.value = false
-  try {
-    const created = await create(name, '', currentPath.value)
-    openItem(created.id, created.name)
-  } catch (err) {
-    failure(err)
-  }
-}
-
-async function onDeleteItem(item) {
-  if (!window.confirm(`Delete ${props.kind.label} "${item.name}"? This cannot be undone.`)) return
-  try {
-    await remove(currentPath.value, item.id)
-  } catch (err) {
-    failure(err)
-  }
-}
-
-async function onRenameItem(item, name) {
-  try {
-    await rename(currentPath.value, item.id, name)
-  } catch (err) {
-    failure(err)
-  }
-}
-
-function enterFolder(folder) {
-  currentPath.value = folderPath(folder)
-  fetchTree(currentPath.value)
-}
-
-function goToPath(path) {
-  currentPath.value = path
-  fetchTree(path)
-}
-
-async function onCreateFolder(name) {
-  try {
-    await createFolder(currentPath.value, name)
-  } catch (err) {
-    failure(err)
-  }
-}
-
-async function onRenameFolder(folder, name) {
-  try {
-    await renameFolder(currentPath.value, folderPath(folder), name)
-  } catch (err) {
-    failure(err)
-  }
-}
-
-async function onDeleteFolder(folder) {
-  if (!window.confirm(`Delete folder "${folder}" and everything inside it?`)) return
-  try {
-    await removeFolder(currentPath.value, folderPath(folder))
-  } catch (err) {
-    failure(err)
-  }
-}
-
-async function onMove(dragItem, destPath) {
-  try {
-    if (dragItem.type === 'folder') {
-      const sourcePath = folderPath(dragItem.name)
-      if (sourcePath === destPath) return
-      await moveFolder(currentPath.value, sourcePath, destPath)
-    } else {
-      await move(currentPath.value, dragItem.item.id, destPath)
-    }
-  } catch (err) {
-    failure(err)
   }
 }
 </script>
@@ -364,16 +225,9 @@ async function onMove(dragItem, destPath) {
   flex-direction: column;
 }
 
-.gallery-view {
+.load-error {
   flex: 1;
-  overflow-y: auto;
   padding: var(--space-6);
-}
-
-.new-item-form {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
 }
 
 .editor-view {

@@ -226,7 +226,7 @@ const isRow = (item) => !item.text && !!item.name && !!item.roll
 const imageSrc = computed(() => {
   const image = props.sheet.image
   if (!image) return null
-  return image.startsWith('/api/asset-library/') && !props.canInteract ? null : resolveUrl(image)
+  return image.startsWith('/api/observatory/') && !props.canInteract ? null : resolveUrl(image)
 })
 
 const isRollable = (formula) => !!formula && !!parseDiceFormula(formula)

@@ -49,7 +49,7 @@ FakeImage.loaded = []
 let result
 const mounted = []
 function setup(options = {}) {
-  const imageUrl = ref(options.imageUrl ?? '/api/asset-library/assets/map.png')
+  const imageUrl = ref(options.imageUrl ?? '/api/observatory/images/1a2b3c4d-map.png')
   const svgRef = ref(document.createElementNS('http://www.w3.org/2000/svg', 'svg'))
   const groupRef = ref(document.createElementNS('http://www.w3.org/2000/svg', 'g'))
   const flags = { zoomable: options.zoomable ?? true, canPan: options.canPan ?? true }
@@ -85,7 +85,7 @@ describe('useMapViewport', () => {
   it("takes the map's size from its image", async () => {
     setup()
     await settle()
-    expect(FakeImage.loaded).toEqual(['/api/asset-library/assets/map.png'])
+    expect(FakeImage.loaded).toEqual(['/api/observatory/images/1a2b3c4d-map.png'])
     expect(result.naturalWidth.value).toBe(1400)
     expect(result.naturalHeight.value).toBe(1050)
   })

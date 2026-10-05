@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from config.logging import get_logger
-from routes.asset_library import UPLOADED_FILE_HEADERS
+from routes.observatory import UPLOADED_FILE_HEADERS
 from routes.errors import storage_unavailable
 from services import storage_service
 from services.storage_service import StorageError

@@ -9,9 +9,10 @@ vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 const DocumentModal = (await import('@/components/DocumentModal.vue')).default
 const { createModalState } = await import('@/composables/useModalState')
+const { useObservatoryModal } = await import('@/composables/useObservatoryModal')
 const { DOC_TYPES } = await import('@/utils/docTypes')
 
-const MAP = '/api/asset-library/assets/asset-library/maps/tavern.png'
+const MAP = '/api/observatory/images/1a2b3c4d-tavern.png'
 const chart = (overrides = {}) => ({
   id: 'regions/tavern', name: 'Tavern', description: null, image_url: MAP,
   pins: [{ id: 'p', x: 1, y: 2, name: 'Bar' }], paths: [], annotations: [], updated_at: 'now', ...overrides
@@ -21,20 +22,16 @@ const chart = (overrides = {}) => ({
 function fakeApi(itemsKey = 'charts') {
   return {
     itemsKey,
-    fetchTree: vi.fn().mockResolvedValue({ folders: ['regions'], [itemsKey]: [chart({ id: 'tavern' }), chart({ id: 'bare', name: 'Bare', image_url: null })] }),
     fetchAll: vi.fn().mockResolvedValue([chart()]),
     fetch: vi.fn().mockResolvedValue(chart()),
     save: vi.fn().mockResolvedValue({}),
-    setAsset: vi.fn().mockResolvedValue({ image_url: '/api/asset-library/assets/new.png' }),
-    create: vi.fn().mockResolvedValue(chart({ id: 'fresh', name: 'Fresh' })),
-    remove: vi.fn().mockResolvedValue({}),
-    rename: vi.fn().mockResolvedValue({}),
-    move: vi.fn().mockResolvedValue({})
+    setAsset: vi.fn().mockResolvedValue({ image_url: '/api/observatory/images/1a2b3c4d-new.png' })
   }
 }
 
 let api
 let modal
+const observatory = useObservatoryModal()
 
 // What a wrapper like ChartsModal does with the slot, reduced to what to look at.
 function mountModal(kind = DOC_TYPES.chart, { canEdit = true } = {}) {
@@ -62,46 +59,10 @@ async function openOn(wrapper, id) {
 beforeEach(() => {
   api = fakeApi()
   modal = createModalState()
+  observatory.close()
+  observatory.targetId.value = null
   post.mockReset().mockResolvedValue({})
   vi.restoreAllMocks()
-})
-
-describe('DocumentModal — the gallery', () => {
-  it('lists a level, with a thumbnail where the kind has a picture and an icon where it has none', async () => {
-    const { wrapper } = mountModal()
-    modal.open()
-    await flushPromises()
-    expect(api.fetchTree).toHaveBeenCalledWith('')
-    expect(wrapper.text()).toContain('Tavern')
-    const thumbs = wrapper.findAll('.gallery-card-thumb')
-    expect(thumbs.map((t) => t.find('img').exists())).toEqual([false, true, false]) // folder, tavern, bare
-    expect(thumbs[1].find('img').attributes('src')).toBe(MAP)
-    expect(thumbs[2].find('.mdi-map-outline').exists()).toBe(true)
-  })
-
-  it('offers to copy a `chart:<id>` reference only for kinds a note can embed', async () => {
-    const { wrapper } = mountModal()
-    modal.open()
-    await flushPromises()
-    expect(wrapper.find('[aria-label="Copy reference"]').exists()).toBe(true)
-
-    api = fakeApi('encounters')
-    const live = mountModal(DOC_TYPES.encounter)
-    modal.close()
-    modal.open()
-    await flushPromises()
-    expect(live.wrapper.find('[aria-label="Copy reference"]').exists()).toBe(false)
-  })
-
-  it('words everything from the kind', async () => {
-    const { wrapper } = mountModal(DOC_TYPES.vista)
-    api.fetchTree.mockResolvedValue({ folders: [], vistas: [] })
-    modal.open()
-    await flushPromises()
-    expect(wrapper.find('[role="dialog"]').attributes('aria-label')).toBe('Vistas')
-    expect(wrapper.text()).toContain('No vistas yet')
-    expect(wrapper.text()).toContain('New vista')
-  })
 })
 
 describe('DocumentModal — a document edited whole and saved', () => {
@@ -129,8 +90,8 @@ describe('DocumentModal — a document edited whole and saved', () => {
     modal.close()
     await nextTick()
     await openOn(wrapper, 'ghost')
-    expect(wrapper.find('.gallery-view').exists()).toBe(true)
-    expect(wrapper.text()).toContain('Chart not found: ghost')
+    expect(wrapper.find('.load-error').text()).toContain('Chart not found: ghost')
+    expect(wrapper.find('.editor-view').exists()).toBe(false)
   })
 
   it('saves the name, the description and only the fields its kind edits', async () => {
@@ -176,8 +137,9 @@ describe('DocumentModal — a document edited whole and saved', () => {
     await wrapper.find('[aria-label="Close"]').trigger('click')
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining('unsaved changes to this chart'))
     expect(modal.isOpen.value).toBe(true)
-    await wrapper.find('[aria-label="Back to Charts"]').trigger('click')
+    await wrapper.find('[aria-label="Back to Observatory"]').trigger('click')
     expect(wrapper.find('.editor-view').exists()).toBe(true)
+    expect(observatory.isOpen.value).toBe(false)
 
     confirm.mockReturnValue(true)
     await wrapper.find('[aria-label="Close"]').trigger('click')
@@ -196,9 +158,9 @@ describe('DocumentModal — a document edited whole and saved', () => {
   it("sets its picture through the kind's own route, at once", async () => {
     const { wrapper, slotProps } = mountModal()
     await openOn(wrapper, 'regions/tavern')
-    await slotProps.setAsset('image', '/api/asset-library/assets/new.png')
-    expect(api.setAsset).toHaveBeenCalledWith('regions/tavern', 'image', '/api/asset-library/assets/new.png')
-    expect(slotProps.doc.image_url).toBe('/api/asset-library/assets/new.png')
+    await slotProps.setAsset('image', '/api/observatory/images/1a2b3c4d-new.png')
+    expect(api.setAsset).toHaveBeenCalledWith('regions/tavern', 'image', '/api/observatory/images/1a2b3c4d-new.png')
+    expect(slotProps.doc.image_url).toBe('/api/observatory/images/1a2b3c4d-new.png')
     expect(buttonByText(wrapper, 'Saved')).toBeDefined() // not something left to Save
   })
 
@@ -304,45 +266,35 @@ describe('DocumentModal — a live document', () => {
   it('goes back and closes without asking anything', async () => {
     const confirm = vi.spyOn(window, 'confirm')
     const { wrapper } = mountModal(DOC_TYPES.encounter)
+    await openOn(wrapper, 'goblins/caves/fight')
+    await wrapper.find('[aria-label="Back to Observatory"]').trigger('click')
+    // Back is the Observatory, in the folder the document is in.
+    expect(modal.isOpen.value).toBe(false)
+    expect([observatory.isOpen.value, observatory.targetId.value]).toEqual([true, 'goblins/caves'])
     await openOn(wrapper, 'fight')
-    await wrapper.find('[aria-label="Back to Encounters"]').trigger('click')
-    expect(wrapper.find('.gallery-view').exists()).toBe(true)
     await wrapper.find('[aria-label="Close"]').trigger('click')
+    expect(modal.isOpen.value).toBe(false)
     expect(confirm).not.toHaveBeenCalled()
   })
 })
 
-describe('DocumentModal — creating', () => {
-  it('opens a new document in its editor', async () => {
+describe('DocumentModal — where it is opened from', () => {
+  it('opens the Observatory instead when it is not opened on a document', async () => {
     const { wrapper } = mountModal()
     modal.open()
     await flushPromises()
-    await buttonByText(wrapper, 'New chart').trigger('click')
-    await wrapper.find('input[aria-label="chart name"]').setValue('  Fresh  ')
-    await wrapper.find('[aria-label="Create chart"]').trigger('click')
-    await flushPromises()
-    expect(api.create).toHaveBeenCalledWith('Fresh', '', '')
-    expect(api.fetch).toHaveBeenCalledWith('fresh')
-    expect(wrapper.find('.editor-view').text()).toContain('editing:fresh:')
-  })
-})
-
-describe('DocumentModal — characters', () => {
-  beforeEach(() => { api = fakeApi('characters') })
-
-  it('are made and kept in folders like any other kind, and give the link that shows one in a note', async () => {
-    const { wrapper } = mountModal(DOC_TYPES.character)
-    modal.open()
-    await flushPromises()
-    expect(buttonByText(wrapper, 'New character')).toBeDefined()
-    expect(buttonByText(wrapper, 'New folder')).toBeDefined()
+    expect(modal.isOpen.value).toBe(false)
+    expect([observatory.isOpen.value, observatory.targetId.value]).toEqual([true, null])
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
 
-  it('lets its editor go back to the gallery', async () => {
+  it("lets a live document's editor go back to the Observatory", async () => {
+    api = fakeApi('characters')
     const { wrapper, slotProps } = mountModal(DOC_TYPES.character)
-    await openOn(wrapper, 'aria')
+    await openOn(wrapper, 'party/aria')
     slotProps.back()
     await nextTick()
-    expect(wrapper.find('.gallery-view').exists()).toBe(true)
+    expect([observatory.isOpen.value, observatory.targetId.value]).toEqual([true, 'party'])
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
   })
 })

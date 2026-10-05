@@ -32,8 +32,8 @@ describe('sanitizeHtml', () => {
 })
 
 describe('lockAssetImages', () => {
-  it('replaces asset library images, relative or absolute, with a placeholder', () => {
-    const html = '<p><img src="/api/asset-library/assets/asset-library/map.png"><img src="https://app.test/api/asset-library/assets/asset-library/a%20b.png"></p>'
+  it('replaces Observatory images, relative or absolute, with a placeholder', () => {
+    const html = '<p><img src="/api/observatory/images/1a2b3c4d-map.png"><img src="https://app.test/api/observatory/images/1a2b3c4d-a%20b.png"></p>'
     const out = lockAssetImages(html)
     expect(out).not.toContain('<img')
     expect(out.match(/locked-asset/g)).toHaveLength(2)

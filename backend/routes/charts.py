@@ -1,4 +1,4 @@
-from routes.doc_follow import following
+from routes.doc_follow import ON_MOVED
 from routes.doc_router import make_doc_router
 from routes.screen_access import require_viewer
 from services.doc_registry import CHART, chart_collection, hub
@@ -8,5 +8,5 @@ from services.doc_registry import CHART, chart_collection, hub
 router = make_doc_router(
     CHART, chart_collection, hub,
     viewer=lambda request, chart_id: require_viewer(request, chart_id=chart_id),
-    on_moved=following("chart"),
+    on_moved=ON_MOVED["chart"],
 )

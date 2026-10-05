@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 // Generic HTML5 drag-and-drop mechanics, shared by every folder/list browser
-// (asset library, vistas, charts, the player's albums) so each one doesn't
+// (the Observatory, the player's albums) so each one doesn't
 // reimplement its own dragstart/dragover/drop bookkeeping. It knows nothing
 // about what's being dragged or what a "move" means — the caller supplies
 // both via the item passed to startDrag() and the onMove callback passed to

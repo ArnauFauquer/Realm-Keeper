@@ -51,16 +51,19 @@ describe('slugify', () => {
 })
 
 describe('normalizeImage', () => {
-  it('keeps a library image as the app-relative URL, whatever it was pasted with', () => {
-    const relative = '/api/asset-library/assets/asset-library/Maps/1a2b3c4d-boar.png'
+  it('keeps an Observatory image as the app-relative URL, whatever it was pasted with', () => {
+    const relative = '/api/observatory/images/1a2b3c4d-boar.png'
     expect(normalizeImage(relative)).toEqual([relative, null])
     expect(normalizeImage(`https://realm.example.com${relative}`)).toEqual([relative, null])
-    expect(normalizeImage('asset-library/Maps/1a2b3c4d-boar.png')).toEqual([relative, null])
+    expect(normalizeImage('1a2b3c4d-boar.png')).toEqual([relative, null])
+    // Quoted as the backend quotes it.
+    expect(normalizeImage("1a2b3c4d-boar (it's big).png")[0]).toBe('/api/observatory/images/1a2b3c4d-boar%20%28it%27s%20big%29.png')
   })
 
   it('warns about anything that is not an image URL', () => {
     expect(normalizeImage('Bestiary/boar.png')[0]).toBeNull()
-    expect(normalizeImage('Bestiary/boar.png')[1]).toMatch(/asset library/)
+    expect(normalizeImage('Bestiary/boar.png')[1]).toMatch(/Observatory/)
+    expect(normalizeImage('Bestiary/1a2b3c4d-boar.png')[0]).toBeNull()
     expect(normalizeImage('')).toEqual([null, null])
   })
 })

@@ -44,7 +44,7 @@ const BattlemapEditor = (await import('@/components/BattlemapEditor.vue')).defau
 
 const GRID = { type: 'square', size: 70, offset_x: 0, offset_y: 0, snap: true, visible: true, color: '#fff', opacity: 0.25, distance: 1, unit: 'cell', measure: 'grid' }
 const battlemap = (overrides = {}) => ({
-  id: 'cave', name: 'Cave', rev: 1, image_url: '/api/asset-library/assets/asset-library/cave.png', grid: GRID, encounter: null,
+  id: 'cave', name: 'Cave', rev: 1, image_url: '/api/observatory/images/1a2b3c4d-cave.png', grid: GRID, encounter: null,
   tokens: [
     { id: 't1', name: 'Orc', x: 1, y: 1, size: 1, hidden: false, combatant: null, show_bars: false, bars: [], color: null, image_url: null },
     { id: 't2', name: 'Dragon', x: 4, y: 4, size: 3, hidden: true, combatant: 'c1', show_bars: true, bars: ['HP'], color: null, image_url: null }
@@ -56,7 +56,7 @@ const ENCOUNTER = {
   combatants: [
     { id: 'c1', name: 'Dragon', type: 'adversary', sheet: 'n#dragon', resources: { HP: { current: 20, max: 30, min: 0 }, Fury: { current: 1, max: 3, min: 0 } } },
     { id: 'c2', name: 'Orc 2', type: 'adversary', sheet: 'n#orc', resources: {} },
-    { id: 'c3', name: 'Aria', type: 'character', sheet: 'aria', image_url: '/api/asset-library/assets/asset-library/aria.png', resources: {} }
+    { id: 'c3', name: 'Aria', type: 'character', sheet: 'aria', image_url: '/api/observatory/images/1a2b3c4d-aria.png', resources: {} }
   ]
 }
 
@@ -122,8 +122,8 @@ describe('BattlemapEditor', () => {
     expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { color: '#f472b6' })
 
     await inspector.findAll('.row')[1].find('button').trigger('click') // Choose image
-    wrapper.findComponent({ name: 'AssetLibraryModal' }).vm.$emit('select', { image_url: '/api/asset-library/assets/asset-library/orc.png' })
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_url: '/api/asset-library/assets/asset-library/orc.png' })
+    wrapper.findComponent({ name: 'ObservatoryModal' }).vm.$emit('select', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
+    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
   })
 
   it('removes a token after asking', async () => {

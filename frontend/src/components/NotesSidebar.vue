@@ -31,37 +31,14 @@
           <span class="mdi mdi-magnify" aria-hidden="true"></span>
           <span>Search Notes</span>
         </button>
-        <!-- Charts, vistas and the asset library are behind login, like the player. -->
-        <div v-if="user" class="tool-row">
-          <button class="tool-btn" @click="openCharts">
-            <span class="mdi mdi-map-marker-radius" aria-hidden="true"></span>
-            <span>Charts</span>
-          </button>
-          <button class="tool-btn" @click="openVistas">
-            <span class="mdi mdi-image-frame" aria-hidden="true"></span>
-            <span>Vistas</span>
-          </button>
-          <button class="tool-btn" @click="openAssetLibrary">
-            <span class="mdi mdi-folder-multiple-image" aria-hidden="true"></span>
-            <span>Assets</span>
-          </button>
-          <button class="tool-btn" @click="openEncounters">
-            <span class="mdi mdi-sword-cross" aria-hidden="true"></span>
-            <span>Encounters</span>
-          </button>
-          <button class="tool-btn" @click="openBattlemaps">
-            <span class="mdi mdi-grid" aria-hidden="true"></span>
-            <span>Battlemaps</span>
-          </button>
-          <button class="tool-btn" @click="openCharacters">
-            <span class="mdi mdi-account-heart-outline" aria-hidden="true"></span>
-            <span>Characters</span>
-          </button>
-          <button class="tool-btn" @click="openAdversaries">
-            <span class="mdi mdi-skull-outline" aria-hidden="true"></span>
-            <span>Adversaries</span>
-          </button>
-        </div>
+        <!-- The Observatory (every document and image) is behind login, like the player. -->
+        <button v-if="user" class="observatory-trigger" @click="openObservatory()">
+          <span class="mdi mdi-telescope" aria-hidden="true"></span>
+          <span class="observatory-label">
+            <span>Observatory</span>
+            <span class="observatory-hint">Maps, scenes, encounters, sheets and images</span>
+          </span>
+        </button>
       </nav>
 
       <div class="tree-header">
@@ -231,7 +208,7 @@
     <BattlemapsModal />
     <CharactersModal />
     <AdversariesModal />
-    <AssetLibraryModal :is-open="isAssetLibraryOpen" @close="closeAssetLibrary" />
+    <ObservatoryModal :is-open="isObservatoryOpen" :start-path="observatoryPath || ''" @close="closeObservatory" />
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
       <div class="rk-dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-title">
@@ -281,13 +258,12 @@ import EncountersModal from './EncountersModal.vue'
 import BattlemapsModal from './BattlemapsModal.vue'
 import CharactersModal from './CharactersModal.vue'
 import AdversariesModal from './AdversariesModal.vue'
-import AssetLibraryModal from './AssetLibraryModal.vue'
+import ObservatoryModal from './ObservatoryModal.vue'
 import { appVersion } from '../config/env'
 import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
-import { useDocModal } from '@/composables/useDocModal'
-import { useAssetLibraryModal } from '@/composables/useAssetLibraryModal'
+import { useObservatoryModal } from '@/composables/useObservatoryModal'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
@@ -311,13 +287,7 @@ async function copyScreenLink() {
   if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
-const { open: openCharts } = useDocModal('chart')
-const { open: openVistas } = useDocModal('vista')
-const { open: openEncounters } = useDocModal('encounter')
-const { open: openBattlemaps } = useDocModal('battlemap')
-const { open: openCharacters } = useDocModal('character')
-const { open: openAdversaries } = useDocModal('adversary')
-const { isOpen: isAssetLibraryOpen, open: openAssetLibrary, close: closeAssetLibrary } = useAssetLibraryModal()
+const { isOpen: isObservatoryOpen, targetId: observatoryPath, open: openObservatory, close: closeObservatory } = useObservatoryModal()
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
   togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
@@ -566,48 +536,54 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
 }
 
-.tool-row {
-  display: grid;
-  /* As many tools as fit a row, however many there are. */
-  grid-template-columns: repeat(auto-fit, minmax(4.75rem, 1fr));
-  gap: var(--space-1);
-}
-
-.tool-btn {
+.observatory-trigger {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: var(--space-2) var(--space-1);
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
   border: none;
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-secondary);
-  font-size: var(--text-xs);
-  font-weight: 500;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+  text-align: left;
+  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-.tool-btn .mdi {
-  font-size: 1.3rem;
-  line-height: 1.2;
+.observatory-trigger > .mdi {
+  font-size: 1.5rem;
+  line-height: 1;
   color: var(--text-muted);
   transition: color var(--duration-fast) var(--ease-out);
 }
 
-.tool-btn:hover {
+.observatory-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.observatory-hint {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.observatory-trigger:hover {
   background: var(--hover-tint);
   color: var(--text-primary);
 }
 
-.tool-btn:hover .mdi {
-  color: var(--accent-hover);
+.observatory-trigger:hover > .mdi {
+  color: var(--accent);
 }
 
-.tool-btn:active {
+.observatory-trigger:active {
   transform: translateY(1px);
 }
 

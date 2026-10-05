@@ -6,7 +6,7 @@
     </div>
     <div v-else-if="!state" class="editor-state" role="alert">
       <span class="mdi mdi-file-question-outline"></span>
-      <span>This character was moved or deleted. Go back to the list to find it.</span>
+      <span>This character was moved or deleted. Look for it in the Observatory.</span>
     </div>
 
     <SheetEditor v-else v-model="draft" type="character" :id="id" :name="state.name" :can-edit="canInteract">

@@ -69,7 +69,7 @@ A sheet is YAML:
 
 ```yaml
 subtitle: Tier 1 · Bruiser
-image:                     # URL of an asset library image, as copied from the library
+image:                     # URL of an Observatory image, as copied from the Observatory
 tags: [goblinoid]
 columns: 2                 # optional: sections side by side on a wide sheet
 sections:                  # everything below the header is sections
@@ -148,7 +148,7 @@ order suits your table.
   leaving the note.
 
 **Battlemaps** — a tactical map to play a fight out on, shared live like an
-encounter. Pick a map image from the asset library and lay a grid over it
+encounter. Pick a map image from the Observatory and lay a grid over it
 (cell size and offset in pixels of the image, snapping on or off). Tokens are
 placed in cells, so changing the grid never moves anyone; drag them, resize
 them, give them an image or a colour. A **ruler** measures between cells: you
@@ -163,14 +163,25 @@ costs one cell or its length.
   screen follows every change — moves, new tokens, counters — a moment later.
 - Everyone signed in can move any token and change any setting.
 
+**The Observatory** — where everything but the notes lives: one tree of folders
+holding every chart, vista, encounter, battlemap, character and adversary, and
+the images they draw, so an adventure's map, its chart, its scenes and its fights
+can share a folder. **New ▾** makes a document of any kind in the folder you are
+in; opening one opens its editor, whose back arrow comes back to that folder.
+Filter a folder by kind, drag anything (folders too) into another folder, and
+upload images beside the documents that use them.
+- An image is found by the uid it got when uploaded, so renaming or moving it —
+  or the folder it is in — never breaks the documents and notes that show it.
+- **Export** downloads the folder you are in (everything, at the top) as a zip
+  laid out like the tree; **Restore** puts such a zip back where it was, here or
+  on another instance, adding what is missing and replacing nothing.
+
 **Game-master tools**
 - **Charts** — maps with pins (icon, color, size, linked note), hand-drawn
   paths with direction arrows, and text annotations.
 - **Vistas** — perspective scenes: a background plus assets that shrink as
   they move toward a vanishing point, with flip, rotation and color
   adjustments.
-- **Asset library** — a reusable, folder-organized image library shared by
-  charts and vistas.
 - **Dice roller** — physics-based 3D dice (d2 to d100) with standard notation,
   including subtracted dice (`1d20-1d4`) and Hope & Fear (`hf`): two coloured
   d12s whose sum is a critical on a tie, otherwise "with Hope" or "with Fear"
@@ -191,14 +202,14 @@ costs one cell or its length.
   is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
   A battlemap shown on the screen is always live, without its hidden tokens.
 
-Charts, vistas, characters, adversaries, folders, assets and tracks can all be
-created, renamed, moved and deleted from the UI.
+Documents, images, folders and tracks can all be created, renamed, moved and
+deleted from the UI.
 
 **Access control**
 - Reading notes is public. The characters and adversaries a note shows are not:
   a reader who isn't signed in sees "Sign in to see this character" in their place.
 - Everything else — charts, vistas, characters, adversaries, encounters,
-  battlemaps, the asset library,
+  battlemaps, the Observatory's images,
   the music player, writing and screen control — requires Google login, limited
   to an allow-list of emails. Sessions are signed cookies, no user database.
 - A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
@@ -212,16 +223,14 @@ created, renamed, moved and deleted from the UI.
 | ------------------------- | ----------------------------------------------------------- |
 | Notes                     | `.md` files in the vault (a Git repository)                 |
 | Audio (the player)        | `player/<album>/<track>` in the bucket                      |
-| Images (asset library)    | `asset-library/<folders>/<image>` in the bucket             |
-| Charts                    | `charts/<folders>/<id>/chart.json` in the bucket            |
-| Vistas                    | `vistas/<folders>/<id>/vista.json` in the bucket            |
-| Encounters                | `encounters/<folders>/<id>/encounter.json` in the bucket    |
-| Battlemaps                | `battlemaps/<folders>/<id>/battlemap.json` in the bucket    |
-| Characters                | `characters/<folders>/<id>/character.json` in the bucket    |
-| Adversaries               | `adversaries/<folders>/<id>/adversary.json` in the bucket   |
+| Documents                 | `observatory/<folders>/<slug>.<kind>.json` in the bucket    |
+| Images                    | `observatory/<folders>/<uid>-<name>` in the bucket          |
 
-The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …) with one
-top-level prefix per kind of thing, and nothing else at the top.
+where `<kind>` is `chart`, `vista`, `encounter`, `battlemap`, `character` or
+`adversary`. The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …)
+with those two top-level prefixes and nothing else at the top. A document's id is
+its folders and slug (`Hijos del Fango/Acto 2/emboscada`), which is how a note
+links to it; an image is served at `/api/observatory/images/<uid>-<name>`.
 
 The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
 seconds, and commits and pushes every edit made to a note in the app. You can
@@ -233,8 +242,8 @@ JSON objects in the bucket, one `PUT` per save, with no lock and no commit.
 Charts, vistas and adversaries are edited whole and saved with a button;
 encounters, battlemaps and characters are *live*: held in memory while someone
 is using them and written a couple of seconds after the last change (and when the app shuts
-down). Without an S3 endpoint the documents go to `DOCS_LOCAL_PATH` instead (the
-same prefixes, as folders), for local development. Don't redeploy in the middle of a session: the new pod would
+down). Without an S3 endpoint the documents and images go to `DOCS_LOCAL_PATH`
+instead (the same `observatory/` tree, as folders), for local development. Don't redeploy in the middle of a session: the new pod would
 load the last saved copy.
 
 **Coming from a vault that kept charts and vistas in Git** (`_charts/` and
@@ -249,39 +258,42 @@ turn on **bucket versioning** (`aws s3api put-bucket-versioning --bucket <bucket
 
 **Coming from a vault that wrote sheets in notes** (` ```sheet ` blocks, how
 earlier versions kept them): on its first start the backend makes a document of
-each valid block, once (the marker `adversaries/.imported-from-notes` stops it
-running again). A character goes to `characters/<its sheet id>`, joining the
-counters it had saved; an adversary goes to `adversaries/<its note's
-folder>/<its sheet id>` (`-2`, `-3`… if two would collide), and the encounters
+each valid block, once (the marker `observatory/.imported-from-notes` stops it
+running again). A character goes to `<its sheet id>` at the top of the
+Observatory, joining the counters it had saved; an adversary goes to `<its
+note's folder>/<its sheet id>` (`-2`, `-3`… if two would collide), and the encounters
 and maps that named it as `<note id>#<sheet id>` are pointed at it. Nothing in
 the vault is changed. Once the deployed app has imported them (its log says
 so), run `python backend/scripts/sheets_to_documents.py <vault>` on a checkout
 of the vault: it replaces each block with the link to its document. Commit and
 push the vault, and delete the script.
 
-**Moving a bucket that has the older layout** (albums at the top level, documents
-under `docs/`, and `charts/`/`vistas/` holding images): `backend/scripts/migrate_storage_layout.py`
-does it once, for any bucket, and can then be deleted. It reads the same `S3_*`
-settings as the app and shows what it would do unless told otherwise:
+**Moving a bucket into the Observatory** (from the layout of 0.2.3 and before:
+one prefix per kind, `charts/<folders>/<id>/chart.json`…, and the images in
+`asset-library/`): `backend/scripts/migrate_to_observatory.py` does it once, for
+any bucket, and can then be deleted. It reads the same `S3_*` settings as the app
+and shows what it would do unless told otherwise:
 
 ```bash
 cd backend
-python scripts/migrate_storage_layout.py               # dry run: what goes where, and any conflict
-python scripts/migrate_storage_layout.py --copy-only   # copy and check; the old keys stay
-python scripts/migrate_storage_layout.py --apply       # copy, check, delete the old keys
+python scripts/migrate_to_observatory.py               # dry run: what goes where, and any conflict
+python scripts/migrate_to_observatory.py --copy-only   # copy and check; the old keys stay
+python scripts/migrate_to_observatory.py --apply       # copy, check, delete the old keys
 ```
 
-Nothing is overwritten and nothing is deleted before its copy is checked, so a run
-that stops halfway can be run again. The old `charts/` and `vistas/` images (from
-before the asset library) go to `asset-library/Legacy/`, and the documents that
-still name one by its old URL are pointed at the new place. `asset-library/` keeps
-its name because notes and documents refer to its images by URL.
+Document ids don't change, so the notes' `chart:<id>` links keep working. Image
+URLs do (`/api/asset-library/assets/asset-library/<folders>/<name>` becomes
+`/api/observatory/images/<uid>-<name>`): the script rewrites them in every
+document as it copies it, and `--vault <checkout of the vault>` rewrites them in
+the notes (then commit and push the vault). An image uploaded before images got
+a uid is given one made from its old key, the same every run.
 
-For a live deployment: run `--copy-only` while the old version is still serving
-(it keeps working, the copies sit beside the originals), deploy the new version,
-then run `--apply` to move what was written in between and remove the old keys.
-Run it against the same bucket the app uses, from a shell with its `S3_*` settings
-(for Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
+Nothing is deleted before its copy is checked, so a run that stops halfway can be
+run again. For a live deployment: run `--copy-only` while the old version is
+still serving, deploy the new version, then run `--apply`: a document edited in
+between is in both places, and the copy saved last is the one kept. Run it
+against the same bucket the app uses, from a shell with its `S3_*` settings (for
+Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
 
 ## Quick start (Docker Compose)
 
@@ -392,9 +404,9 @@ Realm-Keeper/
 │   ├── main.py         App setup, vault clone/pull loop
 │   ├── config/         Settings, logging, cache headers
 │   ├── models/         Pydantic models (notes, sheets, charts, vistas, characters, adversaries, encounters, battlemaps)
-│   ├── routes/         notes, sheets, charts, vistas, characters, adversaries, encounters, battlemaps, sync, asset-library, player, screen, auth
-│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, JSON documents (doc_*, sync_hub, sheet_*)
-│   ├── scripts/        One-time tools (migrate_storage_layout.py, sheets_to_documents.py)
+│   ├── routes/         notes, sheets, observatory, charts, vistas, characters, adversaries, encounters, battlemaps, sync, player, screen, auth
+│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, the Observatory's documents and images (observatory, doc_*, sync_hub, sheet_*)
+│   ├── scripts/        One-time tools (migrate_to_observatory.py, sheets_to_documents.py)
 │   └── tests/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/

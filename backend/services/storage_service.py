@@ -1,18 +1,14 @@
-"""S3-compatible object storage client (Ceph Rook RGW) for the audio player
-and the reusable asset library (which also holds chart maps/pin icons and
-vista backgrounds).
+"""S3-compatible object storage client (Ceph Rook RGW) for the audio player,
+and the bucket helpers the Observatory's store uses (services/doc_backend.py).
 
 How the bucket is laid out: one top-level prefix per kind of thing.
 
-    player/<album>/<track>             audio, one folder per album
-    asset-library/<folders>/<image>    images (maps, tokens, icons, backgrounds)
-    charts/ vistas/ encounters/ battlemaps/ characters/
-                                       JSON documents (services/doc_collection.py)
+    player/<album>/<track>              audio, one folder per album
+    observatory/<folders>/<file>        every document and the images they
+                                        draw, in one tree (services/observatory.py)
 
 A track's key, as the player and the notes see it, is "<album>/<track>"; the
 `player/` in front of it is where it is stored, nobody else's business."""
-import re
-import uuid
 from typing import BinaryIO, Optional
 
 import boto3
@@ -38,11 +34,10 @@ ALLOWED_AUDIO_EXTENSIONS = set(AUDIO_CONTENT_TYPES)
 ALLOWED_IMAGE_EXTENSIONS = set(IMAGE_CONTENT_TYPES)
 
 PLAYER_PREFIX = "player/"
-ASSET_LIBRARY_PREFIX = "asset-library/"
-# Where the app serves a library asset from; documents (charts, vistas, sheets...)
-# refer to library images by URLs starting with this.
-ASSET_LIBRARY_URL_PREFIX = "/api/asset-library/assets/"
-_UNIQUE_PREFIX_RE = re.compile(r"^[0-9a-f]{8}-")
+OBSERVATORY_PREFIX = "observatory/"
+# Where the app serves an Observatory image from; documents (charts, vistas,
+# sheets...) and notes refer to images by URLs starting with this.
+IMAGE_URL_PREFIX = "/api/observatory/images/"
 
 
 class StorageError(Exception):
@@ -96,24 +91,6 @@ def _track_key(album: str, filename: str) -> str:
     """Where a track is stored. Whatever a track's key says, it can only name
     something under `player/`: nothing else in the bucket is reachable by it."""
     return f"{PLAYER_PREFIX}{album}/{filename}"
-
-
-def _sanitize_path(path: str) -> str:
-    """Validate a (possibly multi-level) folder path: every segment must be
-    a safe path component. Returns "" for the root."""
-    segments = [s for s in (path or "").split("/") if s]
-    return "/".join(_sanitize_segment(s) for s in segments)
-
-
-def _validate_key(key: str) -> None:
-    """Validate a (possibly multi-segment) object key: every segment must be
-    a safe path component. Used for keys whose depth varies (e.g. chart
-    assets), unlike `_split_key`'s fixed album/filename shape."""
-    parts = (key or "").split("/")
-    if not parts or not all(parts):
-        raise StorageError(f"Invalid key: {key!r}")
-    for part in parts:
-        _sanitize_segment(part)
 
 
 def list_albums() -> list[str]:
@@ -214,69 +191,6 @@ def rename_track(key: str, new_name: str) -> dict:
     return {"key": f"{album}/{new_name}", "name": new_name}
 
 
-def _unique_filename(filename: str) -> str:
-    """Prefixes a short random id onto the filename so replacing an image
-    with a new upload of the same name never reuses the old S3 key. Reusing
-    the key would return the same image_url as before, which Vue treats as
-    unchanged (skips re-rendering the <img>) and which browsers hold onto
-    under this endpoint's long immutable cache — so a GM's replacement
-    would silently never show up, with no error anywhere.
-    """
-    return f"{uuid.uuid4().hex[:8]}-{filename}"
-
-
-def _upload_image(key: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    ext = _extension(filename)
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise StorageError(f"Unsupported image file type: {ext or filename}")
-    client = _client()
-    client.upload_fileobj(
-        file_obj, settings.S3_BUCKET_NAME, key,
-        ExtraArgs={"ContentType": IMAGE_CONTENT_TYPES[ext]},
-    )
-    return {"key": key, "name": filename}
-
-
-def list_asset_library(path: str = "") -> dict:
-    """Immediate subfolders and files directly under `path` (not recursive) —
-    folders are plain S3 prefixes, nested arbitrarily deep, same idea as
-    list_albums()/list_tracks() but with a variable number of levels."""
-    path = _sanitize_path(path)
-    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/" if path else ASSET_LIBRARY_PREFIX
-    client = _client()
-    folders = []
-    assets = []
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix, Delimiter="/"):
-        for cp in page.get("CommonPrefixes", []):
-            name = cp["Prefix"][len(prefix):].rstrip("/")
-            if name:
-                folders.append(name)
-        for obj in page.get("Contents", []):
-            filename = obj["Key"][len(prefix):]
-            if not filename or filename == ".keep":
-                continue
-            assets.append({
-                "key": obj["Key"],
-                # Strip the anti-cache-collision prefix _unique_filename() adds
-                # on upload so the library shows the file's original name.
-                "name": _UNIQUE_PREFIX_RE.sub("", filename, count=1),
-                "size": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
-            })
-    folders.sort(key=str.lower)
-    assets.sort(key=lambda a: a["name"].lower())
-    return {"folders": folders, "assets": assets}
-
-
-def create_asset_folder(path: str) -> None:
-    path = _sanitize_path(path)
-    if not path:
-        raise StorageError("Folder path is required")
-    client = _client()
-    client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{ASSET_LIBRARY_PREFIX}{path}/.keep", Body=b"")
-
-
 def _move_prefix(old_prefix: str, new_prefix: str, not_found_label: str, exists_label: str) -> None:
     """Copies every object under `old_prefix` to the same relative key under
     `new_prefix`, then deletes the originals — the S3 equivalent of `mv` for
@@ -305,49 +219,6 @@ def _move_prefix(old_prefix: str, new_prefix: str, not_found_label: str, exists_
             client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
 
 
-def rename_asset_folder(path: str, new_name: str) -> None:
-    """Renames the leaf segment of `path`, keeping it under the same parent —
-    e.g. rename_asset_folder("monsters/goblins", "orcs") -> "monsters/orcs"."""
-    path = _sanitize_path(path)
-    new_name = _sanitize_segment(new_name)
-    if not path:
-        raise StorageError("Folder path is required")
-
-    parent, _, _leaf = path.rpartition("/")
-    new_path = f"{parent}/{new_name}" if parent else new_name
-    if path == new_path:
-        return
-
-    _move_prefix(
-        f"{ASSET_LIBRARY_PREFIX}{path}/", f"{ASSET_LIBRARY_PREFIX}{new_path}/",
-        not_found_label=f"Folder not found: {path}",
-        exists_label=f"A folder already exists at '{new_path}'",
-    )
-
-
-def move_asset_folder(path: str, dest_parent_path: str) -> None:
-    """Moves the folder at `path` to be a child of `dest_parent_path`,
-    keeping its own leaf name — e.g. move_asset_folder("goblins", "monsters")
-    -> "monsters/goblins". Used for drag-and-drop between folders."""
-    path = _sanitize_path(path)
-    dest_parent_path = _sanitize_path(dest_parent_path)
-    if not path:
-        raise StorageError("Folder path is required")
-
-    leaf = path.rsplit("/", 1)[-1]
-    new_path = f"{dest_parent_path}/{leaf}" if dest_parent_path else leaf
-    if new_path == path:
-        return
-    if new_path == dest_parent_path or new_path.startswith(f"{path}/"):
-        raise StorageError("Cannot move a folder into itself or one of its own subfolders")
-
-    _move_prefix(
-        f"{ASSET_LIBRARY_PREFIX}{path}/", f"{ASSET_LIBRARY_PREFIX}{new_path}/",
-        not_found_label=f"Folder not found: {path}",
-        exists_label=f"A folder already exists at '{new_path}'",
-    )
-
-
 def _move_object(old_key: str, new_key: str) -> None:
     """Copies a single S3 object to `new_key` then deletes the original —
     the S3 equivalent of `mv` for one object, since S3 has no native
@@ -363,20 +234,6 @@ def _move_object(old_key: str, new_key: str) -> None:
     client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=old_key)
 
 
-def move_library_asset(key: str, dest_folder_path: str) -> dict:
-    """Moves a single asset (by its full S3 key) into `dest_folder_path`,
-    keeping its filename. Used for drag-and-drop between folders."""
-    _validate_key(key)
-    if not key.startswith(ASSET_LIBRARY_PREFIX):
-        raise StorageError(f"Invalid asset key: {key!r}")
-    dest_folder_path = _sanitize_path(dest_folder_path)
-
-    filename = key.rsplit("/", 1)[-1]
-    new_key = f"{ASSET_LIBRARY_PREFIX}{dest_folder_path}/{filename}" if dest_folder_path else f"{ASSET_LIBRARY_PREFIX}{filename}"
-    _move_object(key, new_key)
-    return {"key": new_key}
-
-
 def move_track(key: str, dest_album: str) -> dict:
     """Moves a single track (by its "album/filename" key) into
     `dest_album`, keeping its filename. Used for drag-and-drop between
@@ -387,70 +244,9 @@ def move_track(key: str, dest_album: str) -> dict:
     return {"key": f"{dest_album}/{filename}"}
 
 
-def delete_asset_folder(path: str) -> None:
-    """Deletes a folder and everything nested inside it (cascading, like rm -rf)."""
-    path = _sanitize_path(path)
-    if not path:
-        raise StorageError("Folder path is required")
-    client = _client()
-    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/"
-    paginator = client.get_paginator("list_objects_v2")
-    keys = []
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
-
-
-def upload_library_asset(path: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    path = _sanitize_path(path)
-    filename = _sanitize_segment(filename)
-    prefix = f"{ASSET_LIBRARY_PREFIX}{path}/" if path else ASSET_LIBRARY_PREFIX
-    return _upload_image(f"{prefix}{_unique_filename(filename)}", filename, file_obj, content_type)
-
-
-def delete_library_asset(key: str) -> None:
-    _validate_key(key)
-    if not key.startswith(ASSET_LIBRARY_PREFIX):
-        raise StorageError(f"Invalid asset key: {key!r}")
-    client = _client()
-    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
-
-
-def rename_library_asset(key: str, new_name: str) -> dict:
-    """Renames a single asset's display filename, keeping it in the same
-    folder. S3 has no rename, so this copies to a new key then deletes the
-    original (via _move_object). The new key still gets a fresh
-    _unique_filename() prefix, for the same cache-busting reason uploads do."""
-    _validate_key(key)
-    if not key.startswith(ASSET_LIBRARY_PREFIX):
-        raise StorageError(f"Invalid asset key: {key!r}")
-    new_name = _sanitize_segment(new_name)
-    ext = new_name[new_name.rfind("."):].lower() if "." in new_name else ""
-    if ext not in ALLOWED_IMAGE_EXTENSIONS:
-        raise StorageError(f"Unsupported image file type: {ext or new_name}")
-
-    folder = key.rsplit("/", 1)[0]
-    new_key = f"{folder}/{_unique_filename(new_name)}"
-    _move_object(key, new_key)
-    return {"key": new_key, "name": new_name}
-
-
 def get_track_stream(key: str, range_header: Optional[str] = None) -> dict:
     album, filename = _split_key(key)
     return _get_object_stream(_track_key(album, filename), range_header)
-
-
-def get_library_asset_stream(key: str) -> dict:
-    """Public read of one asset library object. Scoped to that prefix so the
-    unauthenticated endpoint can't be used to read the rest of the bucket
-    (audio tracks and documents, which are behind login)."""
-    _validate_key(key)
-    if not key.startswith(ASSET_LIBRARY_PREFIX):
-        raise StorageError(f"Invalid asset key: {key!r}")
-    return _get_object_stream(key)
 
 
 def _get_object_stream(key: str, range_header: Optional[str] = None) -> dict:

@@ -2,6 +2,7 @@
 its routes. Run from backend/:  python -m pytest tests/test_docs.py
 """
 import asyncio
+import io
 import json
 import time
 from pathlib import Path
@@ -16,27 +17,29 @@ from models.encounter import Encounter, EncounterMetadata
 from routes import sync as sync_routes
 from routes.auth import require_auth
 from routes.doc_router import make_doc_router
+from routes.observatory import make_observatory_router
 from services import doc_commands, sync_hub
 from services.doc_backend import DocBackendError, LocalDocBackend
 from services.doc_collection import DocCollection, DocNotFound
 from services.doc_type import DocType
+from services.observatory import Observatory
 from services.sheet_docs import sheet_preparer
 from services.sync_hub import DocHub, diff_docs
 
 ENCOUNTER = DocType(
-    kind="encounter", prefix="encounters", item_filename="encounter.json",
+    kind="encounter", prefix="encounters",
     model=Encounter, metadata_model=EncounterMetadata, items_key="encounters",
     image_fields=("combatants[].image_url",),
     live=True, collections=("combatants",), patchable=("name", "description"),
 )
 CHARACTER = DocType(
-    kind="character", prefix="characters", item_filename="character.json",
+    kind="character", prefix="characters",
     model=Character, metadata_model=SheetDocMetadata, items_key="characters",
     live=True, patchable=("name", "description", "source"), resources_field="resources",
     prepare=sheet_preparer("character"),
 )
 ARIA_SHEET = "sections:\n  - counters:\n      HP: 12\n      Hope: { max: 6, start: 2 }\n"
-LIBRARY_IMAGE = "/api/asset-library/assets/asset-library/Maps/1a2b3c4d-orc.png"
+LIBRARY_IMAGE = "/api/observatory/images/1a2b3c4d-orc.png"
 
 
 # ── backends ────────────────────────────────────────────────────────────────
@@ -73,6 +76,23 @@ def test_backend_moves_a_prefix(backend):
     backend.move_prefix("docs/a/one/", "docs/a/moved/one/")
     assert backend.list_keys("docs/a/") == ["docs/a/moved/one/d.json", "docs/a/moved/one/sub/e.json"]
     assert backend.get("docs/a/moved/one/sub/e.json") == "y"
+
+
+def test_backend_keeps_files_moves_and_deletes_them(backend):
+    backend.put_file("docs/a/map.png", io.BytesIO(b"PNG!" * 40000), "image/png")
+    chunks, length = backend.open("docs/a/map.png")
+    assert (b"".join(chunks), length) == (b"PNG!" * 40000, 160000)
+    assert backend.open("docs/a/none.png") is None
+    backend.move("docs/a/map.png", "docs/b/map.png")
+    assert not backend.exists("docs/a/map.png") and backend.exists("docs/b/map.png")
+    backend.put("docs/b/other.png", "x")
+    with pytest.raises(DocBackendError):
+        backend.move("docs/b/map.png", "docs/b/other.png")
+    with pytest.raises(DocBackendError):
+        backend.move("docs/a/map.png", "docs/c/map.png")
+    backend.delete("docs/b/map.png")
+    backend.delete("docs/b/map.png")   # nothing there: no error
+    assert backend.list_keys("docs/") == ["docs/b/other.png"]
 
 
 def test_backend_refuses_a_move_that_cannot_happen(backend):
@@ -112,25 +132,34 @@ def test_create_needs_a_name_and_never_names_a_document_like_a_route(collection)
     assert [collection.create(name).id for name in ("Combatants", "Folders", "Order")] == [
         "combatants-2", "folders-2", "order-2",
     ]
-    with pytest.raises(ValueError):
-        collection.create("Assets")  # at the top level, a fixed route of every kind
-    with pytest.raises(ValueError):
-        collection.create("x", folder_path="assets")
 
 
-def test_a_listing_shows_one_level_of_the_tree(collection):
+def test_a_document_is_one_file_in_the_observatory_tree(collection, tmp_path):
     collection.create("Zed")
-    collection.create("alpha")
     collection.create("Inside", folder_path="goblins")
     collection.create("Deeper", folder_path="goblins/caves")
-    collection.create_folder("empty")
-    tree = collection.list_tree("")
-    assert [m.name for m in tree["encounters"]] == ["alpha", "Zed"]
-    assert tree["folders"] == ["empty", "goblins"]
-    inner = collection.list_tree("goblins")
-    assert [m.id for m in inner["encounters"]] == ["goblins/inside"]
-    assert inner["folders"] == ["caves"]
-    assert sorted(m.id for m in collection.list_all()) == ["alpha", "goblins/caves/deeper", "goblins/inside", "zed"]
+    files = sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*") if p.is_file())
+    assert files == [
+        "observatory/goblins/caves/deeper.encounter.json",
+        "observatory/goblins/inside.encounter.json",
+        "observatory/zed.encounter.json",
+    ]
+    # What else is in the tree (another kind, an image, a marker) is not one of its documents.
+    (tmp_path / "observatory" / "zed.chart.json").write_text("{}")
+    (tmp_path / "observatory" / "1a2b3c4d-zed.png").write_text("x")
+    (tmp_path / "observatory" / ".encounters-imported-from-vault").write_text("{}")
+    assert [m.id for m in collection.list_all()] == ["goblins/caves/deeper", "goblins/inside", "zed"]
+
+
+def test_a_backup_is_restored_as_it_was_and_never_over_a_document(collection):
+    data = {"name": "Old fight", "updated_at": "2026-01-01T00:00:00+00:00", "combatants": [{"id": "o", "name": "Orc"}]}
+    assert collection.restore("goblins/old-fight", data)
+    restored = collection.read_raw("goblins/old-fight")
+    assert (restored["name"], restored["updated_at"], restored["combatants"][0]["name"]) == ("Old fight", data["updated_at"], "Orc")
+    assert not collection.restore("goblins/old-fight", {**data, "name": "Other"})
+    assert collection.read_raw("goblins/old-fight")["name"] == "Old fight"
+    with pytest.raises(ValueError):
+        collection.restore("x", {"name": "X", "combatants": [{"id": "o", "name": "1"}, {"id": "o", "name": "2"}]})
 
 
 def test_rename_and_delete(collection):
@@ -153,12 +182,12 @@ def test_save_replaces_the_fields_but_keeps_the_id_and_locked_ones(tmp_path):
     assert (saved.id, saved.name, saved.description) == ("a", "B", "keep me")
 
 
-def test_images_must_come_from_the_asset_library(collection):
+def test_images_must_come_from_the_observatory(collection):
     collection.create("A")
     ok = {"name": "A", "combatants": [{"id": "c1", "name": "Orc", "image_url": LIBRARY_IMAGE}]}
     assert collection.save("a", ok).combatants[0].image_url == LIBRARY_IMAGE
     bad = {"name": "A", "combatants": [{"id": "c1", "name": "Orc", "image_url": "https://evil.example/x.png"}]}
-    with pytest.raises(ValueError, match="asset library"):
+    with pytest.raises(ValueError, match="Observatory"):
         collection.save("a", bad)
 
 
@@ -177,26 +206,6 @@ def test_moving_a_document_keeps_its_slug(collection):
     collection.create("Orcs")
     with pytest.raises(ValueError):
         collection.move_item("orcs", "goblins/caves")
-
-
-def test_folders_can_be_created_renamed_moved_and_deleted(collection):
-    collection.create_folder("a")
-    with pytest.raises(ValueError):
-        collection.create_folder("a")
-    collection.create("Doc", folder_path="a")
-    collection.move_folder("a", new_name="b")
-    assert collection.get("b/doc") is not None
-    collection.create_folder("c")
-    collection.move_folder("b", new_parent_path="c")
-    assert collection.get("c/b/doc") is not None
-    with pytest.raises(ValueError):
-        collection.move_folder("c", new_parent_path="c/b")
-    assert collection.delete_folder("c") == ["c/b/doc"]
-    assert collection.list_tree("")["folders"] == []
-    with pytest.raises(ValueError):
-        collection.delete_folder("c")
-    with pytest.raises(ValueError):
-        collection.create_folder("folders")
 
 
 # ── events and commands ─────────────────────────────────────────────────────
@@ -352,7 +361,7 @@ def test_an_invalid_edit_changes_nothing(hub_and_collections):
     async def scenario():
         with pytest.raises(ValueError):
             await hub.mutate("encounter", "fight", lambda d: d.update(description="x" * 3000))
-        with pytest.raises(ValueError, match="asset library"):
+        with pytest.raises(ValueError, match="Observatory"):
             await hub.mutate("encounter", "fight", lambda d: doc_commands.add_items(
                 d, ENCOUNTER, "combatants", [{"name": "x", "image_url": "https://evil.example/x.png"}]))
         with pytest.raises(ValueError):
@@ -564,12 +573,18 @@ def test_a_character_keeps_its_values_when_renamed(hub_and_collections):
 
 # ── routes ──────────────────────────────────────────────────────────────────
 
+def observatory_of(encounters, characters):
+    return Observatory(encounters.backend, {"encounter": encounters, "character": characters})
+
+
 @pytest.fixture
 def api(hub_and_collections, monkeypatch):
     hub, encounters, characters = hub_and_collections
     app = FastAPI()
     app.include_router(make_doc_router(ENCOUNTER, encounters, hub, viewer=lambda request, doc_id: None))
     app.include_router(make_doc_router(CHARACTER, characters, hub, viewer=lambda request, doc_id: None))
+    app.state.observatory = observatory_of(encounters, characters)
+    app.include_router(make_observatory_router(app.state.observatory, hub, {}, image_viewer=lambda request, name: None))
     app.include_router(sync_routes.router)
     app.dependency_overrides[require_auth] = lambda: {"email": "gm@example.com", "name": "GM"}
     monkeypatch.setattr(sync_routes, "hub", hub)
@@ -581,8 +596,8 @@ def api(hub_and_collections, monkeypatch):
 def test_create_list_rename_move_and_delete_over_http(api):
     created = api.post("/api/encounters", json={"name": "Ambush", "folder_path": "goblins"}).json()
     assert created["id"] == "goblins/ambush"
-    tree = api.get("/api/encounters", params={"path": "goblins"}).json()
-    assert [e["id"] for e in tree["encounters"]] == ["goblins/ambush"]
+    tree = api.get("/api/observatory", params={"path": "goblins"}).json()
+    assert [(e["kind"], e["id"]) for e in tree["items"]] == [("encounter", "goblins/ambush")]
     assert api.get("/api/encounters/all").json()["encounters"][0]["name"] in ("Fight", "Ambush")
     assert api.post("/api/encounters/rename", json={"id": "goblins/ambush", "name": "Big ambush"}).json()["rev"] == 1
     moved = api.post("/api/encounters/move", json={"id": "goblins/ambush", "folder_path": ""}).json()
@@ -619,7 +634,7 @@ def test_mistakes_get_the_right_status(api):
     assert api.post("/api/encounters/nothing/combatants", json={"items": [{"name": "x"}]}).status_code == 404
     assert api.post("/api/encounters/fight/combatants", json={"items": [{"name": "x", "type": "monster"}]}).status_code == 400
     assert api.post("/api/encounters/fight/combatants/orc/adjust", json={"resource": "HP", "by": 99999}).status_code == 422
-    assert api.post("/api/encounters", json={"name": "Assets"}).status_code == 400
+    assert api.post("/api/encounters", json={"name": "   "}).status_code == 400
     assert api.post("/api/encounters/rename", json={"id": "fight", "name": "   "}).status_code == 400  # as for the saved kinds
     assert api.get("/api/encounters/fight").json()["name"] == "Fight"
 
@@ -633,7 +648,7 @@ def test_a_character_cannot_be_in_an_encounter_twice_nor_carry_counters(api):
 
 
 def test_characters_over_http(api):
-    assert api.get("/api/characters").json()["characters"] == []
+    assert api.get("/api/characters/all").json()["characters"] == []
     assert api.get("/api/characters/aria").status_code == 404
     made = api.post("/api/characters", json={"name": "Aria", "folder_path": "party"}).json()
     assert made["id"] == "party/aria"
@@ -644,7 +659,8 @@ def test_characters_over_http(api):
     assert api.patch("/api/characters/party/aria", json={"resources": {}}).status_code == 400   # they follow the sheet
     assert api.patch("/api/characters/party/aria", json={"source": "- not a mapping"}).status_code == 400
     assert api.get("/api/characters/party/aria").json()["subtitle"] == "Ranger"   # what its card shows
-    assert [c["id"] for c in api.get("/api/characters", params={"path": "party"}).json()["characters"]] == ["party/aria"]
+    listed = api.get("/api/observatory", params={"path": "party"}).json()["items"]
+    assert [(c["kind"], c["id"]) for c in listed] == [("character", "party/aria")]
 
 
 def test_moving_characters_tells_whoever_names_them(hub_and_collections):
@@ -656,13 +672,16 @@ def test_moving_characters_tells_whoever_names_them(hub_and_collections):
 
     app = FastAPI()
     app.include_router(make_doc_router(CHARACTER, characters, hub, on_moved=follow))
+    app.include_router(make_observatory_router(
+        observatory_of(hub_and_collections[1], characters), hub, {"character": follow}, image_viewer=lambda r, n: None,
+    ))
     app.dependency_overrides[require_auth] = lambda: {"email": "gm@example.com"}
     with TestClient(app) as api:
         api.post("/api/characters", json={"name": "Aria", "folder_path": "party"})
         api.post("/api/characters", json={"name": "Bram", "folder_path": "party/old"})
         assert api.post("/api/characters/move", json={"id": "party/aria", "folder_path": ""}).json()["id"] == "aria"
-        api.put("/api/characters/folders/party", json={"name": "heroes"})
-        api.post("/api/characters/folders/move", json={"path": "heroes/old", "dest_parent_path": ""})
+        api.put("/api/observatory/folders/party", json={"name": "heroes"})
+        api.post("/api/observatory/folders/move", json={"path": "heroes/old", "dest_parent_path": ""})
         api.post("/api/characters/move", json={"id": "aria", "folder_path": ""})   # stays: nothing to tell
     assert moves == [{"party/aria": "aria"}, {"party/old/bram": "heroes/old/bram"}, {"heroes/old/bram": "old/bram"}]
 
@@ -721,16 +740,17 @@ def test_a_command_that_slips_in_while_a_document_is_deleted_does_not_bring_it_b
 
 def test_nor_while_it_is_moved_or_its_folder_is(api, hub_and_collections, monkeypatch):
     hub, encounters, _ = hub_and_collections
+    observatory = api.app.state.observatory
     api.post("/api/encounters", json={"name": "Moving", "folder_path": "old"})
     api.get("/api/encounters/old/moving")
-    real_move = encounters.move_folder
+    real_move = observatory.move_folder
 
     def move_folder(path, new_parent_path=None, new_name=None):
         _a_late_command_loads_the_document_again(hub, encounters, "old/moving")
-        real_move(path, new_parent_path, new_name)
+        return real_move(path, new_parent_path, new_name)
 
-    monkeypatch.setattr(encounters, "move_folder", move_folder)
-    assert api.put("/api/encounters/folders/old", json={"name": "new"}).status_code == 200
+    monkeypatch.setattr(observatory, "move_folder", move_folder)
+    assert api.put("/api/observatory/folders/old", json={"name": "new"}).status_code == 200
     run(hub.flush_all())
     assert encounters.read_raw("old/moving") is None
     assert encounters.read_raw("new/moving")["name"] == "Moving"
@@ -773,7 +793,6 @@ def test_everything_needs_a_signed_in_user(hub_and_collections):
     if not settings.ENABLE_AUTH:
         pytest.skip("authentication is switched off in this environment")
     with TestClient(app) as client:
-        assert client.get("/api/encounters").status_code == 401
         assert client.get("/api/encounters/fight").status_code == 401
         assert client.post("/api/encounters/fight/combatants", json={"items": []}).status_code == 401
         assert client.get("/api/encounters/all").status_code == 401

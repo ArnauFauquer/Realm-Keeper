@@ -6,7 +6,7 @@ from config.logging import get_logger
 from config.settings import settings
 from models.chart import Annotation, ChartPath, Pin
 from models.vista import VanishingPoint, VistaAsset
-from routes.asset_library import ASSET_LIBRARY_URL_PREFIX
+from services.storage_service import IMAGE_URL_PREFIX
 from routes.auth import require_auth
 from routes.screen_access import displayed_item, websocket_allowed
 from services.auth_service import (
@@ -271,10 +271,10 @@ class ConstellationRequest(BaseModel):
 
 
 def _require_library_urls(*urls: Optional[str]) -> None:
-    """Same rule as saving: a draft may only draw images from the asset
-    library, since paired screens are allowed to read exactly those."""
-    if any(url and not url.startswith(ASSET_LIBRARY_URL_PREFIX) for url in urls):
-        raise HTTPException(status_code=400, detail="Images must be assets from the asset library")
+    """Same rule as saving: a draft may only draw images from the
+    Observatory, since paired screens are allowed to read exactly those."""
+    if any(url and not url.startswith(IMAGE_URL_PREFIX) for url in urls):
+        raise HTTPException(status_code=400, detail="Images must be images from the Observatory")
 
 
 @router.post("/api/screen/vista/live")

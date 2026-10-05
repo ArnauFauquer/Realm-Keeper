@@ -1,11 +1,11 @@
-// The kinds of document the app keeps in folders (backend services/doc_registry.py),
-// each described once: how to word it, how a gallery draws it, how a note refers
-// to it. What an editor looks like is the part that differs, so that stays in
-// each kind's modal; everything else reads from here.
+// The kinds of document the app keeps in the Observatory's folders (backend
+// services/doc_registry.py), each described once: how to word it, how the
+// Observatory draws it, how a note refers to it. What an editor looks like is the
+// part that differs, so that stays in each kind's modal; everything else reads from here.
 //
 //   resource    the URL under /api/ (and the key of the API client in api/docs.js)
-//   imageField  the picture a gallery card shows, and what a screen needs to show it
-//   assetRoute  POST /<id>/<route> sets that picture to an asset library image
+//   imageField  the picture its Observatory card shows, and what a screen needs to show it
+//   assetRoute  POST /<id>/<route> sets that picture to an Observatory image
 //   saved       a document edited whole and saved with a button (not live): the
 //               fields a save sends besides its name and description
 //   screen      can be shown on the table screen, and mirrored there as it is edited
@@ -20,9 +20,6 @@ export const DOC_TYPES = {
     plural: 'charts',
     label: 'chart',
     icon: 'mdi-map-marker-radius',
-    thumbIcon: 'mdi-map-outline',
-    emptyIcon: 'mdi-compass-outline',
-    emptyText: 'No charts yet. Create one to pin places and routes on a map.',
     imageField: 'image_url',
     assetRoute: 'image',
     saved: ['pins', 'paths', 'annotations'],
@@ -36,11 +33,8 @@ export const DOC_TYPES = {
     plural: 'vistas',
     label: 'vista',
     icon: 'mdi-image-frame',
-    // (the icon a note's embed placeholder shows is not the gallery's)
+    // (the icon a note's embed placeholder shows is not the Observatory's)
     embedIcon: 'mdi-image-filter-hdr',
-    thumbIcon: 'mdi-image-outline',
-    emptyIcon: 'mdi-image-frame',
-    emptyText: 'No vistas yet. Create one to stage a scene for the table screen.',
     imageField: 'background_url',
     assetRoute: 'background',
     saved: ['vanishing_point', 'background_offset_y', 'assets'],
@@ -53,9 +47,7 @@ export const DOC_TYPES = {
     title: 'Encounters',
     plural: 'encounters',
     label: 'encounter',
-    icon: 'mdi-sword-cross',
-    emptyIcon: 'mdi-sword-cross',
-    emptyText: 'No encounters yet. Create one to track who is in a fight, their counters and conditions.'
+    icon: 'mdi-sword-cross'
   },
   character: {
     type: 'character',
@@ -65,9 +57,6 @@ export const DOC_TYPES = {
     label: 'character',
     icon: 'mdi-account-heart-outline',
     embedIcon: 'mdi-card-account-details-outline',
-    thumbIcon: 'mdi-account',
-    emptyIcon: 'mdi-account-heart-outline',
-    emptyText: 'No characters yet. Create one for each player character or recurring NPC: its counters keep their values wherever it shows.',
     imageField: 'image',
     embeddable: true,
     sheet: true
@@ -80,9 +69,6 @@ export const DOC_TYPES = {
     label: 'adversary',
     icon: 'mdi-skull-outline',
     embedIcon: 'mdi-card-account-details-outline',
-    thumbIcon: 'mdi-skull-outline',
-    emptyIcon: 'mdi-skull-outline',
-    emptyText: 'No adversaries yet. Create one as a template: each time it is added to an encounter, it is copied.',
     imageField: 'image',
     saved: ['source'],
     embeddable: true,
@@ -94,10 +80,17 @@ export const DOC_TYPES = {
     title: 'Battlemaps',
     plural: 'battlemaps',
     label: 'battlemap',
-    icon: 'mdi-grid',
-    emptyIcon: 'mdi-grid',
-    emptyText: 'No battlemaps yet. Create one to play a fight out on a grid with tokens.'
+    icon: 'mdi-grid'
   }
+}
+
+/** The Observatory's other kind of file: an image, worded like the documents. */
+export const IMAGE_KIND = {
+  type: 'image',
+  title: 'Images',
+  plural: 'images',
+  label: 'image',
+  icon: 'mdi-image-outline'
 }
 
 /** The kinds a note can embed, as `<type>:<id>`. */

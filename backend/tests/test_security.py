@@ -63,32 +63,35 @@ def test_session_revoked_when_removed_from_allowlist(client):
         client.cookies.clear()
 
 
-def test_asset_endpoint_cannot_read_other_prefixes(client):
-    # Audio lives outside asset-library/ and is behind login on /api/player.
+def test_the_image_endpoint_serves_only_images(client):
+    # Audio lives outside observatory/ and is behind login on /api/player; the
+    # documents beside the images are read through their own routes.
+    from services.doc_registry import chart_collection
+    chart_collection.write_raw("aa000009-x", {"id": "aa000009-x", "name": "X"})
     client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
     try:
-        r = client.get("/api/asset-library/assets/Combat/boss-theme.mp3")
-        assert r.status_code == 400
+        for name in ("Combat%2Fboss-theme.mp3", "boss-theme.mp3", "aa000009-x.chart.json", "..%2F..%2Fsecret.png"):
+            assert client.get(f"/api/observatory/images/{name}").status_code in (400, 404), name
     finally:
         client.cookies.clear()
 
 
 def test_track_keys_cannot_reach_beyond_the_player(monkeypatch):
-    """Whatever a track key says, it names something under player/: not the
-    asset library, not a document."""
+    """Whatever a track key says, it names something under player/: not an
+    image, not a document."""
     reached = []
     monkeypatch.setattr(storage_service, "_get_object_stream", lambda key, range_header=None: reached.append(key))
-    storage_service.get_track_stream("asset-library/map.png")
+    storage_service.get_track_stream("observatory/map.png")
     storage_service.get_track_stream("charts/chart.json")
-    assert reached == ["player/asset-library/map.png", "player/charts/chart.json"]
+    assert reached == ["player/observatory/map.png", "player/charts/chart.json"]
     for key in ("../x/y.mp3", "a/../y.mp3", "a/b/c.mp3", "chart.json", "/a.mp3"):
         with pytest.raises(storage_service.StorageError):
             storage_service.get_track_stream(key)
 
 
 def test_served_content_type_ignores_uploaded_metadata():
-    assert storage_service.content_type_for("asset-library/evil.png") == "image/png"
-    assert storage_service.content_type_for("asset-library/evil.html") == "application/octet-stream"
+    assert storage_service.content_type_for("observatory/evil.png") == "image/png"
+    assert storage_service.content_type_for("observatory/evil.html") == "application/octet-stream"
 
 
 def test_cross_origin_write_blocked(client):
@@ -171,31 +174,34 @@ def test_cookie_secure_follows_frontend_scheme():
     assert secure_flag(FRONTEND_URL="https://app.example.com", SESSION_COOKIE_SECURE="false") == "False"
 
 
-# ── charts, vistas and the asset library: login, or a paired screen ──────
+# ── charts, vistas and the Observatory: login, or a paired screen ────────
 
-MAP_KEY = "asset-library/maps/tavern.png"
-ICON_KEY = "asset-library/icons/pin.png"
-OTHER_KEY = "asset-library/maps/dungeon.png"
+# Images, by the file name they are served by; a URL names one by its uid.
+MAP_KEY = "aa000001-tavern.png"
+ICON_KEY = "aa000002-pin.png"
+OTHER_KEY = "aa000003-dungeon.png"
+LIVE_ASSET = "aa000004-unsaved-orc.png"
+
+
+def _url(name):
+    return f"/api/observatory/images/{name}"
 
 
 @pytest.fixture
 def screen_state(client, monkeypatch):
-    """A chart and a vista in the document store, S3 stubbed out, and a clean screen."""
+    """A chart, a vista and their images in the store, and a clean screen."""
+    import io
     from routes import screen
-    from services.doc_registry import chart_collection, vista_collection
+    from services.doc_registry import chart_collection, observatory, vista_collection
 
+    for folder, name in (("maps", MAP_KEY), ("icons", ICON_KEY), ("maps", OTHER_KEY), ("props", LIVE_ASSET)):
+        observatory.backend.put_file(f"observatory/{folder}/{name}", io.BytesIO(b"png"), "image/png")
+    observatory._forget_index()   # put straight in the store, not uploaded
     chart_collection.write_raw("tavern", {
-        "id": "tavern", "name": "Tavern", "image_url": f"/api/asset-library/assets/{MAP_KEY}",
-        "pins": [{"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": f"/api/asset-library/assets/{ICON_KEY}"}],
+        "id": "tavern", "name": "Tavern", "image_url": _url(MAP_KEY),
+        "pins": [{"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": _url(ICON_KEY)}],
     })
     vista_collection.write_raw("night", {"id": "night", "name": "Night"})
-
-    class _Body:
-        def iter_chunks(self, chunk_size):
-            yield b"png"
-
-    monkeypatch.setattr(storage_service, "get_library_asset_stream",
-                        lambda key: {"Body": _Body(), "ContentLength": 3})
     monkeypatch.setattr(screen.manager, "current_state", None)
     monkeypatch.setattr(screen.manager, "live_draft", None)
     client.cookies.clear()
@@ -204,12 +210,12 @@ def screen_state(client, monkeypatch):
 
 
 def _asset(client, key):
-    return client.get(f"/api/asset-library/assets/{key}").status_code
+    return client.get(_url(key)).status_code
 
 
 def test_library_charts_and_vistas_need_login(client, screen_state):
-    for url in ["/api/charts", "/api/charts/tavern", "/api/vistas", "/api/vistas/night",
-                "/api/asset-library", f"/api/asset-library/assets/{MAP_KEY}"]:
+    for url in ["/api/charts/all", "/api/charts/tavern", "/api/vistas/all", "/api/vistas/night",
+                "/api/observatory", _url(MAP_KEY)]:
         r = client.get(url)
         assert r.status_code == 401, url
         # A 401 must never be cached (assets are otherwise cached for a year).
@@ -231,10 +237,11 @@ def test_paired_screen_sees_only_what_is_on_screen(client, screen_state):
     assert _asset(client, ICON_KEY) == 200
     assert _asset(client, OTHER_KEY) == 401            # not part of the chart
     assert client.get("/api/vistas/night").status_code == 401
-    assert client.get("/api/charts").status_code == 401  # never the listing
+    assert client.get("/api/charts/all").status_code == 401  # never the listing
+    assert client.get("/api/observatory").status_code == 401
 
     screen_state.current_state = {
-        "type": "display_media", "url": f"https://app.example.com/api/asset-library/assets/{OTHER_KEY}",
+        "type": "display_media", "url": f"https://app.example.com{_url(OTHER_KEY)}",
     }
     assert _asset(client, OTHER_KEY) == 200
     assert client.get("/api/charts/tavern").status_code == 401
@@ -269,7 +276,7 @@ def test_what_a_screen_may_read_is_looked_up_once_per_thing_shown(client, screen
     assert len(reads) == 2
 
     # Saved while it is shown: picked up once the answer has aged.
-    chart_collection.write_raw("tavern", {"id": "tavern", "name": "Tavern", "image_url": f"/api/asset-library/assets/{OTHER_KEY}"})
+    chart_collection.write_raw("tavern", {"id": "tavern", "name": "Tavern", "image_url": _url(OTHER_KEY)})
     assert _asset(client, OTHER_KEY) == 401
     screen_access._shown["until"] = 0
     assert _asset(client, OTHER_KEY) == 200
@@ -281,9 +288,6 @@ def test_dice_roll_keeps_what_is_on_screen(client, screen_state):
     client.post("/api/screen/chart", json={"chart_id": "tavern"})
     client.post("/api/screen/dice", json={"formula": "1d20", "total": 7})
     assert screen_state.current_state == {"type": "display_chart", "chart_id": "tavern"}
-
-
-LIVE_ASSET = "asset-library/props/unsaved-orc.png"
 
 
 def _gm(client):
@@ -305,7 +309,7 @@ def test_live_edit_is_ignored_unless_that_item_is_on_screen(client, screen_state
 def test_live_edit_rides_beside_what_is_on_screen(client, screen_state):
     _gm(client)
     client.post("/api/screen/vista", json={"vista_id": "night"})
-    asset = {"id": "a", "name": "Orc", "image_url": f"/api/asset-library/assets/{LIVE_ASSET}", "x": 12}
+    asset = {"id": "a", "name": "Orc", "image_url": _url(LIVE_ASSET), "x": 12}
     r = client.post("/api/screen/vista/live", json={"vista_id": "night", "assets": [asset]})
     assert r.json() == {"status": "success"}
 
@@ -327,7 +331,7 @@ def test_live_edit_rides_beside_what_is_on_screen(client, screen_state):
 def test_live_edit_keeps_unsaved_images_readable_by_the_screen(client, screen_state):
     _gm(client)
     client.post("/api/screen/chart", json={"chart_id": "tavern"})
-    pin = {"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": f"/api/asset-library/assets/{LIVE_ASSET}"}
+    pin = {"id": "p", "x": 1, "y": 1, "name": "p", "icon_url": _url(LIVE_ASSET)}
     client.post("/api/screen/chart/live", json={"chart_id": "tavern", "pins": [pin]})
     client.cookies.clear()
 
