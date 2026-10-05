@@ -125,6 +125,47 @@ def test_create_names_a_document_by_its_slug_and_keeps_it_unique(collection):
     assert collection.get("nothing") is None
 
 
+def test_a_slug_keeps_the_letters_of_an_accented_name(collection):
+    assert collection.create("Ciénaga del Jabalí").id == "cienaga-del-jabali"
+    assert collection.create("龍の巣").id == "encounter"   # nothing to keep: the kind's name
+
+
+def test_documents_made_at_once_with_one_name_get_different_slugs(collection):
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        ids = list(pool.map(lambda _: collection.create("Ambush").id, range(8)))
+    assert len(set(ids)) == 8
+
+
+def test_a_document_cannot_be_in_a_folder_named_like_one_of_its_lists(collection):
+    # "a/combatants/b" would read as combatant "b" of encounter "a".
+    with pytest.raises(ValueError, match="folder named 'combatants'"):
+        collection.create("B", folder_path="a/combatants")
+    collection.create("B", folder_path="a")
+    with pytest.raises(ValueError, match="folder named 'combatants'"):
+        collection.move_item("a/b", "a/combatants")
+
+
+def test_a_damaged_document_can_still_be_deleted(collection, tmp_path):
+    collection.create("Broken")
+    collection.backend.put(collection.key("broken"), "{not json")
+    collection.create("Odd")
+    collection.backend.put(collection.key("odd"), "[1, 2]")
+    with pytest.raises(ValueError):
+        collection.read_raw("odd")      # not a TypeError: a 400, not a 500
+    collection.move_item("broken", "attic")
+    collection.delete("attic/broken")
+    collection.delete("odd")
+    assert collection.list_all() == []
+
+
+def test_names_too_long_for_the_store_are_refused(collection):
+    with pytest.raises(ValueError, match="too long"):
+        collection.create("x" * 300)    # its slug, as a key
+    with pytest.raises(ValueError, match="too long"):
+        collection.create("Fine", folder_path="/".join(["deep"] * 200))
+
+
 def test_create_needs_a_name_and_never_names_a_document_like_a_route(collection):
     with pytest.raises(ValueError):
         collection.create("   ")
@@ -304,12 +345,15 @@ def test_only_declared_fields_can_be_patched():
 
 class FakeSocket:
     def __init__(self, fail=False):
-        self.sent, self.fail = [], fail
+        self.sent, self.fail, self.closed = [], fail, None
 
     async def send_json(self, event):
         if self.fail:
             raise RuntimeError("gone")
         self.sent.append(event)
+
+    async def close(self, code=1000):
+        self.closed = code
 
 
 @pytest.fixture
@@ -402,6 +446,9 @@ def test_a_socket_that_fails_is_dropped_and_the_others_still_hear(hub_and_collec
         hub.connect(fine)
         await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
         assert len(fine.sent) == 1 and broken not in hub._sockets
+        await asyncio.sleep(0)
+        # Closed too, so a client that was only slow reconnects and catches up.
+        assert broken.closed == 1011 and fine.closed is None
 
     run(scenario())
 
@@ -767,6 +814,70 @@ def test_nor_while_it_is_moved_or_its_folder_is(api, hub_and_collections, monkey
     assert api.post("/api/encounters/move", json={"id": "new/moving", "folder_path": ""}).json()["id"] == "moving"
     run(hub.flush_all())
     assert encounters.read_raw("new/moving") is None
+
+
+def test_a_command_that_lands_during_the_last_save_does_not_bring_a_deleted_document_back(hub_and_collections, monkeypatch):
+    hub, encounters, _ = hub_and_collections
+    monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 60)
+    real_write = encounters.write_raw
+
+    def slow_write(doc_id, data):
+        time.sleep(0.2)   # an S3 PUT
+        return real_write(doc_id, data)
+
+    async def scenario():
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="a"))
+        monkeypatch.setattr(encounters, "write_raw", slow_write)
+
+        async def delete():
+            async with hub.released("encounter", ["fight"]):
+                await asyncio.to_thread(encounters.delete, "fight")
+
+        async def late_command():
+            await asyncio.sleep(0.05)   # while the last save is being written
+            with pytest.raises(DocNotFound):
+                await hub.mutate("encounter", "fight", lambda d: d.update(description="b"))
+
+        await asyncio.gather(delete(), late_command())
+        await hub.flush_all()
+        await asyncio.sleep(0.3)
+        assert encounters.read_raw("fight") is None
+        assert ("encounter", "fight") not in hub._rooms
+
+    run(scenario())
+
+
+def test_a_document_whose_last_save_fails_is_not_moved_or_deleted(hub_and_collections, monkeypatch):
+    hub, encounters, _ = hub_and_collections
+    monkeypatch.setattr(sync_hub, "FLUSH_DELAY", 60)
+    monkeypatch.setattr(sync_hub, "FLUSH_RETRY_DELAY", 60)
+
+    def broken(doc_id, data):
+        raise OSError("disk full")
+
+    async def scenario():
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="unsaved"))
+        monkeypatch.setattr(encounters, "write_raw", broken)
+        with pytest.raises(OSError):
+            async with hub.released("encounter", ["fight"]):
+                pytest.fail("the delete must not run")
+        # Still held, still to be saved, and usable.
+        assert hub.held("encounter", "fight")["description"] == "unsaved"
+        await hub.mutate("encounter", "fight", lambda d: d.update(description="still here"))
+
+    run(scenario())
+
+
+def test_the_hub_knows_a_document_by_its_id_however_it_is_written(hub_and_collections):
+    hub, _, _ = hub_and_collections
+
+    async def scenario():
+        await hub.mutate("encounter", "fight/", lambda d: d.update(description="1"))
+        await hub.mutate("encounter", "/fight", lambda d: d.update(description="2"))
+        assert list(hub._rooms) == [("encounter", "fight")]
+        assert (await hub.snapshot("encounter", "fight"))["rev"] == 2
+
+    run(scenario())
 
 
 def test_discarding_a_room_drops_its_pending_save(hub_and_collections, monkeypatch):
