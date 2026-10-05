@@ -249,6 +249,51 @@ def test_a_zip_takes_only_what_belongs_in_the_tree(observatory, monkeypatch):
     assert report["items"] == [] and "at most" in report["skipped"][0]["reason"]
 
 
+def test_a_damaged_zip_entry_is_left_out_not_the_whole_import(observatory):
+    archive = _zip({"good.vista.json": json.dumps({"name": "Good"}), "bad.vista.json": json.dumps({"name": "Bad"})})
+    raw = bytearray(archive.getvalue())
+    # Corrupt the second entry's data, so reading it fails its CRC check (a BadZipFile, not a ValueError).
+    at = raw.index(b'{"name": "Bad"}')
+    raw[at + 10] ^= 0xFF
+    report = observatory.import_files("", [("damaged.zip", io.BytesIO(bytes(raw)))])
+    assert _items(report) == [("vista", "good")]
+    assert [s["path"] for s in report["skipped"]] == ["bad.vista.json"]
+
+
+def test_a_document_larger_than_a_document_may_be_is_not_read_whole(observatory):
+    huge = json.dumps({"name": "Huge", "description": "x" * 2_000_000})
+    report = observatory.import_files("", [("huge.vista.json", io.BytesIO(huge.encode()))])
+    assert report["items"] == [] and "too large" in report["skipped"][0]["reason"]
+
+
+def test_a_folder_cannot_take_a_document_into_a_folder_named_like_its_lists(observatory):
+    observatory.collections["encounter"].create("Fight", folder_path="act 2")
+    observatory.create_folder("maps")
+    with pytest.raises(ValueError, match="combatants"):
+        observatory.move_folder("act 2", new_name="combatants")
+    with pytest.raises(ValueError, match="combatants"):
+        observatory.move_folder("act 2", new_parent_path="maps/combatants")
+    assert observatory.collections["encounter"].get("act 2/fight") is not None
+
+
+def test_a_folder_moves_where_an_empty_one_was_left(observatory, tmp_path):
+    observatory.collections["chart"].create("Tavern", folder_path="old")
+    (tmp_path / "store" / "observatory" / "new" / "empty").mkdir(parents=True)
+    observatory.move_folder("old", new_name="new")
+    assert observatory.collections["chart"].get("new/tavern") is not None
+
+
+def test_a_delete_the_store_could_only_partly_do_is_an_error():
+    from services import storage_service
+
+    class Refusing(FakeS3):
+        def delete_objects(self, Bucket, Delete):
+            return {"Errors": [{"Key": Delete["Objects"][0]["Key"], "Code": "AccessDenied", "Message": "no"}]}
+
+    with pytest.raises(storage_service.StorageError, match="AccessDenied|no"):
+        storage_service.delete_keys(Refusing({"a": b"1"}), ["a"])
+
+
 # ── the routes ──────────────────────────────────────────────────────────────
 
 @pytest.fixture
