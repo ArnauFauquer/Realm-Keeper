@@ -6,6 +6,9 @@ const SUPPORTED_SIDES = [2, 4, 6, 8, 10, 12, 20, 100]
 // Every die is a live physics body, so a formula pasted into a note can't be
 // allowed to throw hundreds of them at once.
 export const MAX_DICE = 50
+// A flat modifier is typed by hand, so it gets a bound too: past this a
+// number is a typo (or a pasted id), and a huge one would print as 1e+23.
+export const MAX_MODIFIER = 10000
 
 // `hf` is the Hope & Fear (duality) pair: two d12s told apart by colour,
 // summed like any other dice, plus an outcome read from which one is higher.
@@ -68,7 +71,9 @@ export function parseDiceFormula(text) {
       continue
     }
     if (match[8] !== undefined) {
-      flatModifier += sign * parseInt(match[8], 10)
+      const value = parseInt(match[8], 10)
+      if (value > MAX_MODIFIER) return null
+      flatModifier += sign * value
       continue
     }
     const count = match[4] ? parseInt(match[4], 10) : 1
@@ -86,6 +91,8 @@ export function parseDiceFormula(text) {
 
   if (terms.length === 0) return null
   if (countPhysicalDice(terms) > MAX_DICE) return null
+  // Each number is in bounds, but several of them could still add up past it.
+  if (Math.abs(flatModifier) > MAX_MODIFIER) return null
 
   return { formula: trimmed, terms, flatModifier }
 }

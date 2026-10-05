@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_DICE, droppedIndices, formatDiceFormula, parseDiceFormula, resolveDuality, resolveNatural, rollClass } from '@/utils/diceNotation'
+import { MAX_DICE, MAX_MODIFIER, droppedIndices, formatDiceFormula, parseDiceFormula, resolveDuality, resolveNatural, rollClass } from '@/utils/diceNotation'
 
 describe('parseDiceFormula', () => {
   it('parses subtracted dice', () => {
@@ -111,5 +111,23 @@ describe('dice limit', () => {
     expect(parseDiceFormula(`${MAX_DICE}d6+1d4`)).toBeNull()
     expect(parseDiceFormula('26d100')).toBeNull()
     expect(parseDiceFormula('100d20+100d20')).toBeNull()
+  })
+})
+
+describe('modifier limit', () => {
+  it('accepts a modifier up to MAX_MODIFIER either way', () => {
+    expect(parseDiceFormula(`1d6+${MAX_MODIFIER}`).flatModifier).toBe(MAX_MODIFIER)
+    expect(parseDiceFormula(`1d6-${MAX_MODIFIER}`).flatModifier).toBe(-MAX_MODIFIER)
+  })
+
+  it('rejects a modifier past MAX_MODIFIER', () => {
+    expect(parseDiceFormula(`1d6+${MAX_MODIFIER + 1}`)).toBeNull()
+    expect(parseDiceFormula('1d6+99999999999999999999999')).toBeNull()
+    expect(parseDiceFormula('1d6-99999999999999999999999')).toBeNull()
+  })
+
+  it('rejects modifiers that only add up past MAX_MODIFIER', () => {
+    expect(parseDiceFormula(`1d6+${MAX_MODIFIER}+1`)).toBeNull()
+    expect(parseDiceFormula(`1d6+${MAX_MODIFIER}-1`).flatModifier).toBe(MAX_MODIFIER - 1)
   })
 })
