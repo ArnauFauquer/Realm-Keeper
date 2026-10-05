@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.3...v0.3.0) (2026-10-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **observatory:** the bucket layout and image URLs change. Run backend/scripts/migrate_to_observatory.py against the bucket (--copy-only before the deploy, --apply after it), and with --vault on a checkout of the vault to rewrite the notes' image links.
+
+### Features
+
+* **dice:** a roll with no sheet behind it shows the player who rolled it ([#41](https://github.com/ArnauFauquer/Realm-Keeper/issues/41)) ([718ee28](https://github.com/ArnauFauquer/Realm-Keeper/commit/718ee28718a4d041b234458db10cba7f8ca08ddb))
+* **notes:** roll tables, a table headed by a die rolls on itself ([#45](https://github.com/ArnauFauquer/Realm-Keeper/issues/45)) ([7682462](https://github.com/ArnauFauquer/Realm-Keeper/commit/7682462bbc7392ac9eac330bf5eec9106a82e353))
+* **observatory:** one file manager for every document and image ([#40](https://github.com/ArnauFauquer/Realm-Keeper/issues/40)) ([ba90287](https://github.com/ArnauFauquer/Realm-Keeper/commit/ba9028761782a656f898c4e3150816d381f76caf))
+
 ## [0.2.3](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.2...v0.2.3) (2026-10-04)
 
 
