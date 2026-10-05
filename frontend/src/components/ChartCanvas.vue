@@ -136,6 +136,7 @@
             :transform="`translate(${toPx(pin.x)}, ${toPy(pin.y)})`"
             @pointerdown.stop="editable && startDrag('pin', pin.id)"
             @click.stop="onPinClick(pin)"
+            @dblclick.stop="onPinDblClick(pin)"
             @mousedown.stop.prevent
             @touchstart.stop
             @mouseenter="hoveredPin = pin"
@@ -484,6 +485,13 @@ function onPinClick(pin) {
   } else if (pin.note_path) {
     emit('open-note', pin.note_path)
   }
+}
+
+// While editing, a single click selects the pin, so a double click is the way
+// through to its note. Viewers already get there with the single click.
+function onPinDblClick(pin) {
+  if (dragMoved || !props.editable || !pin.note_path) return
+  emit('open-note', pin.note_path)
 }
 
 const filteredPinNotes = computed(() => {
