@@ -44,16 +44,17 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ChartCanvas from './ChartCanvas.vue'
 import VistaCanvas from './VistaCanvas.vue'
 import { docApi } from '@/api/docs'
-import { post, errorMessage } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { errorMessage } from '@/api/http'
+import { screenApi } from '@/api/screen'
 import { resolveUrl } from '@/utils/resolveUrl'
 import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
 import { useDocModal } from '@/composables/useDocModal'
+import { useFlash } from '@/composables/useFlash'
 
 const props = defineProps({
   type: { type: String, required: true }, // 'chart' | 'vista'
@@ -85,15 +86,14 @@ const config = computed(() => ({
   icon: embedIcon(props.type),
   fetch: docApi(props.type).fetch,
   modal: () => useDocModal(props.type),
-  screen: (id) => post(`${apiUrl}/api/screen/${props.type}`, { [`${props.type}_id`]: id })
+  screen: screenApi[props.type]
 }))
 const doc = ref(null)
 const loading = ref(true)
 const error = ref(null)
-const sent = ref(false)
+const { on: sent, flash: flashSent } = useFlash()
 const locked = ref(false)
 const imageRatio = ref(null)
-let sentTimeout = null
 
 const hasImage = computed(() => !!doc.value?.[config.value.imageKey])
 const canvasProps = computed(() => config.value.canvasProps(doc.value))
@@ -144,15 +144,11 @@ function openNote(notePath) {
 async function sendToScreen() {
   try {
     await config.value.screen(props.id)
-    sent.value = true
-    clearTimeout(sentTimeout)
-    sentTimeout = setTimeout(() => { sent.value = false }, 2000)
+    flashSent()
   } catch (err) {
     console.error(`Failed to send ${props.type} to screen:`, err)
   }
 }
-
-onBeforeUnmount(() => clearTimeout(sentTimeout))
 </script>
 
 <style scoped>

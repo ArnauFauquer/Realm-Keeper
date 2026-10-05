@@ -146,3 +146,21 @@ describe('errorMessage', () => {
     expect(errorMessage(new Error('Network Error'), 'Could not create the album.')).toBe('Could not create the album.')
   })
 })
+
+describe('the screen client', () => {
+  it('sends each thing to its own screen route', async () => {
+    const { screenApi } = await import('@/api/screen')
+    answer = () => ({ data: { status: 'success' } })
+    await screenApi.display('/api/observatory/images/1a2b3c4d-map.png', 'Map')
+    await screenApi.battlemap('caves/fight')
+    await screenApi.clear()
+    await screenApi.live('chart', { chart_id: 'tavern', pins: [] })
+    const sent = adapter.mock.calls.map(([config]) => [config.url, JSON.parse(config.data)])
+    expect(sent).toEqual([
+      ['/api/screen/display', { url: '/api/observatory/images/1a2b3c4d-map.png', title: 'Map' }],
+      ['/api/screen/battlemap', { battlemap_id: 'caves/fight' }],
+      ['/api/screen/clear', {}],
+      ['/api/screen/chart/live', { chart_id: 'tavern', pins: [] }]
+    ])
+  })
+})

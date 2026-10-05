@@ -1,6 +1,6 @@
 import { ref, watch } from 'vue'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { screenApi } from '@/api/screen'
+import { useFlash } from './useFlash'
 
 // Edits arrive far faster than the table needs to see them (a drag fires on
 // every pointer move); this keeps the screen smooth without flooding the socket.
@@ -22,7 +22,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
   const showPayload = (doc) => (buildShowPayload ? buildShowPayload(doc) : { [`${kind}_id`]: doc.id })
 
   const live = ref(false)
-  const sending = ref(false)
+  const { on: sending, flash: flashSent } = useFlash()
 
   let timer = null
   let dirty = false
@@ -32,7 +32,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
     timer = null
     if (!live.value || !dirty || !source.value) return
     dirty = false
-    inflight = post(`${apiUrl}/api/screen/${kind}/live`, buildPayload(source.value))
+    inflight = screenApi.live(kind, buildPayload(source.value))
       .then((res) => {
         // Something else replaced this on screen (sent from elsewhere, or
         // cleared): editing it no longer shows anywhere, so stop mirroring.
@@ -54,7 +54,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
 
   async function show() {
     if (!source.value) return
-    await post(`${apiUrl}/api/screen/${kind}`, showPayload(source.value))
+    await screenApi.show(kind, showPayload(source.value))
     // Showing replaces whatever draft the screen had: put the current edits
     // back so a live screen never falls back to the saved version.
     if (live.value) schedule()
@@ -64,8 +64,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
     if (!source.value) return
     try {
       await show()
-      sending.value = true
-      setTimeout(() => { sending.value = false }, 2000)
+      flashSent()
     } catch (err) {
       console.error(`Failed to send ${kind} to screen:`, err)
     }
@@ -95,7 +94,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
     try {
       // A draft already on its way must land before the revert, not after.
       await inflight
-      if (revert && doc) await post(`${apiUrl}/api/screen/${kind}`, showPayload(doc))
+      if (revert && doc) await screenApi.show(kind, showPayload(doc))
     } catch (err) {
       console.error(`Failed to stop live ${kind}:`, err)
     }
