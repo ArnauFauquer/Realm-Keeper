@@ -32,16 +32,25 @@
           <span>Search Notes</span>
         </button>
         <!-- The Observatory (every document and image) is behind login, like the player. -->
-        <button
-          v-if="user"
-          class="observatory-trigger"
-          title="Charts, vistas, encounters, battlemaps, sheets and images"
-          @click="openObservatory()"
-        >
-          <span class="observatory-mark" aria-hidden="true"><span class="mdi mdi-telescope"></span></span>
-          <span class="observatory-label">Observatory</span>
-          <span class="mdi mdi-chevron-right observatory-go" aria-hidden="true"></span>
-        </button>
+        <div v-if="user" class="observatory-tile">
+          <button class="observatory-trigger" @click="openObservatory()">
+            <span class="observatory-mark" aria-hidden="true"><span class="mdi mdi-telescope"></span></span>
+            <span class="observatory-label">Observatory</span>
+            <span class="mdi mdi-chevron-right observatory-go" aria-hidden="true"></span>
+          </button>
+          <div class="observatory-kinds" role="group" aria-label="Open the Observatory on">
+            <button
+              v-for="kind in OBSERVATORY_SHORTCUTS"
+              :key="kind.type"
+              class="observatory-kind"
+              :title="`All ${kind.plural}`"
+              :aria-label="`All ${kind.plural}`"
+              @click="openObservatoryKind(kind.type)"
+            >
+              <span class="mdi" :class="kind.icon" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
       </nav>
 
       <div class="tree-header">
@@ -211,7 +220,12 @@
     <BattlemapsModal />
     <CharactersModal />
     <AdversariesModal />
-    <ObservatoryModal :is-open="isObservatoryOpen" :start-path="observatoryPath || ''" @close="closeObservatory" />
+    <ObservatoryModal
+      :is-open="isObservatoryOpen"
+      :start-path="observatoryPath || ''"
+      :start-kind="observatoryKind"
+      @close="closeObservatory"
+    />
 
     <div v-if="showNewNoteInput" class="rk-scrim" @click.self="showNewNoteInput = false">
       <div class="rk-dialog" role="dialog" aria-modal="true" aria-labelledby="new-note-title">
@@ -267,6 +281,7 @@ import { useNotes } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
+import { DOC_TYPES } from '@/utils/docTypes'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
@@ -290,7 +305,12 @@ async function copyScreenLink() {
   if (!(await copy(link, 'screen-link'))) window.prompt('Screen link. Copy it and open it on the screen device:', link)
 }
 const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
-const { isOpen: isObservatoryOpen, targetId: observatoryPath, open: openObservatory, close: closeObservatory } = useObservatoryModal()
+const {
+  isOpen: isObservatoryOpen, targetId: observatoryPath, kind: observatoryKind,
+  open: openObservatory, openKind: openObservatoryKind, close: closeObservatory
+} = useObservatoryModal()
+// A shortcut per kind of document, in the order the Observatory lists them.
+const OBSERVATORY_SHORTCUTS = ['chart', 'vista', 'encounter', 'battlemap', 'character', 'adversary'].map((type) => DOC_TYPES[type])
 const {
   isPlaying, isRepeat, isShuffle, currentTrack, volume,
   togglePlay, playNext, playPrev, toggleRepeat, toggleShuffle, setVolume
@@ -539,38 +559,70 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
 }
 
-/* Where every document and image is: a launcher with Search Notes' footprint,
-   raised where the search is sunken. */
+/* Where every document and image is: a small patch of night sky with the way
+   in, and a shortcut to each kind of document under it. */
+.observatory-tile {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--accent-a30);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(120% 90% at 100% 0%, var(--accent-a20), transparent 62%),
+    var(--surface-raised);
+}
+
+/* A few fixed stars, top right, behind everything. */
+.observatory-tile::before {
+  content: '';
+  position: absolute;
+  top: 10px;
+  right: 30%;
+  z-index: -1;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow:
+    28px 14px 0 0 rgba(255, 255, 255, 0.5),
+    46px 4px 0 0 rgba(255, 255, 255, 0.35),
+    62px 22px 0 0 rgba(255, 255, 255, 0.7),
+    14px 26px 0 -0.5px rgba(255, 255, 255, 0.4),
+    -22px 6px 0 -0.5px rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
 .observatory-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   width: 100%;
   min-height: var(--control-md);
-  padding: 0 var(--space-2) 0 6px;
-  border: 1px solid var(--border-light);
+  padding: 0 var(--space-1) 0 2px;
+  border: none;
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: transparent;
   color: var(--text-primary);
-  font-size: var(--text-sm);
-  font-weight: 500;
+  font-size: var(--text-md, 0.9375rem);
+  font-weight: 600;
   text-align: left;
-  transition:
-    background-color var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .observatory-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.625rem;
-  height: 1.625rem;
-  border-radius: var(--radius-sm);
-  background: var(--accent-a20);
-  color: var(--accent-soft);
-  font-size: 1rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: var(--accent-a30);
+  color: #ddd3ff;
+  font-size: 1.15rem;
   flex-shrink: 0;
 }
 
@@ -584,18 +636,42 @@ onBeforeUnmount(() => {
   transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
-.observatory-trigger:hover {
-  border-color: var(--accent-a45);
-  background: var(--surface-raised-hover);
-}
-
 .observatory-trigger:hover .observatory-go {
   color: var(--text-primary);
   transform: translateX(2px);
 }
 
-.observatory-trigger:active {
+.observatory-trigger:active,
+.observatory-kind:active {
   transform: translateY(1px);
+}
+
+.observatory-kinds {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.observatory-kind {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.875rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a12);
+  color: var(--accent-soft);
+  font-size: 1.05rem;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.observatory-kind:hover,
+.observatory-kind:focus-visible {
+  background: var(--accent-a30);
+  color: #f1edff;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -603,6 +679,7 @@ onBeforeUnmount(() => {
     transform: none;
   }
 }
+
 
 /* ── Tree ──────────────────────────────────────────────────────── */
 .tree-header {

@@ -80,7 +80,7 @@
         :key="folder"
         class="gallery-card folder-card"
         :class="{ 'drag-over': dragOverTarget === folderPath(folder) }"
-        :draggable="canEdit && renamingFolder !== folder"
+        :draggable="canEdit && movable && renamingFolder !== folder"
         @click="renamingFolder !== folder && $emit('enter-folder', folder)"
         @dragstart="startDrag({ type: 'folder', name: folder })"
         @dragend="endDrag"
@@ -118,7 +118,7 @@
         v-for="item in items"
         :key="itemKey(item)"
         class="gallery-card"
-        :draggable="canEdit && renamingItem !== itemKey(item)"
+        :draggable="canEdit && movable && renamingItem !== itemKey(item)"
         @click="renamingItem !== itemKey(item) && $emit('open-item', item)"
         @dragstart="startDrag({ type: 'item', item })"
         @dragend="endDrag"
@@ -155,7 +155,12 @@
             @blur="submitItemRename(item)"
           />
           <span v-else class="gallery-card-name">{{ item.name }}</span>
-          <span v-if="item.description" class="gallery-card-desc">{{ item.description }}</span>
+          <!-- Where it is, in a list from many folders; otherwise what it is about. -->
+          <span v-if="item.location !== undefined" class="gallery-card-desc gallery-card-location">
+            <span class="mdi" :class="item.location ? 'mdi-folder-outline' : 'mdi-telescope'" aria-hidden="true"></span>
+            <span class="gallery-card-location-text">{{ item.location || rootLabel }}</span>
+          </span>
+          <span v-else-if="item.description" class="gallery-card-desc">{{ item.description }}</span>
         </div>
       </div>
     </div>
@@ -191,7 +196,9 @@ const props = defineProps({
   acceptsFiles: { type: Boolean, default: false },
   // Without its own New folder button, a caller offers it elsewhere and opens
   // the same inline form with the exposed startNewFolder().
-  showNewFolder: { type: Boolean, default: true }
+  showNewFolder: { type: Boolean, default: true },
+  // false where dragging would mean nothing (a flat list from many folders).
+  movable: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([
@@ -524,6 +531,22 @@ function copyItem(item) {
   font-size: 2.5rem;
   color: var(--text-secondary);
   opacity: 0.5;
+}
+
+.gallery-card-location {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.gallery-card-location .mdi {
+  flex-shrink: 0;
+}
+
+.gallery-card-location-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .gallery-card-info {

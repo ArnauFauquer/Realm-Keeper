@@ -5,7 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 const { observatoryApi, docClients, openDoc, post } = vi.hoisted(() => ({
   observatoryApi: {
-    list: vi.fn(), createFolder: vi.fn(), renameFolder: vi.fn(), removeFolder: vi.fn(), moveFolder: vi.fn(),
+    list: vi.fn(), listKind: vi.fn(), createFolder: vi.fn(), renameFolder: vi.fn(), removeFolder: vi.fn(), moveFolder: vi.fn(),
     renameImage: vi.fn(), moveImage: vi.fn(), removeImage: vi.fn(),
     exportUrl: (path = '') => `/api/observatory/export${path ? `?path=${encodeURIComponent(path)}` : ''}`,
     importFiles: vi.fn()
@@ -66,12 +66,32 @@ describe('ObservatoryModal — one tree for everything', () => {
     expect(cards(wrapper)[3].find('.mdi-image-frame').exists()).toBe(true) // a vista with no background yet
   })
 
-  it('shows one kind at a time when asked', async () => {
-    const wrapper = await opened()
+  it('shows everything of one kind wherever it is, saying where, and goes back to the folders', async () => {
+    observatoryApi.listKind.mockResolvedValue({ folders: [], items: [
+      { kind: 'encounter', id: 'act 2/ambush', name: 'Ambush', folder: 'act 2' },
+      { kind: 'encounter', id: 'fight', name: 'Fight', folder: '' }
+    ] })
+    const wrapper = await opened({ startPath: 'act 2' })
     await buttonByText(wrapper, 'Encounters').trigger('click')
-    expect(names(wrapper)).toEqual(['Ambush'])
-    await buttonByText(wrapper, 'All').trigger('click')
+    await flushPromises()
+    expect(observatoryApi.listKind).toHaveBeenCalledWith('encounter')
+    expect(names(wrapper)).toEqual(['Ambush', 'Fight'])
+    expect(cards(wrapper).map((card) => card.find('.gallery-card-location').text())).toEqual(['act 2', 'Observatory'])
+    expect(wrapper.find('.folder-card').exists()).toBe(false)
+    expect(cards(wrapper)[0].attributes('draggable')).toBe('false') // nowhere to drag it from a flat list
+    await buttonByText(wrapper, 'Folders').trigger('click')
+    await flushPromises()
+    expect(observatoryApi.list).toHaveBeenLastCalledWith('')
     expect(names(wrapper)).toHaveLength(4)
+  })
+
+  it('opens on everything of one kind when a shortcut asks', async () => {
+    observatoryApi.listKind.mockResolvedValue({ folders: [], items: [{ kind: 'chart', id: 'wei', name: 'Wei', folder: '' }] })
+    const wrapper = await opened({ startKind: 'chart' })
+    expect(observatoryApi.listKind).toHaveBeenCalledWith('chart')
+    expect(observatoryApi.list).not.toHaveBeenCalled()
+    expect(names(wrapper)).toEqual(['Wei'])
+    expect(wrapper.find('.kind-chip.active').text()).toBe('Charts')
   })
 
   it('offers to copy what a note can show: a document it embeds, an image', async () => {

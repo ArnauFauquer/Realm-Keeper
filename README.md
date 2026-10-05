@@ -168,7 +168,9 @@ holding every chart, vista, encounter, battlemap, character and adversary, and
 the images they draw, so an adventure's map, its chart, its scenes and its fights
 can share a folder. **New ▾** makes a document of any kind in the folder you are
 in; opening one opens its editor, whose back arrow comes back to that folder.
-Filter a folder by kind and drag anything (folders too) into another folder.
+Drag anything (folders too) into another folder. Next to **Folders**, a view per
+kind shows every chart, vista, encounter… (or image) wherever it is, each with
+its folder; the sidebar's Observatory tile has a shortcut to each of them.
 - An image is found by the uid it got when uploaded, so renaming or moving it —
   or the folder it is in — never breaks the documents and notes that show it.
 - **Import** brings images, documents (`tavern.chart.json`, `night.vista.json`…)

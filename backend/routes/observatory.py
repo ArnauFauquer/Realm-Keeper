@@ -114,6 +114,12 @@ def make_observatory_router(
     async def list_folder(path: str = "", user: dict = Depends(require_auth)):
         return await blocking(observatory.list, path)
 
+    @router.get("/all")
+    @guarded
+    async def list_kind(kind: str, user: dict = Depends(require_auth)):
+        """Everything of one kind, in every folder."""
+        return await blocking(observatory.list_kind, kind)
+
     @router.post("/folders")
     @guarded
     async def create_folder(body: FolderBody, user: dict = Depends(require_auth)):

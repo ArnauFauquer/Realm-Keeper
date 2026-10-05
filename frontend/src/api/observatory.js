@@ -13,6 +13,8 @@ const data = (res) => res.data
 
 export const observatoryApi = {
   list: (path = '') => client.get(base, { params: { path } }).then(data),
+  // Everything of one kind ("chart"... or "image"), in every folder; each item says its `folder`.
+  listKind: (kind) => client.get(`${base}/all`, { params: { kind } }).then(data),
 
   createFolder: (path) => client.post(`${base}/folders`, { path }).then(data),
   renameFolder: (path, name) => client.put(`${base}/folders/${encodePath(path)}`, { name }).then(data),

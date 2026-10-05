@@ -73,6 +73,18 @@ def test_a_folder_holds_documents_of_every_kind_and_images(observatory):
     assert [i["id"] for i in observatory.list("")["items"]] == ["elsewhere"]
 
 
+def test_everything_of_one_kind_wherever_it_is(observatory):
+    charts = observatory.collections["chart"]
+    charts.create("Zed", folder_path="act 2/caves")
+    charts.create("Alpha")
+    observatory.collections["vista"].create("Not a chart", folder_path="act 2")
+    upload(observatory, "act 2", "map.png")
+    assert [(i["id"], i["folder"]) for i in observatory.list_kind("chart")["items"]] == [("alpha", ""), ("act 2/caves/zed", "act 2/caves")]
+    assert [(i["name"], i["folder"]) for i in observatory.list_kind("image")["items"]] == [("map.png", "act 2")]
+    with pytest.raises(ValueError):
+        observatory.list_kind("song")
+
+
 def test_a_folder_moves_and_goes_with_everything_in_it(observatory):
     encounters = observatory.collections["encounter"]
     encounters.create("Fight", folder_path="act 2/caves")
@@ -264,6 +276,8 @@ def test_folders_over_http(api):
     assert api.post("/api/observatory/folders/move", json={"path": "act II", "dest_parent_path": "act 3"}).status_code == 200
     assert api.get("/api/charts/act 3/act II/tavern").json()["name"] == "Tavern"
     assert api.get("/api/observatory", params={"path": "act 3"}).json() == {"folders": ["act II"], "items": []}
+    assert [i["folder"] for i in api.get("/api/observatory/all", params={"kind": "chart"}).json()["items"]] == ["act 3/act II"]
+    assert api.get("/api/observatory/all", params={"kind": "song"}).status_code == 400
     assert api.delete("/api/observatory/folders/act 3").status_code == 200
     assert api.delete("/api/observatory/folders/act 3").status_code == 404
     assert api.post("/api/observatory/folders", json={"path": "../x"}).status_code == 400

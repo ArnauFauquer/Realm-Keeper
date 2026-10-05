@@ -21,6 +21,7 @@
           ref="galleryRef"
           :folders="folders"
           :items="shownItems"
+          :movable="!kindView"
           :item-key="itemKey"
           :item-copy-text="copyText"
           :current-path="currentPath"
@@ -109,15 +110,18 @@
               </div>
               <button class="rk-icon-btn rk-icon-btn--sm" aria-label="Dismiss" @click="leftOut = []"><span class="mdi mdi-close"></span></button>
             </div>
-            <div v-if="!pickerMode && presentKinds.length > 1" class="kind-filter" role="group" aria-label="Show">
-              <button class="kind-chip" :class="{ active: !filter }" :aria-pressed="!filter" @click="filter = null">All</button>
+            <!-- The folders, or everything of one kind wherever it is. -->
+            <div v-if="!pickerMode" class="kind-filter" role="group" aria-label="Show">
+              <button class="kind-chip" :class="{ active: !kindView }" :aria-pressed="!kindView" @click="goToPath(kindView ? '' : currentPath)">
+                <span class="mdi mdi-folder-outline" aria-hidden="true"></span> Folders
+              </button>
               <button
-                v-for="kind in presentKinds"
+                v-for="kind in KINDS"
                 :key="kind.type"
                 class="kind-chip"
-                :class="{ active: filter === kind.type }"
-                :aria-pressed="filter === kind.type"
-                @click="filter = filter === kind.type ? null : kind.type"
+                :class="{ active: kindView === kind.type }"
+                :aria-pressed="kindView === kind.type"
+                @click="showKind(kind.type)"
               >
                 <span class="mdi" :class="kind.icon" aria-hidden="true"></span> {{ kind.title }}
               </button>
@@ -171,7 +175,9 @@ const props = defineProps({
   isOpen: { type: Boolean, default: false },
   pickerMode: { type: Boolean, default: false },
   // The folder it opens at: a picker opens beside the document being edited.
-  startPath: { type: String, default: '' }
+  startPath: { type: String, default: '' },
+  // Or everything of one kind, wherever it is (a sidebar shortcut).
+  startKind: { type: String, default: null }
 })
 
 const emit = defineEmits(['close', 'select'])
@@ -190,7 +196,7 @@ const items = ref([])
 const loading = ref(false)
 const error = ref(null)
 const currentPath = ref('')
-const filter = ref(null)
+const kindView = ref(null)
 const view = ref('gallery')
 const activeImage = ref(null)
 const sendingToScreen = ref(false)
@@ -207,14 +213,14 @@ const kindOf = (item) => (item.kind === 'image' ? IMAGE_KIND : DOC_TYPES[item.ki
 const itemKey = (item) => `${item.kind}:${item.id}`
 const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
-const presentKinds = computed(() => KINDS.filter((kind) => items.value.some((item) => item.kind === kind.type)))
+// A flat list from many folders says where each one is.
 const shownItems = computed(() => {
-  const only = props.pickerMode ? 'image' : filter.value
-  return only ? items.value.filter((item) => item.kind === only) : items.value
+  if (kindView.value) return items.value.map((item) => ({ ...item, location: item.folder }))
+  return props.pickerMode ? items.value.filter((item) => item.kind === 'image') : items.value
 })
 const emptyText = computed(() => {
   if (props.pickerMode) return 'No images here. Upload one, or look in another folder.'
-  if (filter.value && items.value.length) return `No ${kindOf({ kind: filter.value }).plural} in this folder.`
+  if (kindView.value) return `No ${kindOf({ kind: kindView.value }).plural} yet.`
   return 'Nothing here yet. Create a document, import images or documents (or drop them here) or add a folder.'
 })
 
@@ -236,17 +242,18 @@ watch(() => props.isOpen, (open) => {
   if (!open) return
   view.value = 'gallery'
   activeImage.value = null
-  filter.value = null
   leftOut.value = []
-  goToPath(props.startPath || '')
+  if (props.startKind && !props.pickerMode) showKind(props.startKind)
+  else goToPath(props.startPath || '')
 }, { immediate: true })
 
 async function fetchLevel(path = currentPath.value) {
   loading.value = true
   error.value = null
+  const kind = kindView.value
   try {
-    const listing = await observatoryApi.list(path)
-    if (path !== currentPath.value) return // moved on while it loaded
+    const listing = kind ? await observatoryApi.listKind(kind) : await observatoryApi.list(path)
+    if (path !== currentPath.value || kind !== kindView.value) return // moved on while it loaded
     folders.value = listing.folders
     items.value = listing.items
   } catch (err) {
@@ -274,8 +281,15 @@ async function changing(change) {
 
 function goToPath(path) {
   currentPath.value = path
-  filter.value = null
+  kindView.value = null
   fetchLevel(path)
+}
+
+// Everything of one kind; what is made from here goes at the top.
+function showKind(kind) {
+  currentPath.value = ''
+  kindView.value = kind
+  fetchLevel('')
 }
 
 function enterFolder(folder) {

@@ -134,6 +134,23 @@ class Observatory:
         items.sort(key=lambda item: ((item.get("name") or "").lower(), item["kind"]))
         return {"folders": sorted(folders, key=str.lower), "items": items}
 
+    def list_kind(self, kind: str) -> Dict[str, Any]:
+        """Everything of one kind ("chart"... or "image") wherever it is in the
+        tree, by name: what a shortcut to a kind shows. Each item says its
+        `folder`."""
+        if kind == IMAGE_KIND:
+            items = [self._image_item(key) for key in self.backend.list_keys(self.root)
+                     if is_image_name(key) and image_uid(key.rsplit("/", 1)[-1])]
+        elif kind in self.collections:
+            items = [
+                {**meta.model_dump(mode="json"), "kind": kind, "folder": meta.id.rpartition("/")[0]}
+                for meta in self.collections[kind].list_all()
+            ]
+        else:
+            raise ValueError(f"Unknown kind: {kind}")
+        items.sort(key=lambda item: ((item.get("name") or "").lower(), item["folder"].lower()))
+        return {"folders": [], "items": items}
+
     def ids_under(self, path: str) -> Dict[str, List[str]]:
         """The ids of every document inside the folder at `path`, at any depth, by kind."""
         keys = self.backend.list_keys(self._prefix(path))
