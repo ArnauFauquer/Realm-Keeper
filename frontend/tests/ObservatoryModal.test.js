@@ -201,6 +201,26 @@ describe('ObservatoryModal — making and changing things', () => {
     expect(observatoryApi.importFiles).toHaveBeenCalledTimes(2)
     expect(observatoryApi.moveFolder).not.toHaveBeenCalled()
   })
+
+  it('moves a card dragged onto a folder, without importing the thumbnail the browser drags along as a file', async () => {
+    const { docApi } = await import('@/api/docs')
+    const wrapper = await opened({ startPath: 'act 2' })
+    const thumbnail = { types: ['text/uri-list', 'Files'], files: [new File(['a'], 'map.png', { type: 'image/png' })] }
+    const card = wrapper.findAll('.gallery-card:not(.folder-card)')[1]
+    await card.trigger('dragstart', { dataTransfer: thumbnail })
+    await wrapper.find('.folder-gallery').trigger('dragover', { dataTransfer: thumbnail })
+    expect(wrapper.find('.folder-gallery').classes()).not.toContain('files-over')
+    await wrapper.find('.folder-card').trigger('drop', { dataTransfer: thumbnail })
+    await flushPromises()
+    expect(docApi('encounter').move).toHaveBeenCalledWith('act 2/ambush', 'act 2/caves')
+
+    // Let go over the folder on screen: nothing happens, nothing is copied.
+    await card.trigger('dragstart', { dataTransfer: thumbnail })
+    await wrapper.find('.folder-gallery').trigger('drop', { dataTransfer: thumbnail })
+    await card.trigger('dragend')
+    await flushPromises()
+    expect(observatoryApi.importFiles).not.toHaveBeenCalled()
+  })
 })
 
 describe('ObservatoryModal — export', () => {

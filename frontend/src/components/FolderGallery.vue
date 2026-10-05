@@ -206,7 +206,7 @@ const emit = defineEmits([
   'create-folder', 'rename-folder', 'rename-item', 'move', 'drop-files'
 ])
 
-const { dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
+const { draggedItem, dragOverTarget, startDrag, endDrag, dragOver, dragLeave, drop } = useDragMove()
 
 const galleryRef = ref(null)
 const creatingFolder = ref(false)
@@ -236,7 +236,10 @@ function folderPath(folder) {
 }
 
 const filesOver = ref(false)
-const carriesFiles = (event) => props.acceptsFiles && props.canEdit && [...(event.dataTransfer?.types || [])].includes('Files')
+// A card dragged within the gallery is a move, even though the browser puts
+// the thumbnail it shows in the drag as a file: imported, it would be copied.
+const carriesFiles = (event) =>
+  props.acceptsFiles && props.canEdit && !draggedItem.value && [...(event.dataTransfer?.types || [])].includes('Files')
 
 function droppedFiles(event, destPath) {
   if (!carriesFiles(event)) return false
