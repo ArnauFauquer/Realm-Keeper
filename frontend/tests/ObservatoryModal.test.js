@@ -18,7 +18,7 @@ vi.mock('@/api/observatory', () => ({ observatoryApi }))
 vi.mock('@/api/docs', () => ({
   docApi: (type) => (docClients[type] ||= { create: vi.fn(), rename: vi.fn(), move: vi.fn(), remove: vi.fn() })
 }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ user: ref({ email: 'gm@example.com' }) }) }))
 vi.mock('@/composables/useDocModal', () => ({ useDocModal: (type) => ({ open: (id) => openDoc(type, id) }) }))

@@ -49,7 +49,7 @@ import { useRouter } from 'vue-router'
 import ChartCanvas from './ChartCanvas.vue'
 import VistaCanvas from './VistaCanvas.vue'
 import { docApi } from '@/api/docs'
-import { post } from '@/api/http'
+import { post, errorMessage } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { resolveUrl } from '@/utils/resolveUrl'
 import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
@@ -113,7 +113,7 @@ async function load() {
     loadImageRatio()
   } catch (err) {
     if (err.response?.status === 401) locked.value = true
-    else error.value = err.response?.status === 404 ? 'not found' : (err.response?.data?.detail || err.message)
+    else error.value = err.response?.status === 404 ? 'not found' : errorMessage(err)
   } finally {
     loading.value = false
   }

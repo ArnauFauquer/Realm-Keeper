@@ -27,6 +27,26 @@ httpClient.interceptors.response.use(
   }
 )
 
+/**
+ * What went wrong, in words to show: the server's explanation (FastAPI's
+ * `detail`; a refused body's list of problems, made one line), else
+ * `fallback` when one is given, else the error's own message ("Network Error").
+ */
+export function errorMessage(err, fallback) {
+  const detail = err?.response?.data?.detail
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail) && detail.length) {
+    // [{ loc: ['body', 'name'], msg: 'Field required' }] -> "name: Field required"
+    return detail.map((problem) => {
+      const where = (problem?.loc || []).filter((part) => !['body', 'query', 'path'].includes(part)).join('.')
+      const what = problem?.msg ?? String(problem)
+      return where ? `${where}: ${what}` : what
+    }).join('; ')
+  }
+  if (detail && typeof detail === 'object') return detail.message || JSON.stringify(detail)
+  return fallback || err?.message || 'Something went wrong.'
+}
+
 // A request's place in the cache: its URL with its query, so page 2 of a
 // listing (`params: { offset: 500 }`) is never answered with page 1.
 const cacheKey = (url, params) => `GET:${httpClient.getUri({ url, params })}`

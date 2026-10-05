@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 const DocumentModal = (await import('@/components/DocumentModal.vue')).default

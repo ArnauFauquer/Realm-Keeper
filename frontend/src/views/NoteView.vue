@@ -145,7 +145,7 @@ Write your note in Markdown..."
 
 <script>
 import mermaid from 'mermaid'
-import { getCached, post, put, invalidateCached } from '@/api/http'
+import { getCached, post, put, invalidateCached, errorMessage } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { slugifyHeading } from '@/utils/slugify'
 import { lockAssetImages, sanitizeHtml } from '@/utils/sanitizeHtml'
@@ -326,7 +326,7 @@ export default {
             this.startCreating()
           }
         } else {
-          this.error = err.response?.data?.detail || err.message
+          this.error = errorMessage(err)
         }
       }
     },
@@ -339,7 +339,7 @@ export default {
         this.isEditing = true
         this.isCreating = false
       } catch (err) {
-        this.error = err.response?.data?.detail || err.message
+        this.error = errorMessage(err)
       }
     },
     startCreating() {
@@ -379,7 +379,7 @@ export default {
         this.isCreating = false
         await this.fetchNote()
       } catch (err) {
-        this.saveError = err.response?.data?.detail || err.message || 'Could not save the note.'
+        this.saveError = errorMessage(err, 'Could not save the note.')
       } finally {
         this.saving = false
       }

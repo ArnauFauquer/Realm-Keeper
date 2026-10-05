@@ -223,7 +223,7 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
-import { post } from '@/api/http'
+import { post, errorMessage } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
 import { useCharacters } from '@/composables/useCharacters'
@@ -295,7 +295,7 @@ async function attempt(work) {
     await work
     return true
   } catch (err) {
-    actionError.value = err.response?.data?.detail || err.message
+    actionError.value = errorMessage(err)
     return false
   }
 }

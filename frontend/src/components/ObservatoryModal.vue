@@ -155,7 +155,7 @@ import FolderGallery from './FolderGallery.vue'
 import DocumentModalHeader from './DocumentModalHeader.vue'
 import { docApi } from '@/api/docs'
 import { observatoryApi } from '@/api/observatory'
-import { post } from '@/api/http'
+import { post, errorMessage } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
@@ -265,7 +265,7 @@ async function fetchLevel(path = currentPath.value) {
   }
 }
 
-const failure = (err) => { error.value = err.response?.data?.detail || err.message }
+const failure = (err) => { error.value = errorMessage(err) }
 const folderPath = (folder) => (currentPath.value ? `${currentPath.value}/${folder}` : folder)
 
 // Each change happens in the level on screen, then shows it again.

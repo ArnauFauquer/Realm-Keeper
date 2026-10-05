@@ -1,6 +1,7 @@
 import { ref, computed, shallowRef, watch, onBeforeUnmount } from 'vue'
 import { applyEvent } from '@/utils/applyEvent'
 import { listenToSync } from './syncSocket'
+import { errorMessage } from '@/api/http'
 
 // A live document (see backend services/sync_hub.py) held in the page and kept
 // up to date: loaded once, then changed by the events the server announces.
@@ -35,7 +36,7 @@ function createEntry(key, fetchDoc) {
         error.value = null
       } catch (err) {
         status.value = err.response?.status === 404 ? 'gone' : 'error'
-        error.value = err.response?.data?.detail || err.message
+        error.value = errorMessage(err)
       } finally {
         loading = null
       }

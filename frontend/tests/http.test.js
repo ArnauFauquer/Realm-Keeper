@@ -4,7 +4,7 @@ vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 // The real client and the real cache: only the network is stood in for, by
 // an axios adapter that answers each request with what `answer` says.
-const { httpClient, getCached, invalidateCached } = await import('@/api/http')
+const { httpClient, getCached, invalidateCached, errorMessage } = await import('@/api/http')
 const { apiCache } = await import('@/api/cache')
 const { useAuth } = await import('@/composables/useAuth')
 const { chartsApi } = await import('@/api/docs')
@@ -122,5 +122,27 @@ describe('the one client', () => {
     expect(adapter.mock.calls[0][0]).toMatchObject({ withCredentials: true, timeout: 30000 })
     await observatoryApi.importFiles('', [new Blob(['x'])])
     expect(adapter.mock.calls[1][0].timeout).toBe(0)
+  })
+})
+
+describe('errorMessage', () => {
+  const refused = (detail) => ({ message: 'Request failed with status code 400', response: { data: { detail } } })
+
+  it("says what the server said, or else the error's own message", () => {
+    expect(errorMessage(refused('Chart not found: ghost'))).toBe('Chart not found: ghost')
+    expect(errorMessage(new Error('Network Error'))).toBe('Network Error')
+  })
+
+  it("makes one line of a refused body's problems", () => {
+    const err = refused([
+      { loc: ['body', 'name'], msg: 'Field required', type: 'missing' },
+      { loc: ['query', 'limit'], msg: 'Input should be a valid integer' }
+    ])
+    expect(errorMessage(err)).toBe('name: Field required; limit: Input should be a valid integer')
+  })
+
+  it("prefers the server's words to a fallback, and the fallback to a bare network error", () => {
+    expect(errorMessage(refused('Album exists'), 'Could not create the album.')).toBe('Album exists')
+    expect(errorMessage(new Error('Network Error'), 'Could not create the album.')).toBe('Could not create the album.')
   })
 })

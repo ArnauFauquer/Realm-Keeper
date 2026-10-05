@@ -65,6 +65,7 @@ import { useLiveScreen } from '@/composables/useLiveScreen'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import { savePayload, screenPayload } from '@/utils/docTypes'
+import { errorMessage } from '@/api/http'
 
 // The editor every kind of document shares, opened on one document (from the
 // Observatory, a note's embed, a sheet's "Open it"): its header, and the
@@ -174,7 +175,7 @@ async function loadDoc(id) {
     activeName.value = doc.name
     hasUnsavedChanges.value = false
   } catch (err) {
-    loadError.value = err.response?.data?.detail || err.message
+    loadError.value = errorMessage(err)
   } finally {
     loadingDoc.value = false
   }
