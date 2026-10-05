@@ -61,6 +61,14 @@ describe('the document clients', () => {
     expect(docApi('vista')).toBe(vistasApi)
     expect(docApi('adversary').base).toBe('https://api.test/api/adversaries')
   })
+
+  it('has a client for every kind utils/docTypes.js describes, at its resource', async () => {
+    const { DOC_TYPES } = await import('@/utils/docTypes')
+    for (const kind of Object.values(DOC_TYPES)) {
+      expect(docApi(kind.type).base).toBe(`https://api.test/api/${kind.resource}`)
+      expect(docApi(kind.type).itemsKey).toBe(kind.resource)
+    }
+  })
 })
 
 describe('the Observatory client', () => {

@@ -1,7 +1,7 @@
 // What goes into an encounter when a sheet is added: the same copy whether the
 // sheet is a catalog entry (GET /api/sheets) or one a note is showing.
 
-const LIBRARY_PREFIX = '/api/observatory/images/'
+import { OBSERVATORY_IMAGE_PREFIX as LIBRARY_PREFIX } from './docTypes'
 
 /** A counter as the live documents keep it: its definition plus where it stands. */
 export function counterFromSpec(spec) {

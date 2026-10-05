@@ -390,8 +390,9 @@ src/
    If a note can show it, add `following("<kind>")` to `ON_MOVED` in
    `routes/doc_follow.py` and pass `on_moved=ON_MOVED["<kind>"]` so its links
    follow a move.
-4. An entry in `utils/docTypes.js`, a client in `api/docs.js`, and a thin
-   `*Modal.vue` around `DocumentModal` with the editor in its slot.
+4. An entry in `utils/docTypes.js` (its client in `api/docs.js` is made from
+   its `resource`), and a thin `*Modal.vue` around `DocumentModal` with the
+   editor in its slot.
 5. Its collection in the `Observatory`'s map (`doc_registry.py`) and its prefix
    in `scripts/migrate_to_observatory.py`'s `DOC_PREFIXES` while that script lives.
 

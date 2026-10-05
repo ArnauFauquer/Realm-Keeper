@@ -53,6 +53,7 @@ import { errorMessage } from '@/api/http'
 import { screenApi } from '@/api/screen'
 import { resolveUrl } from '@/utils/resolveUrl'
 import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
+import { noteRoute } from '@/utils/paths'
 import { useDocModal } from '@/composables/useDocModal'
 import { useFlash } from '@/composables/useFlash'
 
@@ -138,7 +139,7 @@ function openInModal() {
 }
 
 function openNote(notePath) {
-  router.push(`/note/${notePath.split('/').map(encodeURIComponent).join('/')}`)
+  router.push(noteRoute(notePath))
 }
 
 async function sendToScreen() {

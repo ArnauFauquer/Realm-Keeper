@@ -1,4 +1,5 @@
 import { apiUrl } from '@/config/env'
+import { DOC_TYPES } from '@/utils/docTypes'
 import { encodePath } from '@/utils/paths'
 import { httpClient as client } from './http'
 
@@ -49,17 +50,16 @@ export function createDocApi(prefix, { itemsKey = prefix } = {}) {
   }
 }
 
-export const chartsApi = createDocApi('charts')
-export const vistasApi = createDocApi('vistas')
-export const encountersApi = createDocApi('encounters')
-export const charactersApi = createDocApi('characters')
-export const adversariesApi = createDocApi('adversaries')
-export const battlemapsApi = createDocApi('battlemaps')
+// One client per kind utils/docTypes.js describes, at its `resource`: a new
+// kind gets its client from its entry there.
+const apis = Object.fromEntries(Object.values(DOC_TYPES).map((kind) => [kind.type, createDocApi(kind.resource)]))
 
-const apis = {
-  chart: chartsApi, vista: vistasApi, encounter: encountersApi, battlemap: battlemapsApi,
-  character: charactersApi, adversary: adversariesApi
-}
+export const chartsApi = apis.chart
+export const vistasApi = apis.vista
+export const encountersApi = apis.encounter
+export const charactersApi = apis.character
+export const adversariesApi = apis.adversary
+export const battlemapsApi = apis.battlemap
 
 /** The client of a kind of document (utils/docTypes.js). */
 export const docApi = (type) => apis[type]

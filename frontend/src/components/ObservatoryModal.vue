@@ -160,7 +160,8 @@ import { screenApi } from '@/api/screen'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
 import { useFlash } from '@/composables/useFlash'
-import { DOC_TYPES, IMAGE_KIND } from '@/utils/docTypes'
+import { DOC_TYPES, IMAGE_KIND, capitalize } from '@/utils/docTypes'
+import { joinPath } from '@/utils/paths'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import { absoluteUrl, resolveUrl } from '@/utils/resolveUrl'
 
@@ -212,7 +213,6 @@ const newInputRef = ref(null)
 
 const kindOf = (item) => (item.kind === 'image' ? IMAGE_KIND : DOC_TYPES[item.kind])
 const itemKey = (item) => `${item.kind}:${item.id}`
-const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
 // A flat list from many folders says where each one is.
 const shownItems = computed(() => {
@@ -267,7 +267,7 @@ async function fetchLevel(path = currentPath.value) {
 }
 
 const failure = (err) => { error.value = errorMessage(err) }
-const folderPath = (folder) => (currentPath.value ? `${currentPath.value}/${folder}` : folder)
+const folderPath = (folder) => joinPath(currentPath.value, folder)
 
 // Each change happens in the level on screen, then shows it again.
 async function changing(change) {

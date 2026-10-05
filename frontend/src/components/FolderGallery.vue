@@ -171,6 +171,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
+import { joinPath } from '@/utils/paths'
 
 const props = defineProps({
   folders: { type: Array, default: () => [] },
@@ -231,9 +232,7 @@ const breadcrumb = computed(() => {
   return trail
 })
 
-function folderPath(folder) {
-  return props.currentPath ? `${props.currentPath}/${folder}` : folder
-}
+const folderPath = (folder) => joinPath(props.currentPath, folder)
 
 const filesOver = ref(false)
 // A card dragged within the gallery is a move, even though the browser puts
