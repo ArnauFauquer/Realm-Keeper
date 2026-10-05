@@ -1,8 +1,9 @@
+import hashlib
 import os
 import re
 import threading
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import Callable, List, Optional, Dict, Tuple, TypeVar
 from datetime import datetime, timedelta
 from models.note import Note, NoteMetadata
 from services.markdown_parser import MarkdownParser
@@ -11,10 +12,24 @@ from config.logging import get_logger
 
 logger = get_logger(__name__)
 
+T = TypeVar("T")
+
 
 class NoteSaveError(Exception):
     """Raised when writing a note to disk or to git fails."""
     pass
+
+
+class NoteConflict(Exception):
+    """The note changed since the editor loaded it (someone else saved it, a
+    pull brought an Obsidian edit), or a note meant to be new already exists."""
+    pass
+
+
+def content_sha(text: str) -> str:
+    """What a note's content is known by when it is saved back: the editor
+    sends the one it loaded, and a save over anything else is a conflict."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 class MarkdownService:
@@ -29,9 +44,20 @@ class MarkdownService:
         self._all_notes_cache: Optional[List[NoteMetadata]] = None
         self._all_notes_cached_at: Optional[datetime] = None
 
-        self._git_lock = threading.Lock()
+        # Everything that writes the vault or runs git in it (a note saved,
+        # links followed, the periodic pull) holds this, so they never
+        # interleave. Re-entrant: a save holds it while it writes the file and
+        # commit_and_push takes it again.
+        self._git_lock = threading.RLock()
 
         self.vault_path.mkdir(parents=True, exist_ok=True)
+
+    def under_git_lock(self, fn: Callable[[], T]) -> T:
+        with self._git_lock:
+            return fn()
+
+    def resolve_note_path(self, note_id: str) -> Path:
+        return self._resolve_note_path(note_id)
 
     def _resolve_note_path(self, note_id: str) -> Path:
         """Validate a note id and resolve it to a path guaranteed to stay
@@ -81,29 +107,45 @@ class MarkdownService:
             return None
         return note_path.read_text(encoding='utf-8')
 
-    def save_note(self, note_id: str, content: str, author_name: str, author_email: str) -> bool:
+    def save_note(
+        self, note_id: str, content: str, author_name: str, author_email: str,
+        base_sha: Optional[str] = None,
+    ) -> Tuple[bool, str]:
         """Writes a note's raw markdown to disk and commits + pushes it to
-        the vault's git repo. Returns True if this created a new note, False
-        if it updated an existing one. Raises NoteSaveError on git failure."""
+        the vault's git repo. Returns whether this created a new note, and
+        the saved content's sha. Raises NoteSaveError on git failure.
+
+        `base_sha` is the content the editor started from (`content_sha`):
+        if the note is no longer that, NoteConflict and nothing is written.
+        "" means the note must not exist yet; None checks nothing."""
         note_path = self._resolve_note_path(note_id)
-        is_new = not note_path.exists()
+        with self._git_lock:
+            exists = note_path.exists()
+            current = note_path.read_text(encoding='utf-8') if exists else None
+            if base_sha == "" and exists:
+                raise NoteConflict("A note with this name already exists")
+            if base_sha and (current is None or content_sha(current) != base_sha):
+                raise NoteConflict("This note was changed by someone else since you opened it")
+            if current == content:
+                return False, content_sha(content)   # nothing to save, and nothing to commit
 
-        note_path.parent.mkdir(parents=True, exist_ok=True)
-        note_path.write_text(content, encoding='utf-8')
-        rel_path = str(note_path.relative_to(self.vault_path.resolve()))
+            note_path.parent.mkdir(parents=True, exist_ok=True)
+            note_path.write_text(content, encoding='utf-8')
+            rel_path = str(note_path.relative_to(self.vault_path.resolve()))
 
-        verb = "Create" if is_new else "Update"
-        try:
-            commit_and_push(
-                self.vault_path, self._git_lock, [rel_path],
-                message=f"{verb} note: {note_id}",
-                author_name=author_name, author_email=author_email,
-            )
-        except GitCommitError as e:
-            raise NoteSaveError(str(e))
-
-        self.invalidate_cache()
-        return is_new
+            verb = "Update" if exists else "Create"
+            try:
+                commit_and_push(
+                    self.vault_path, self._git_lock, [rel_path],
+                    message=f"{verb} note: {note_id}",
+                    author_name=author_name, author_email=author_email,
+                )
+            except GitCommitError as e:
+                raise NoteSaveError(str(e))
+            finally:
+                # What is served is what is on disk, saved or not.
+                self.invalidate_cache()
+        return not exists, content_sha(content)
 
     def follow_moved_documents(self, kind: str, moves: Dict[str, str], author_name: str, author_email: str) -> List[str]:
         """Points the notes' links to moved documents (`chart:<id>`,
@@ -112,6 +154,12 @@ class MarkdownService:
         files are already rewritten on disk by then)."""
         if not moves:
             return []
+        # Read, rewritten and committed under the lock: a note saved in
+        # between would otherwise be overwritten with the version read here.
+        with self._git_lock:
+            return self._follow_moved_documents(kind, moves, author_name, author_email)
+
+    def _follow_moved_documents(self, kind: str, moves: Dict[str, str], author_name: str, author_email: str) -> List[str]:
         link = re.compile(rf"`(\s*)({re.escape(kind)}):([^`\n]+?)(\s*)`", re.IGNORECASE)
 
         def follow(match: re.Match) -> str:
@@ -144,15 +192,25 @@ class MarkdownService:
         return [Path(rel).with_suffix('').as_posix() for rel in rel_paths]
 
     def get_all_notes(self, search: Optional[str] = None, tags: Optional[str] = None) -> List[NoteMetadata]:
-        # Simple caching for unfiltered notes
-        if not search and not tags:
-            if self._all_notes_cache is not None and self._all_notes_cached_at is not None:
-                if self._is_cache_valid(self._all_notes_cached_at):
-                    return self._all_notes_cache
-                
+        """Every visible note, by path; with `search`, those whose title or id
+        holds it, and with `tags` (comma-separated) those with any of them.
+        Filtered from the cached listing: a search doesn't parse the vault."""
+        notes = self._all_notes()
+        if search:
+            query = search.lower()
+            notes = [n for n in notes if query in n.title.lower() or query in n.id.lower()]
+        tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
+        if tag_list:
+            notes = [n for n in notes if any(t in [nt.lower() for nt in n.tags] for t in tag_list)]
+        return notes
+
+    def _all_notes(self) -> List[NoteMetadata]:
+        cached, cached_at = self._all_notes_cache, self._all_notes_cached_at
+        if cached is not None and cached_at is not None and self._is_cache_valid(cached_at):
+            return cached
+
         notes = []
         hidden_ids = set()
-        tag_list = [t.strip().lower() for t in tags.split(',') if t.strip()] if tags else []
 
         for md_file in self.parser.iter_note_files():
             relative_path = md_file.relative_to(self.vault_path)
@@ -167,16 +225,6 @@ class MarkdownService:
                     continue
 
                 title = fm.get('title', md_file.stem)
-
-                # Search filter
-                if search:
-                    query = search.lower()
-                    if query not in title.lower() and query not in note_id.lower():
-                        continue
-                    
-                # Tag filter
-                if tag_list and not any(t in [nt.lower() for nt in note_tags] for t in tag_list):
-                    continue
 
                 notes.append(NoteMetadata(
                     id=note_id,
@@ -199,11 +247,7 @@ class MarkdownService:
             note.links = [link for link in note.links if link not in hidden_ids]
 
         sorted_notes = sorted(notes, key=lambda x: x.path)
-
-        if not search and not tags:
-            self._all_notes_cache = sorted_notes
-            self._all_notes_cached_at = datetime.now()
-
+        self._all_notes_cache, self._all_notes_cached_at = sorted_notes, datetime.now()
         return sorted_notes
 
     def _is_cache_valid(self, cached_at: datetime) -> bool:

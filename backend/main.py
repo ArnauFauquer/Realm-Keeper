@@ -26,14 +26,30 @@ from config.logging import setup_logging
 from config.cache import CacheControlMiddleware
 from config.csrf import OriginCheckMiddleware
 from services.doc_registry import hub as doc_hub, import_legacy_documents
-from services.git_sync_utils import redact_credentials
+from services.git_sync_utils import GitCommitError, clear_stale_index_lock, pull_rebase, redact_credentials, run_git
 from services.sheet_import import import_note_sheets
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
 
+def _mark_vault_safe(vault_path: Path) -> None:
+    """Marks the vault a safe directory, avoiding "dubious ownership" errors
+    (the container runs as UID 1000 but the vault mount may be owned by
+    root). Once: `--add` on every sync appended the same line to
+    ~/.gitconfig every few minutes."""
+    listed = subprocess.run(
+        ["git", "config", "--global", "--get-all", "safe.directory"], capture_output=True, text=True,
+    )
+    if str(vault_path) not in listed.stdout.splitlines():
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", str(vault_path)], capture_output=True, text=True,
+        )
+
+
 def sync_vault() -> None:
-    """Clone or pull the vault git repository on startup."""
+    """Clone the vault git repository, or pull it if it is cloned. Run under
+    the vault's lock (MarkdownService.git_lock) once requests are served, so a
+    pull never runs alongside a note's commit."""
     import shutil
 
     repo_url = settings.REPO_URL
@@ -42,27 +58,17 @@ def sync_vault() -> None:
         return
 
     vault_path = settings.VAULT_PATH
-
-    # Mark the vault as a safe directory to avoid "dubious ownership" errors
-    # (container runs as UID 1000 but the vault mount may be owned by root).
-    subprocess.run(
-        ["git", "config", "--global", "--add", "safe.directory", str(vault_path)],
-        capture_output=True, text=True
-    )
+    _mark_vault_safe(vault_path)
     git_dir = vault_path / ".git"
 
     try:
         if git_dir.exists():
             logger.info(f"Vault already cloned at {vault_path}, updating remote URL and pulling latest...")
             # Always ensure the remote URL matches the current env var before pulling
-            subprocess.run(
-                ["git", "-C", str(vault_path), "remote", "set-url", "origin", repo_url],
-                capture_output=True, text=True
-            )
-            result = subprocess.run(
-                ["git", "-C", str(vault_path), "pull"],
-                capture_output=True, text=True, timeout=120
-            )
+            run_git(vault_path, "remote", "set-url", "origin", repo_url)
+            # Rebasing: after a push that failed, the vault has commits of its
+            # own, and a plain pull of diverged history either fails or merges.
+            result = pull_rebase(vault_path)
             if result.returncode == 0:
                 logger.info(f"Vault sync successful: {redact_credentials(result.stdout.strip())}")
             else:
@@ -97,8 +103,8 @@ def sync_vault() -> None:
                 logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
                 if tmp_path.exists():
                     shutil.rmtree(tmp_path)
-    except subprocess.TimeoutExpired:
-        logger.error("Vault sync timed out.")
+    except (subprocess.TimeoutExpired, GitCommitError) as e:
+        logger.error(f"Vault sync timed out: {e}")
     except Exception as e:
         logger.error(f"Vault sync error: {redact_credentials(str(e))}")
 
@@ -112,7 +118,7 @@ async def _periodic_sync():
     while True:
         await asyncio.sleep(interval)
         logger.info("Running periodic vault sync...")
-        await asyncio.to_thread(sync_vault)
+        await asyncio.to_thread(md_service_instance.under_git_lock, sync_vault)
         # A pull can add, change or newly hide (ignore-tag) notes: drop the
         # parsed-note caches so none of that waits out their 5-minute TTL.
         md_service_instance.invalidate_cache()
@@ -120,6 +126,9 @@ async def _periodic_sync():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Nothing else runs git yet: a lock a killed git left (a restart in the
+    # middle of a push) would otherwise block every commit from now on.
+    clear_stale_index_lock(settings.VAULT_PATH)
     sync_vault()
     # In k8s the vault is an emptyDir, so a failed first clone would leave the
     # pod serving (and turning ready with) an empty vault. Crash instead, so
