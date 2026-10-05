@@ -253,9 +253,12 @@ it change. `services/sync_hub.py` (`DocHub`) is built for that.
 
 On the client, `useSyncedDoc` loads a snapshot (with its `rev`), applies events
 whose `rev` is exactly one more than its own, ignores ones it already has,
-refetches on a gap or a reconnect, and shares one copy per document between all
-the components that ask for it. A command's HTTP reply is the same event, applied
-at once.
+holds one that comes early for 300 ms waiting for the ones before it (a command's
+reply can overtake the socket), refetches on a gap that doesn't fill or a
+reconnect (once more if asked while a fetch is on its way), and shares one copy
+per document between all the components that ask for it, kept 3 s after the last
+lets go (a note's preview remounts its embeds on every keystroke). A command's
+HTTP reply is the same event, applied at once.
 
 ### Characters
 
