@@ -269,6 +269,7 @@ import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { useSoundEffects } from '@/composables/useSoundEffects'
 import { sfxRefMarkdown } from '@/utils/audioLink'
+import { errorMessage } from '@/api/http'
 
 const props = defineProps({
   isOpen: { type: Boolean, required: true }
@@ -296,7 +297,7 @@ const actionError = ref(null)
 const shownError = computed(() => actionError.value || playError.value)
 
 function failed(e, message) {
-  actionError.value = e?.response?.data?.detail || message
+  actionError.value = errorMessage(e, message)
 }
 
 function dismissError() {

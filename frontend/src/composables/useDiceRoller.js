@@ -1,7 +1,6 @@
 import { reactive, readonly } from 'vue'
 import { parseDiceFormula, formatDiceFormula, resolveDuality, resolveNatural } from '@/utils/diceNotation'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { screenApi } from '@/api/screen'
 import { themeForSlot } from '@/dice/diceTheme'
 import { rollWithoutDice } from '@/dice/randomRoll'
 import { useAuth } from '@/composables/useAuth'
@@ -76,7 +75,7 @@ function pushToast(formula, result, label, outcome = null) {
  * tab/device) shows the same roll - never lets a screen-broadcast failure
  * affect the local roll/toast. */
 function broadcastToScreen(formula, result, label) {
-  post(`${apiUrl}/api/screen/dice`, {
+  screenApi.dice({
     formula,
     label,
     groups: result.groups,
@@ -88,9 +87,9 @@ function broadcastToScreen(formula, result, label) {
 /** Parses and rolls a formula (e.g. "4d8+5"); silently no-ops on an invalid
  * formula or while another roll is still in flight. Returns the result, or
  * null if the roll didn't happen; never rejects - where the 3D dice can't be
- * thrown, the roll is made without them (dice/randomRoll.js). `label` says who rolls and what for
- * ("Bugboar · Gore") and is shown with it, here and on the screen; without
- * one, the player's name is shown instead. `outcome(result)` names what the
+ * thrown, the roll is made without them (dice/randomRoll.js). `label` says
+ * who rolls and what for ("Bugboar · Gore") and is shown with it, here and on
+ * the screen; without one, the player's name is shown instead. `outcome(result)` names what the
  * roll landed on (a roll table's row); only the local toast shows it, so a
  * table the players shouldn't read stays off the screen. */
 async function roll(formulaText, { label = null, outcome = null } = {}) {

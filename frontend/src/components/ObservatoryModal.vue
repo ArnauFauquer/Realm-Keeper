@@ -155,11 +155,13 @@ import FolderGallery from './FolderGallery.vue'
 import DocumentModalHeader from './DocumentModalHeader.vue'
 import { docApi } from '@/api/docs'
 import { observatoryApi } from '@/api/observatory'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { errorMessage } from '@/api/http'
+import { screenApi } from '@/api/screen'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
-import { DOC_TYPES, IMAGE_KIND } from '@/utils/docTypes'
+import { useFlash } from '@/composables/useFlash'
+import { DOC_TYPES, IMAGE_KIND, capitalize } from '@/utils/docTypes'
+import { joinPath } from '@/utils/paths'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import { absoluteUrl, resolveUrl } from '@/utils/resolveUrl'
 
@@ -199,7 +201,7 @@ const currentPath = ref('')
 const kindView = ref(null)
 const view = ref('gallery')
 const activeImage = ref(null)
-const sendingToScreen = ref(false)
+const { on: sendingToScreen, flash: flashSent } = useFlash()
 const importing = ref(false)
 const leftOut = ref([])
 const newMenuOpen = ref(false)
@@ -211,7 +213,6 @@ const newInputRef = ref(null)
 
 const kindOf = (item) => (item.kind === 'image' ? IMAGE_KIND : DOC_TYPES[item.kind])
 const itemKey = (item) => `${item.kind}:${item.id}`
-const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 
 // A flat list from many folders says where each one is.
 const shownItems = computed(() => {
@@ -238,7 +239,9 @@ function copyText(item) {
   return DOC_TYPES[item.kind]?.embeddable ? docRefMarkdown(item.kind, item.id) : null
 }
 
-watch(() => props.isOpen, (open) => {
+// Opened, or asked for another folder or kind while open (useObservatoryModal's
+// open(path) / openKind(kind) over the one on screen).
+watch(() => [props.isOpen, props.startPath, props.startKind], ([open]) => {
   if (!open) return
   view.value = 'gallery'
   activeImage.value = null
@@ -265,8 +268,8 @@ async function fetchLevel(path = currentPath.value) {
   }
 }
 
-const failure = (err) => { error.value = err.response?.data?.detail || err.message }
-const folderPath = (folder) => (currentPath.value ? `${currentPath.value}/${folder}` : folder)
+const failure = (err) => { error.value = errorMessage(err) }
+const folderPath = (folder) => joinPath(currentPath.value, folder)
 
 // Each change happens in the level on screen, then shows it again.
 async function changing(change) {
@@ -324,9 +327,8 @@ function backToGallery() {
 async function sendToScreen() {
   if (!activeImage.value) return
   try {
-    await post(`${apiUrl}/api/screen/display`, { url: resolveUrl(activeImage.value.url), title: activeImage.value.name })
-    sendingToScreen.value = true
-    setTimeout(() => { sendingToScreen.value = false }, 2000)
+    await screenApi.display(resolveUrl(activeImage.value.url), activeImage.value.name)
+    flashSent()
   } catch (err) {
     console.error('Failed to send the image to the screen:', err)
   }

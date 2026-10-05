@@ -47,6 +47,7 @@ import SheetEditor from './SheetEditor.vue'
 import ResourceCounter from './ResourceCounter.vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { errorMessage } from '@/api/http'
 
 // One character: its sheet's YAML beside the sheet, with its counters live.
 // A character is a live document (its counters are played as it is edited),
@@ -81,7 +82,7 @@ async function save() {
     await characters.patch(id, { source: draft.value })
     following = true
   } catch (err) {
-    saveError.value = err.response?.data?.detail || err.message
+    saveError.value = errorMessage(err)
   } finally {
     saving.value = false
   }
@@ -91,7 +92,7 @@ async function adjust(resource, by) {
   try {
     await characters.adjust(id, resource, by)
   } catch (err) {
-    saveError.value = err.response?.data?.detail || err.message
+    saveError.value = errorMessage(err)
   }
 }
 

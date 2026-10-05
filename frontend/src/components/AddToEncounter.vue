@@ -39,6 +39,7 @@ import { ref } from 'vue'
 import { encountersApi } from '@/api/docs'
 import { useDocModal } from '@/composables/useDocModal'
 import { combatantsFromSheet } from '@/utils/encounter'
+import { errorMessage } from '@/api/http'
 
 // A sheet's button for putting it into an encounter: an adversary as one or
 // more independent copies, a character as itself (once).
@@ -70,7 +71,7 @@ async function toggle() {
     encounters.value = await encountersApi.fetchAll()
     chosen.value = chosen.value || encounters.value[0]?.id || ''
   } catch (err) {
-    loadError.value = err.response?.data?.detail || err.message
+    loadError.value = errorMessage(err)
   } finally {
     loading.value = false
   }
@@ -94,7 +95,7 @@ async function add() {
     message.value = entry.type === 'character' ? `${entry.name} added.` : `${amount > 1 ? `${amount} copies` : 'One copy'} added.`
   } catch (err) {
     failed.value = true
-    message.value = err.response?.data?.detail || err.message
+    message.value = errorMessage(err)
   } finally {
     adding.value = false
   }

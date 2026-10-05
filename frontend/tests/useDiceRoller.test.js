@@ -4,10 +4,9 @@ import { ref } from 'vue'
 import { parseDiceFormula } from '@/utils/diceNotation'
 import { randomDieValue, rollWithoutDice } from '@/dice/randomRoll'
 
-const post = vi.fn()
+const screenDice = vi.fn()
 const createDiceWorld = vi.fn()
-vi.mock('@/api/http', () => ({ post: (...args) => post(...args) }))
-vi.mock('@/config/env', () => ({ apiUrl: '' }))
+vi.mock('@/api/screen', () => ({ screenApi: { dice: (...args) => screenDice(...args) } }))
 vi.mock('@/composables/useAuth', () => ({ useAuth: () => ({ user: ref({ name: 'Aria', diceSlot: 1 }) }) }))
 vi.mock('@/dice/diceWorld', () => ({ createDiceWorld: (...args) => createDiceWorld(...args) }))
 
@@ -15,8 +14,8 @@ let dice
 
 beforeEach(async () => {
   vi.resetModules()
-  post.mockReset()
-  post.mockResolvedValue({})
+  screenDice.mockReset()
+  screenDice.mockResolvedValue({})
   createDiceWorld.mockReset()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   const { useDiceRoller } = await import('@/composables/useDiceRoller')
@@ -41,7 +40,7 @@ describe('useDiceRoller without WebGL', () => {
     expect(result.total).toBe(result.groups[0].rolls[0] + result.groups[0].rolls[1] + 3)
     expect(dice.state.toasts).toHaveLength(1)
     expect(dice.state.toasts[0]).toMatchObject({ formula: '2d6 + 3', label: 'Aria', total: result.total })
-    expect(post).toHaveBeenCalledWith('/api/screen/dice', {
+    expect(screenDice).toHaveBeenCalledWith({
       formula: '2d6 + 3', label: null, groups: result.groups, flatModifier: 3, total: result.total
     })
     expect(dice.state.isRolling).toBe(false)

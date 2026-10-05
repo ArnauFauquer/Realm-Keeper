@@ -3,6 +3,7 @@
 // does the same normalization; both are checked against the shared cases in
 // backend/tests/fixtures/sheets/, so a change here needs the same change there.
 import { parse } from 'yaml'
+import { OBSERVATORY_IMAGE_PREFIX as IMAGE_URL_PREFIX } from './docTypes'
 
 export const SHEET_TYPES = ['character', 'adversary']
 
@@ -14,7 +15,6 @@ const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags',
 // How many columns a layout may ask for (the sheet's sections, a section's
 // items, a group of stats). Narrow screens fall back to fewer on their own.
 const MAX_COLUMNS = 12
-const IMAGE_URL_PREFIX = '/api/observatory/images/'
 // An Observatory image's file name: its uid, then its name ("1a2b3c4d-boar.png").
 const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^/]+\.(png|jpe?g|webp|gif|svg)$/i
 
