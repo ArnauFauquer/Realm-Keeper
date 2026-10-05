@@ -76,8 +76,9 @@ function broadcastToScreen(formula, result, label) {
 
 /** Parses and rolls a formula (e.g. "4d8+5"); silently no-ops on an invalid
  * formula or while another roll is still in flight. Returns the result, or
- * null if the roll didn't happen. `label` says what the roll is for ("Bugboar
- * · Gore") and is shown with it, here and on the screen. */
+ * null if the roll didn't happen. `label` says who rolls and what for
+ * ("Bugboar · Gore") and is shown with it, here and on the screen; without
+ * one, the player's name is shown instead. */
 async function roll(formulaText, { label = null } = {}) {
   const parsed = parseDiceFormula(formulaText)
   if (!parsed || state.isRolling) return null
@@ -96,7 +97,9 @@ async function roll(formulaText, { label = null } = {}) {
     const { rollParsedFormula } = await import('@/dice/diceRoller')
     const result = await rollParsedFormula(world, parsed, themeForSlot(user.value?.diceSlot))
     const formula = formatDiceFormula(parsed)
-    pushToast(formula, result, label)
+    // A roll without a sheet behind it is the player's own: name them. The
+    // screen gets the name from the session instead (routes/screen.py).
+    pushToast(formula, result, label || user.value?.name || null)
     broadcastToScreen(formula, result, label)
     return result
   } finally {

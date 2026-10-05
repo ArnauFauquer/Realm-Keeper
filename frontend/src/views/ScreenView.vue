@@ -455,7 +455,9 @@ export default {
       this.diceRoll = {
         id: ++this.diceSeq,
         formula: data.formula || '',
-        label: data.label || '',
+        // Who rolled: the character/adversary of a sheet roll ("Bugboar ·
+        // Gore"), else the player who rolled from the dice panel or a note.
+        label: data.label || data.roller || '',
         groups: data.groups || [],
         flatModifier: data.flatModifier || 0,
         total: data.total,

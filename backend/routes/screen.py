@@ -177,13 +177,15 @@ async def display_dice(data: dict, user: dict = Depends(require_auth)):
     Broadcasts a dice roll result to all connected screens.
     Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
     plus an optional "label" saying what the roll is for ("Bugboar · Gore").
-    The roller's dice colour comes from the session, not the payload, so one
-    player can't have their roll shown in another's colour.
+    The roller's name and dice colour come from the session, not the payload,
+    so one player can't have their roll shown as another's. The screen shows
+    the roller when there's no label (a roll from the dice panel or a note).
     """
     await manager.broadcast({
         "type": "dice_roll",
         "formula": data.get("formula", ""),
         "label": str(data.get("label") or "")[:MAX_DICE_LABEL_LENGTH],
+        "roller": user["name"][:MAX_DICE_LABEL_LENGTH],
         "groups": data.get("groups", []),
         "flatModifier": data.get("flatModifier", 0),
         "total": data.get("total", 0),
