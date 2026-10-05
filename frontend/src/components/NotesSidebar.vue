@@ -286,6 +286,7 @@ import { DOC_TYPES } from '@/utils/docTypes'
 import { usePlayer } from '@/composables/usePlayer'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
 import { createScreenLink } from '@/api/screen'
+import { noteRoute } from '@/utils/noteUrls'
 
 const router = useRouter()
 const { user, login, logout } = useAuth()
@@ -334,7 +335,7 @@ function submitNewNote() {
   newNotePath.value = ''
   showNewNoteInput.value = false
   closeSidebar()
-  router.push(`/note/${path.split('/').map(encodeURIComponent).join('/')}?new=1`)
+  router.push(`${noteRoute(path)}?new=1`)
 }
 
 const {

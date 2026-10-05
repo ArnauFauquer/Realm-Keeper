@@ -136,6 +136,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { observatoryApi } from '@/api/observatory'
+import { noteRoute } from '@/utils/noteUrls'
 import { useAuth } from '@/composables/useAuth'
 import { useDocModal } from '@/composables/useDocModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
@@ -332,7 +333,7 @@ function move(by) {
   nextTick(() => document.getElementById(`search-result-${activeIndex.value}`)?.scrollIntoView?.({ block: 'nearest' }))
 }
 
-const noteUrl = (note) => '/note/' + encodeURIComponent(note.id)
+const noteUrl = (note) => noteRoute(note.id)
 
 function openResult(entry, event) {
   if (!entry) return

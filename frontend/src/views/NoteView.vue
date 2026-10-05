@@ -161,6 +161,7 @@ import RightSidebar from '@/components/RightSidebar.vue'
 import DocumentEmbed from '@/components/DocumentEmbed.vue'
 import SheetRefPicker from '@/components/SheetRefPicker.vue'
 import { DOC_TYPES } from '@/utils/docTypes'
+import { noteApi, noteIdFromHref, noteRawApi, noteRoute } from '@/utils/noteUrls'
 
 // A sheet (and the YAML parser it needs) is only fetched for a note that shows one.
 const SheetEmbed = defineAsyncComponent(() => import('@/components/SheetEmbed.vue'))
@@ -271,7 +272,7 @@ export default {
           // If the folder mapping has a note ID for this path, use it as the link
           const targetNoteId = this.containerFolders[currentPath]
           if (targetNoteId) {
-            crumbs.push({ name, to: '/note/' + encodeURIComponent(targetNoteId) })
+            crumbs.push({ name, to: noteRoute(targetNoteId) })
           } else {
             crumbs.push({ name, to: null })
           }
@@ -311,7 +312,7 @@ export default {
       this.isCreating = false
 
       try {
-        this.note = await getCached(`${apiUrl}/api/note/${this.notePath}`, { cacheTtl: 300 })
+        this.note = await getCached(noteApi(this.notePath), { cacheTtl: 300 })
         this.loading = false
 
         this.setupLinkPrefetch()
@@ -334,7 +335,7 @@ export default {
       this.saveError = null
       this.editorTab = 'write'
       try {
-        const data = await getCached(`${apiUrl}/api/note-raw/${this.notePath}`, { useCache: false })
+        const data = await getCached(noteRawApi(this.notePath), { useCache: false })
         this.draftContent = data.content
         this.isEditing = true
         this.isCreating = false
@@ -371,9 +372,9 @@ export default {
       this.saving = true
       this.saveError = null
       try {
-        await put(`${apiUrl}/api/note/${this.notePath}`, { content: this.draftContent })
-        invalidateCached(`${apiUrl}/api/note/${this.notePath}`)
-        invalidateCached(`${apiUrl}/api/note-raw/${this.notePath}`)
+        await put(noteApi(this.notePath), { content: this.draftContent })
+        invalidateCached(noteApi(this.notePath))
+        invalidateCached(noteRawApi(this.notePath))
         invalidateCached(`${apiUrl}/api/notes`)
         this.isEditing = false
         this.isCreating = false
@@ -393,7 +394,7 @@ export default {
           
           this.prefetchCache.add(linkId)
 
-          getCached(`${apiUrl}/api/note/${linkId}`, { cacheTtl: 300, timeout: 2000 }).catch(() => {
+          getCached(noteApi(linkId), { cacheTtl: 300, timeout: 2000 }).catch(() => {
           })
         })
       }
@@ -413,7 +414,7 @@ export default {
       
       this.prefetchCache.add(linkId)
 
-      getCached(`${apiUrl}/api/note/${linkId}`, { cacheTtl: 300, timeout: 1500 }).catch(() => {
+      getCached(noteApi(linkId), { cacheTtl: 300, timeout: 1500 }).catch(() => {
       })
     },
     setupLinkPrefetch() {
@@ -425,7 +426,7 @@ export default {
         // re-renders (see the watcher), and must not stack listeners.
         const links = content.querySelectorAll('a[data-note-link]:not([data-link-wired])')
         links.forEach(link => {
-          const linkId = link.getAttribute('data-note-link')
+          const linkId = noteIdFromHref(link.getAttribute('href'))
           if (!linkId) return
           link.setAttribute('data-link-wired', '1')
 
@@ -440,7 +441,7 @@ export default {
           link.addEventListener('click', (e) => {
             if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
             e.preventDefault()
-            this.$router.push(`/note/${linkId}`)
+            this.$router.push(noteRoute(linkId))
           })
         })
 

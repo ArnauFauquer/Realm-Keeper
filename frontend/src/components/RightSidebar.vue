@@ -40,6 +40,7 @@ import { slugifyHeading, stripInlineLinkSyntax } from '@/utils/slugify'
 import { getNodeColor } from '../config/nodeColors'
 import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 import { useGraphModal } from '@/composables/useGraphModal'
+import { noteRoute } from '@/utils/noteUrls'
 
 export default {
   name: 'RightSidebar',
@@ -279,7 +280,7 @@ export default {
         .style('cursor', 'pointer')
         .on('click', (event, d) => {
           if (d.id !== this.note.id) {
-            this.$router.push(`/note/${encodeURIComponent(d.id)}`)
+            this.$router.push(noteRoute(d.id))
           }
         })
         .call(d3.drag()

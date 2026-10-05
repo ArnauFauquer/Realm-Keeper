@@ -9,11 +9,13 @@
   </div>
 </template>
 <script>
+import { noteRoute } from '@/utils/noteUrls'
+
 export default {
   name: 'Home',
   mounted() {
     const defaultPage = import.meta.env.VITE_DEFAULT_PAGE || 'RealmKeeper'
-    this.$router.replace(`/note/${defaultPage}`)
+    this.$router.replace(noteRoute(defaultPage))
   }
 }
 </script>

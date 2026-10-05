@@ -138,6 +138,7 @@ import { drawStarfield } from '@/composables/useConstellationGraph'
 import { createConstellationCanvas, decorateNodes } from '@/composables/constellationCanvas'
 import { useLiveScreen } from '@/composables/useLiveScreen'
 import { useAuth } from '@/composables/useAuth'
+import { noteRoute } from '@/utils/noteUrls'
 
 // Ticks run synchronously before the first paint so the graph appears almost
 // settled instead of visibly exploding outwards.
@@ -341,7 +342,7 @@ export default {
     
     onNodeClick(node) {
       this.closeModal()
-      this.$router.push(`/note/${encodeURIComponent(node.id)}`)
+      this.$router.push(noteRoute(node.id))
     },
     
     closeModal() {
