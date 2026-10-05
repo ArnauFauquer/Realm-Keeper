@@ -26,6 +26,7 @@
           <span v-if="t.natural?.critical" class="toast-outcome outcome--crit">{{ NATURAL_OUTCOME_LABELS.critical }}</span>
           <span v-if="t.natural?.fumble" class="toast-outcome outcome--fumble">{{ NATURAL_OUTCOME_LABELS.fumble }}</span>
         </div>
+        <div v-if="t.outcome" class="toast-table-row">{{ t.outcome }}</div>
       </div>
     </transition-group>
   </div>
@@ -135,6 +136,20 @@ const { state, dismissToast } = useDiceRoller()
 /* Hope & Fear colours match the dice themselves (dice/diceTheme.js). */
 .kind--hope { color: #f2c75c; font-weight: 600; }
 .kind--fear { color: #f0759b; font-weight: 600; }
+
+.toast-table-row {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-light);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 
 .toast-outcome {
   font-size: var(--text-sm);
