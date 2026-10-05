@@ -43,8 +43,17 @@ def get_sheet(sheet_type: str, ref: str) -> Optional[SheetCatalogEntry]:
 
 
 def list_sheets(sheet_type: Optional[str] = None) -> List[SheetCatalogEntry]:
-    """Every valid sheet (of one type), by name."""
-    wanted = [(t, meta.id) for t, c in COLLECTIONS.items() if sheet_type in (None, t) for meta in c.list_all()]
+    """Every valid sheet (of one type), by name. Each is read once: the store
+    is listed (once for both kinds, which share it), not read for metadata
+    first and then again for the sheet."""
+    listed: Dict[tuple, List[str]] = {}
+    wanted = []
+    for t, collection in COLLECTIONS.items():
+        if sheet_type in (None, t):
+            where = (id(collection.backend), collection.root)
+            if where not in listed:
+                listed[where] = collection.backend.list_keys(collection.root)
+            wanted.extend((t, doc_id) for doc_id in collection.ids(listed[where]))
     with ThreadPoolExecutor(max_workers=8) as pool:
         entries = [e for e in pool.map(lambda key: get_sheet(*key), wanted) if e is not None]
     entries.sort(key=lambda e: (e.sheet.name.lower(), e.type))
