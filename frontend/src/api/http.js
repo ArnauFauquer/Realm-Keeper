@@ -14,15 +14,6 @@ export const httpClient = axios.create({
   withCredentials: true
 })
 
-httpClient.interceptors.request.use((config) => {
-  if (config.method === 'get') {
-    config.headers['Cache-Control'] = 'max-age=300'
-  } else {
-    config.headers['Cache-Control'] = 'no-cache'
-  }
-  return config
-})
-
 httpClient.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -36,6 +27,15 @@ httpClient.interceptors.response.use(
   }
 )
 
+// A request's place in the cache: its URL with its query, so page 2 of a
+// listing (`params: { offset: 500 }`) is never answered with page 1.
+const cacheKey = (url, params) => `GET:${httpClient.getUri({ url, params })}`
+
+/**
+ * GET, answered from memory when the same request (URL and `params`) was made
+ * less than `cacheTtl` seconds ago. `useCache: false` always asks the server
+ * (and keeps nothing). Anything else is passed to axios.
+ */
 export async function getCached(url, options = {}) {
   const {
     useCache = true,
@@ -43,13 +43,12 @@ export async function getCached(url, options = {}) {
     ...axiosConfig
   } = options
 
-  const cacheKey = `GET:${url}`
-
   if (!useCache) {
     return httpClient.get(url, axiosConfig).then(res => res.data)
   }
 
-  const cachedData = apiCache.get(cacheKey)
+  const key = cacheKey(url, axiosConfig.params)
+  const cachedData = apiCache.get(key)
   if (cachedData) {
     return cachedData
   }
@@ -58,7 +57,7 @@ export async function getCached(url, options = {}) {
   const data = response.data
 
   if (cacheTtl && cacheTtl > 0) {
-    apiCache.set(cacheKey, data)
+    apiCache.set(key, data, cacheTtl)
   }
 
   return data
@@ -74,6 +73,15 @@ export async function put(url, data, options = {}) {
   return response.data
 }
 
-export function invalidateCached(url) {
-  apiCache.delete(`GET:${url}`)
+/**
+ * Forgets what getCached kept for this URL: with `params`, that one request;
+ * without, every request to it, whatever its query (every page of a listing).
+ */
+export function invalidateCached(url, params) {
+  if (params) {
+    apiCache.delete(cacheKey(url, params))
+    return
+  }
+  const key = cacheKey(url)
+  apiCache.deleteWhere((cached) => cached === key || cached.startsWith(`${key}?`))
 }
