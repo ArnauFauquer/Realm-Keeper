@@ -123,9 +123,9 @@
             <template v-if="thumbUrl(item)">
               <img :src="resolveUrl(thumbUrl(item))" :alt="item.name" />
               <!-- On a picture, what kind of document it is goes in the corner. -->
-              <span v-if="item.kind !== 'image'" class="kind-badge" :title="capitalize(kindOf(item).label)">
-                <span class="mdi" :class="kindOf(item).icon" aria-hidden="true"></span>
-                <span class="rk-visually-hidden">{{ kindOf(item).label }}</span>
+              <span v-if="item.kind !== 'image'" class="kind-badge">
+                <span class="mdi kind-badge-icon" :class="kindOf(item).icon" aria-hidden="true"></span>
+                <span>{{ capitalize(kindOf(item).label) }}</span>
               </span>
             </template>
             <span v-else class="mdi" :class="kindOf(item).icon" :title="capitalize(kindOf(item).label)"></span>
@@ -513,21 +513,34 @@ function onMove(dragItem, destPath) {
   color: var(--accent-contrast);
 }
 
-/* What kind a document is, in the corner of its card. */
+/* What kind of document it is, in the corner of its card: a small label that
+   stays readable on any picture. */
 .kind-badge {
   position: absolute;
   left: var(--space-2);
   bottom: var(--space-2);
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: var(--radius-sm);
-  background: var(--surface-overlay);
+  gap: var(--space-1);
+  height: 1.5rem;
+  padding: 0 var(--space-2) 0 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(10, 11, 28, 0.78);
+  backdrop-filter: blur(6px);
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  line-height: 1;
   pointer-events: none;
+}
+
+/* The gallery sizes and dims the placeholder glyphs of a thumbnail; not this one. */
+.kind-badge .mdi.kind-badge-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  opacity: 1;
+  color: var(--accent);
 }
 
 .restore-report {
