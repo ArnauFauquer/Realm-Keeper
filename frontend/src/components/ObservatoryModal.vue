@@ -18,6 +18,7 @@
 
       <div v-if="view === 'gallery'" class="observatory-body">
         <FolderGallery
+          ref="galleryRef"
           :folders="folders"
           :items="shownItems"
           :item-key="itemKey"
@@ -32,6 +33,7 @@
           empty-icon="mdi-star-four-points-outline"
           :empty-text="emptyText"
           accepts-files
+          :show-new-folder="pickerMode"
           @drop-files="(files, dest) => importInto(dest, files)"
           @navigate="goToPath"
           @enter-folder="enterFolder"
@@ -58,36 +60,42 @@
               <button class="rk-icon-btn" aria-label="Cancel" @click="newKind = null"><span class="mdi mdi-close"></span></button>
             </div>
             <div v-else-if="!pickerMode" ref="newMenuRef" class="new-menu">
-              <button class="rk-btn gallery-action-btn" :aria-expanded="newMenuOpen" aria-haspopup="menu" @click="newMenuOpen = !newMenuOpen">
-                <span class="mdi mdi-plus"></span> New <span class="mdi mdi-menu-down" aria-hidden="true"></span>
+              <button class="rk-btn rk-btn--primary" :aria-expanded="newMenuOpen" aria-haspopup="menu" @click="newMenuOpen = !newMenuOpen">
+                <span class="mdi mdi-plus"></span> New <span class="mdi mdi-chevron-down new-caret" aria-hidden="true"></span>
               </button>
               <div v-if="newMenuOpen" class="new-menu-list" role="menu">
+                <button class="new-menu-item" role="menuitem" @click="startNewFolder">
+                  <span class="mdi mdi-folder-outline" aria-hidden="true"></span> Folder
+                </button>
+                <div class="new-menu-divider" role="separator"></div>
                 <button v-for="kind in DOC_KINDS" :key="kind.type" class="new-menu-item" role="menuitem" @click="startNew(kind)">
                   <span class="mdi" :class="kind.icon" aria-hidden="true"></span> {{ capitalize(kind.label) }}
                 </button>
               </div>
             </div>
-            <label
-              class="rk-btn gallery-action-btn"
-              :class="{ busy: importing }"
-              :title="pickerMode ? 'Upload images into this folder' : 'Bring images, documents (.chart.json, .vista.json...) or an exported zip into this folder'"
-            >
-              <span v-if="importing" class="rk-spinner" aria-hidden="true"></span>
-              <span v-else class="mdi mdi-upload"></span>
-              <span>{{ importing ? 'Importing...' : 'Import' }}</span>
-              <input type="file" :accept="pickerMode ? 'image/*' : IMPORTABLE" multiple hidden :disabled="importing" @change="onFilesSelected" />
-            </label>
-            <template v-if="!pickerMode">
-              <span class="actions-spacer" aria-hidden="true"></span>
+            <span v-if="!pickerMode" class="actions-spacer" aria-hidden="true"></span>
+            <!-- Moving files in and out of the folder on screen: one group. -->
+            <div class="io-group" role="group" aria-label="Files">
+              <label
+                class="rk-btn io-btn"
+                :class="{ busy: importing }"
+                :title="pickerMode ? 'Upload images into this folder' : 'Bring images, documents (.chart.json, .vista.json...) or an exported zip into this folder. You can also drop files here.'"
+              >
+                <span v-if="importing" class="rk-spinner" aria-hidden="true"></span>
+                <span v-else class="mdi mdi-tray-arrow-up"></span>
+                <span>{{ importing ? 'Importing...' : 'Import' }}</span>
+                <input type="file" :accept="pickerMode ? 'image/*' : IMPORTABLE" multiple hidden :disabled="importing" @change="onFilesSelected" />
+              </label>
               <a
-                class="rk-btn gallery-action-btn"
+                v-if="!pickerMode"
+                class="rk-btn io-btn"
                 :href="observatoryApi.exportUrl(currentPath)"
                 download
                 :title="currentPath ? `Download “${currentPath}” as a zip, to import anywhere` : 'Download everything as a zip, to import anywhere'"
               >
-                <span class="mdi mdi-download"></span> Export
+                <span class="mdi mdi-tray-arrow-down"></span> Export
               </a>
-            </template>
+            </div>
           </template>
 
           <template #filters>
@@ -190,6 +198,7 @@ const importing = ref(false)
 const leftOut = ref([])
 const newMenuOpen = ref(false)
 const newMenuRef = ref(null)
+const galleryRef = ref(null)
 const newKind = ref(null)
 const newName = ref('')
 const newInputRef = ref(null)
@@ -311,6 +320,11 @@ async function sendToScreen() {
 
 // ── making things ───────────────────────────────────────────────────────
 
+function startNewFolder() {
+  newMenuOpen.value = false
+  galleryRef.value?.startNewFolder()
+}
+
 function startNew(kind) {
   newMenuOpen.value = false
   newKind.value = kind
@@ -431,12 +445,6 @@ function onMove(dragItem, destPath) {
   flex: 1;
 }
 
-@media (max-width: 640px) {
-  .actions-spacer {
-    display: none;
-  }
-}
-
 .new-menu {
   position: relative;
 }
@@ -475,6 +483,57 @@ function onMove(dragItem, destPath) {
   background: var(--hover-tint);
 }
 
+.new-menu-item .mdi {
+  color: var(--text-secondary);
+}
+
+.new-menu-divider {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border-light);
+}
+
+.new-caret {
+  margin-left: calc(var(--space-1) * -1);
+  opacity: 0.8;
+}
+
+/* Import and Export, joined: one control for files in and out. */
+.io-group {
+  display: inline-flex;
+}
+
+.io-btn {
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.io-group .io-btn:not(:only-child):first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.io-group .io-btn:not(:only-child):last-child {
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.io-group .io-btn:hover {
+  position: relative;
+  z-index: 1;
+}
+
+/* On a phone the two groups share one row: the compact button size. */
+@media (max-width: 640px) {
+  .new-menu > .rk-btn,
+  .io-btn {
+    min-height: var(--control-sm);
+    padding: 0 var(--space-3);
+    font-size: var(--text-xs);
+  }
+}
+
 .kind-filter {
   display: flex;
   flex-wrap: wrap;
@@ -489,7 +548,7 @@ function onMove(dragItem, destPath) {
   padding: 0 var(--space-3);
   background: transparent;
   border: 1px solid var(--border-light);
-  border-radius: 999px;
+  border-radius: var(--radius-md);
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
@@ -517,7 +576,7 @@ function onMove(dragItem, destPath) {
   height: 1.5rem;
   padding: 0 var(--space-2) 0 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: rgba(10, 11, 28, 0.78);
   backdrop-filter: blur(6px);
   color: var(--text-primary);
@@ -553,16 +612,12 @@ function onMove(dragItem, destPath) {
   font-size: var(--text-sm);
 }
 
-a.gallery-action-btn {
-  text-decoration: none;
-}
-
 .busy {
   pointer-events: none;
   opacity: 0.6;
 }
 
-.gallery-action-btn .rk-spinner {
+.io-btn .rk-spinner {
   width: 14px;
   height: 14px;
 }

@@ -47,7 +47,7 @@
         <button class="rk-icon-btn" aria-label="Create folder" @click="submitNewFolder"><span class="mdi mdi-check"></span></button>
         <button class="rk-icon-btn" aria-label="Cancel" @click="creatingFolder = false"><span class="mdi mdi-close"></span></button>
       </div>
-      <button v-else class="rk-btn gallery-action-btn" @click="startNewFolder">
+      <button v-else-if="showNewFolder" class="rk-btn gallery-action-btn" @click="startNewFolder">
         <span class="mdi mdi-folder-plus-outline"></span> New folder
       </button>
       <slot name="actions" />
@@ -188,7 +188,10 @@ const props = defineProps({
   // Files dragged in from the computer can be dropped here: on the gallery
   // (into the folder on screen) or on a folder or a crumb (into that one),
   // which emits `drop-files` (files, destination path).
-  acceptsFiles: { type: Boolean, default: false }
+  acceptsFiles: { type: Boolean, default: false },
+  // Without its own New folder button, a caller offers it elsewhere and opens
+  // the same inline form with the exposed startNewFolder().
+  showNewFolder: { type: Boolean, default: true }
 })
 
 const emit = defineEmits([
@@ -257,6 +260,8 @@ function onGalleryDrop(event) {
   event.preventDefault()
   droppedFiles(event, props.currentPath)
 }
+
+defineExpose({ startNewFolder })
 
 function startNewFolder() {
   creatingFolder.value = true

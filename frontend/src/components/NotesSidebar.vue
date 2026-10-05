@@ -32,12 +32,15 @@
           <span>Search Notes</span>
         </button>
         <!-- The Observatory (every document and image) is behind login, like the player. -->
-        <button v-if="user" class="observatory-trigger" @click="openObservatory()">
-          <span class="mdi mdi-telescope" aria-hidden="true"></span>
-          <span class="observatory-label">
-            <span>Observatory</span>
-            <span class="observatory-hint">Maps, scenes, encounters, sheets and images</span>
-          </span>
+        <button
+          v-if="user"
+          class="observatory-trigger"
+          title="Charts, vistas, encounters, battlemaps, sheets and images"
+          @click="openObservatory()"
+        >
+          <span class="observatory-mark" aria-hidden="true"><span class="mdi mdi-telescope"></span></span>
+          <span class="observatory-label">Observatory</span>
+          <span class="mdi mdi-chevron-right observatory-go" aria-hidden="true"></span>
         </button>
       </nav>
 
@@ -536,55 +539,69 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
 }
 
+/* Where every document and image is: a launcher with Search Notes' footprint,
+   raised where the search is sunken. */
 .observatory-trigger {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: none;
+  min-height: var(--control-md);
+  padding: 0 var(--space-2) 0 6px;
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
   text-align: left;
-  transition: background-color var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
-.observatory-trigger > .mdi {
-  font-size: 1.5rem;
-  line-height: 1;
-  color: var(--text-muted);
-  transition: color var(--duration-fast) var(--ease-out);
+.observatory-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.625rem;
+  height: 1.625rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-a20);
+  color: var(--accent-soft);
+  font-size: 1rem;
+  flex-shrink: 0;
 }
 
 .observatory-label {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: var(--text-sm);
-  font-weight: 500;
+  flex: 1;
 }
 
-.observatory-hint {
-  overflow: hidden;
+.observatory-go {
   color: var(--text-muted);
-  font-size: var(--text-xs);
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-size: 1.1rem;
+  transition: transform var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 
 .observatory-trigger:hover {
-  background: var(--hover-tint);
-  color: var(--text-primary);
+  border-color: var(--accent-a45);
+  background: var(--surface-raised-hover);
 }
 
-.observatory-trigger:hover > .mdi {
-  color: var(--accent);
+.observatory-trigger:hover .observatory-go {
+  color: var(--text-primary);
+  transform: translateX(2px);
 }
 
 .observatory-trigger:active {
   transform: translateY(1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .observatory-trigger:hover .observatory-go {
+    transform: none;
+  }
 }
 
 /* ── Tree ──────────────────────────────────────────────────────── */
