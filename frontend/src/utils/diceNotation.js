@@ -121,6 +121,28 @@ export function droppedIndices(rolls, keep) {
   return order.slice(keep.count).sort((a, b) => a - b)
 }
 
+/**
+ * A roll's result from the value each die of each parsed term landed on
+ * (`rolls[i]` for `terms[i]`): { total, groups, flatModifier }, the shape the
+ * toast, the screen and the API all take. Each group repeats its term with its
+ * dice values; a keep-highest/lowest group also lists the dice it dropped,
+ * which don't count towards the total.
+ */
+export function rollResult(terms, rolls, flatModifier) {
+  let total = flatModifier
+  const groups = terms.map((term, i) => {
+    const values = rolls[i]
+    const dropped = droppedIndices(values, term.keep)
+    const kept = values.filter((v, j) => !dropped.includes(j))
+    total += kept.reduce((a, b) => a + b, 0) * term.sign
+    const group = { sides: term.sides, sign: term.sign, rolls: values }
+    if (term.kind) group.kind = term.kind
+    if (term.keep) group.dropped = dropped
+    return group
+  })
+  return { total, groups, flatModifier }
+}
+
 /** Human-friendly canonical formula string, e.g. for display in a toast. */
 export function formatDiceFormula(parsed) {
   const parts = []
