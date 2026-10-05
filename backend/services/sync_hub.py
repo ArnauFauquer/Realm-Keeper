@@ -26,6 +26,7 @@ from fastapi import WebSocket
 from services.doc_collection import DocCollection, DocNotFound
 from services.doc_paths import sanitize_id
 from services.doc_type import DocType
+from services.socket_group import SocketGroup
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,6 @@ FLUSH_MAX_WAIT = 15.0      # ... but never wait longer than this under constant 
 FLUSH_RETRY_DELAY = 5.0
 IDLE_UNLOAD_SECONDS = 600  # an untouched, saved document leaves memory
 MAX_SYNC_CONNECTIONS = 100
-SEND_TIMEOUT = 2.0
 
 # Changes of these fields aren't reported to clients: `rev` travels on the
 # event itself, and a client has no use for the time of the last save.
@@ -117,7 +117,7 @@ class DocHub:
         # Documents being moved or deleted (`released`): whoever asks for one
         # waits until that is over, then finds it where it is by then.
         self._releasing: Dict[Tuple[str, str], asyncio.Event] = {}
-        self._sockets: List[WebSocket] = []
+        self.sockets = SocketGroup("sync", MAX_SYNC_CONNECTIONS)
         # The event loop keeps only weak references to tasks: hold the ones
         # started by a timer until they finish.
         self._tasks: set = set()
@@ -145,39 +145,15 @@ class DocHub:
     # ── connections ─────────────────────────────────────────────────────
 
     def connect(self, websocket: WebSocket) -> bool:
-        if len(self._sockets) >= MAX_SYNC_CONNECTIONS:
-            return False
-        self._sockets.append(websocket)
-        return True
+        return self.sockets.add(websocket)
 
     def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self._sockets:
-            self._sockets.remove(websocket)
-
-    async def _send(self, websocket: WebSocket, event: Dict[str, Any]) -> None:
-        try:
-            await asyncio.wait_for(websocket.send_json(event), SEND_TIMEOUT)
-        except Exception as e:
-            # One that can't be written to is gone; dropping it keeps the
-            # rest in step and frees its place in the connection limit. It is
-            # closed too: a client that was only slow (a phone on a bad
-            # network) would otherwise wait for events that never come, while
-            # a closed socket makes it reconnect and fetch what it missed.
-            logger.info(f"Dropping a sync connection: {e!r}")
-            self.disconnect(websocket)
-            self._spawn(self._close_socket(websocket))
-
-    @staticmethod
-    async def _close_socket(websocket: WebSocket) -> None:
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(websocket.close(code=1011), SEND_TIMEOUT)
+        self.sockets.remove(websocket)
 
     async def _broadcast(self, event: Dict[str, Any]) -> None:
-        # All at once: a phone that went to sleep without closing its socket
-        # makes its send wait out SEND_TIMEOUT, and one after another each such
-        # client would hold up every change (the document's lock is held while
-        # this runs) by that long.
-        await asyncio.gather(*(self._send(websocket, event) for websocket in list(self._sockets)))
+        # To every client at once, each with a time limit (see SocketGroup):
+        # the document's lock is held while this runs.
+        await self.sockets.broadcast(event)
 
     # ── rooms ───────────────────────────────────────────────────────────
 

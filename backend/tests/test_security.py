@@ -156,7 +156,7 @@ def test_symlinks_out_of_vault_are_not_listed(client):
 def test_screen_socket_limit(client, monkeypatch):
     from starlette.websockets import WebSocketDisconnect
     from routes import screen
-    monkeypatch.setattr(screen, "MAX_SCREEN_CONNECTIONS", 1)
+    monkeypatch.setattr(screen.manager.screens, "limit", 1)
     client.cookies.set(SCREEN_COOKIE_NAME, create_screen_key("gm@example.com"))
     with client.websocket_connect("/ws/screen"):
         with pytest.raises(WebSocketDisconnect) as exc:
@@ -387,6 +387,28 @@ def test_dice_roll_carries_the_rollers_slot(client, screen_state, monkeypatch):
     client.post("/api/screen/dice", json={"formula": "1d20", "total": 7, "diceSlot": 0, "roller": "GM"})
     assert sent[0]["diceSlot"] == 1
     assert sent[0]["roller"] == "Ana"
+
+
+def test_a_dice_roll_no_roller_could_make_never_reaches_the_screens(client, screen_state, monkeypatch):
+    sent = []
+
+    async def capture(message):
+        sent.append(message)
+
+    monkeypatch.setattr(screen_state, "broadcast", capture)
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
+    fine = {"formula": "2d6+1", "groups": [{"sides": 6, "sign": 1, "rolls": [3, 4]}], "flatModifier": 1, "total": 8}
+    assert client.post("/api/screen/dice", json=fine).status_code == 200
+    assert sent[-1]["groups"] == [{"sides": 6, "sign": 1, "rolls": [3, 4]}]
+    for bad in (
+        {"groups": [{"sides": 6, "rolls": [1] * 100_000}]},          # would freeze a TV replaying it
+        {"groups": [{"sides": 7, "rolls": [1]}]},                     # no such die
+        {"groups": [{"sides": 6, "rolls": [9]}]},                     # no such face
+        {"groups": [{"sides": 100, "rolls": [50] * 26}]},             # 52 dice: a d100 is two
+        {"flatModifier": 10 ** 23},
+    ):
+        assert client.post("/api/screen/dice", json={"formula": "x", **bad}).status_code == 422, bad
+    assert len(sent) == 1
 
 
 def test_screen_key_rules(client, screen_state):

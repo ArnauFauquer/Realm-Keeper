@@ -132,15 +132,41 @@ def world(tmp_path, monkeypatch):
     return DocHub(collections)
 
 
+def test_a_screen_that_stopped_answering_holds_nobody_up():
+    manager = screen.ConnectionManager()
+    manager.screens.send_timeout = 0.2
+
+    class Asleep:
+        async def send_json(self, message):
+            await asyncio.sleep(30)   # a TV switched off at the wall
+
+    class Awake:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+    awake = Awake()
+    for websocket in (Asleep(), Asleep(), Asleep(), awake):
+        manager.screens.add(websocket)
+    started = time.monotonic()
+    asyncio.run(manager.broadcast({"type": "clear_screen"}, {"type": "display_media", "url": None}))
+    assert time.monotonic() - started < 0.6   # once, not once per screen and message
+    assert [m["type"] for m in awake.sent] == ["clear_screen", "display_media"]
+    assert manager.active_connections == [awake]
+
+
 class FakeManager:
     def __init__(self):
         self.current_state = None
         self.sent = []
 
-    async def broadcast(self, message):
-        self.sent.append(message)
-        if message["type"] not in screen.LIVE_UPDATE_TYPES:
-            self.current_state = message
+    async def broadcast(self, *messages):
+        for message in messages:
+            self.sent.append(message)
+            if message["type"] not in screen.LIVE_UPDATE_TYPES:
+                self.current_state = message
 
 
 def add_token(hub, **token):

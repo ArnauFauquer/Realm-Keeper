@@ -1,7 +1,7 @@
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Response, WebSocket, WebSocketDisconnect
-from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Tuple
-import json
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import List, Literal, Dict, Optional, Tuple
 from config.logging import get_logger
 from config.settings import settings
 from models.chart import Annotation, ChartPath, Pin
@@ -15,6 +15,7 @@ from services.auth_service import (
 from services.battlemap_screen import BattlemapScreen
 from services.doc_collection import DocNotFound
 from services.doc_registry import hub
+from services.socket_group import SocketGroup
 
 logger = get_logger(__name__)
 router = APIRouter(tags=["screen"])
@@ -44,43 +45,52 @@ LIVE_UPDATE_TYPES = {"update_chart", "update_vista", "update_constellation", "up
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.screens = SocketGroup("screen", MAX_SCREEN_CONNECTIONS)
         self.current_state: dict = None
         # The latest live edit of the chart/vista in current_state, replayed
         # after it to screens that connect mid-edit. Dropped as soon as
         # anything else is sent, since that replaces what's on screen.
         self.live_draft: dict = None
+        # One message at a time: two sent at once would reach each screen in
+        # either order, and a screen could end up showing something other
+        # than current_state (which is also what decides what it may read).
+        self._sending = asyncio.Lock()
+
+    @property
+    def active_connections(self) -> List[WebSocket]:
+        return self.screens.sockets
 
     async def connect(self, websocket: WebSocket) -> bool:
-        if len(self.active_connections) >= MAX_SCREEN_CONNECTIONS:
-            logger.warning(f"Rejected screen connection: limit of {MAX_SCREEN_CONNECTIONS} reached")
+        if len(self.screens) >= self.screens.limit:
+            logger.warning(f"Rejected screen connection: limit of {self.screens.limit} reached")
             # 1013 "Try Again Later": ScreenView's onclose already retries.
             await reject(websocket, 1013)
             return False
         await websocket.accept()
-        self.active_connections.append(websocket)
-        logger.info(f"New screen connection. Total: {len(self.active_connections)}")
-        
-        # If there's a current state, send it immediately to the new connection
-        if self.current_state:
-            try:
-                await websocket.send_json(self.current_state)
-                logger.debug(f"Sent current state to new connection: {self.current_state}")
-            except Exception as e:
-                logger.error(f"Error sending initial state: {e}")
-        if self.live_draft:
-            try:
-                await websocket.send_json(self.live_draft)
-            except Exception as e:
-                logger.error(f"Error sending live draft: {e}")
+        async with self._sending:
+            if not self.screens.add(websocket):
+                await websocket.close(code=1013)
+                return False
+            logger.info(f"New screen connection. Total: {len(self.screens)}")
+            # What is on screen now, and the GM's unsaved edits of it.
+            for message in (self.current_state, self.live_draft):
+                if message and not await self.screens.send(websocket, message):
+                    return False
         return True
 
     def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-            logger.info(f"Screen disconnected. Total: {len(self.active_connections)}")
+        if websocket in self.screens.sockets:
+            self.screens.remove(websocket)
+            logger.info(f"Screen disconnected. Total: {len(self.screens)}")
 
-    async def broadcast(self, message: dict):
+    async def broadcast(self, *messages: dict):
+        """Sends each of `messages` to every screen, in order, with nothing
+        sent in between."""
+        async with self._sending:
+            for message in messages:
+                await self._broadcast(message)
+
+    async def _broadcast(self, message: dict):
         # Dice rolls are a transient overlay on top of whatever is showing,
         # not what's showing: keeping them out of current_state means a
         # screen that reconnects still gets the chart/vista/image, and that
@@ -97,15 +107,11 @@ class ConnectionManager:
             self.live_draft = None
         # DEBUG, not INFO: every payload (media URLs, dice rolls) would
         # otherwise land in the logs for the whole session.
-        logger.debug(f"Broadcasting to {len(self.active_connections)} screens: {message}")
-        for connection in list(self.active_connections):
-            try:
-                await connection.send_json(message)
-            except Exception as e:
-                # A socket that can't be written to is gone; drop it so dead
-                # connections don't pile up against MAX_SCREEN_CONNECTIONS.
-                logger.error(f"Error sending message to connection: {e}")
-                self.disconnect(connection)
+        logger.debug(f"Broadcasting to {len(self.screens)} screens: {message}")
+        # To every screen at once, each with a time limit: a TV switched off
+        # at the wall used to hold up every send, and the GM's request, until
+        # its connection timed out (see SocketGroup).
+        await self.screens.broadcast(message)
 
 manager = ConnectionManager()
 
@@ -171,24 +177,66 @@ async def display_media(data: Dict[str, str], user: dict = Depends(require_auth)
     })
     return {"status": "success"}
 
+# What the dice roller can throw (frontend utils/diceNotation.js): a screen
+# replays every die of a roll, so a payload with more, or of a shape no die
+# has, would freeze or break it.
+SUPPORTED_DICE_SIDES = (2, 4, 6, 8, 10, 12, 20, 100)
+MAX_DICE = 50
+MAX_FLAT_MODIFIER = 10_000
+
+
+class DiceGroup(BaseModel):
+    """One NdM of a roll, as the roller reports it: each die's value, and which
+    were dropped (kept highest/lowest)."""
+    model_config = ConfigDict(extra="ignore")
+
+    sides: Literal[SUPPORTED_DICE_SIDES]
+    sign: Literal[1, -1] = 1
+    rolls: List[int] = Field(max_length=MAX_DICE)
+    kind: Optional[str] = Field(None, max_length=20)
+    dropped: Optional[List[int]] = Field(None, max_length=MAX_DICE)
+
+    @model_validator(mode="after")
+    def _rolls_fit_the_die(self):
+        if any(not 1 <= value <= self.sides for value in self.rolls):
+            raise ValueError(f"a d{self.sides} can't roll that")
+        return self
+
+
+class DiceRollRequest(BaseModel):
+    formula: str = Field("", max_length=200)
+    # What the roll is for ("Bugboar · Gore"); cut, not refused, when long.
+    label: Optional[str] = None
+    groups: List[DiceGroup] = Field(default_factory=list, max_length=MAX_DICE)
+    flatModifier: int = Field(0, ge=-MAX_FLAT_MODIFIER, le=MAX_FLAT_MODIFIER)
+    total: int = Field(0, ge=-1_000_000, le=1_000_000)
+
+    @model_validator(mode="after")
+    def _at_most_max_dice(self):
+        # A d100 is thrown as two dice (tens and units).
+        if sum(len(g.rolls) * (2 if g.sides == 100 else 1) for g in self.groups) > MAX_DICE:
+            raise ValueError(f"at most {MAX_DICE} dice at once")
+        return self
+
+
 @router.post("/api/screen/dice")
-async def display_dice(data: dict, user: dict = Depends(require_auth)):
+async def display_dice(body: DiceRollRequest, user: dict = Depends(require_auth)):
     """
-    Broadcasts a dice roll result to all connected screens.
-    Expected data: {"formula": "...", "groups": [...], "flatModifier": 0, "total": 0}
-    plus an optional "label" saying what the roll is for ("Bugboar · Gore").
+    Broadcasts a dice roll result to all connected screens: the formula, each
+    group's dice, the flat modifier and the total, plus an optional label
+    saying what the roll is for ("Bugboar · Gore").
     The roller's name and dice colour come from the session, not the payload,
     so one player can't have their roll shown as another's. The screen shows
     the roller when there's no label (a roll from the dice panel or a note).
     """
     await manager.broadcast({
         "type": "dice_roll",
-        "formula": data.get("formula", ""),
-        "label": str(data.get("label") or "")[:MAX_DICE_LABEL_LENGTH],
+        "formula": body.formula,
+        "label": (body.label or "")[:MAX_DICE_LABEL_LENGTH],
         "roller": user["name"][:MAX_DICE_LABEL_LENGTH],
-        "groups": data.get("groups", []),
-        "flatModifier": data.get("flatModifier", 0),
-        "total": data.get("total", 0),
+        "groups": [group.model_dump(exclude_none=True) for group in body.groups],
+        "flatModifier": body.flatModifier,
+        "total": body.total,
         "diceSlot": dice_slot(user["email"])
     })
     return {"status": "success"}

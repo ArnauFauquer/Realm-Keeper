@@ -445,7 +445,7 @@ def test_a_socket_that_fails_is_dropped_and_the_others_still_hear(hub_and_collec
         hub.connect(broken)
         hub.connect(fine)
         await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
-        assert len(fine.sent) == 1 and broken not in hub._sockets
+        assert len(fine.sent) == 1 and broken not in hub.sockets.sockets
         await asyncio.sleep(0)
         # Closed too, so a client that was only slow reconnects and catches up.
         assert broken.closed == 1011 and fine.closed is None
@@ -455,7 +455,7 @@ def test_a_socket_that_fails_is_dropped_and_the_others_still_hear(hub_and_collec
 
 def test_clients_that_stopped_answering_hold_a_change_up_once_and_not_one_after_another(hub_and_collections, monkeypatch):
     hub, _, _ = hub_and_collections
-    monkeypatch.setattr(sync_hub, "SEND_TIMEOUT", 0.2)
+    monkeypatch.setattr(hub.sockets, "send_timeout", 0.2)
 
     class Asleep:
         async def send_json(self, event):
@@ -469,14 +469,14 @@ def test_clients_that_stopped_answering_hold_a_change_up_once_and_not_one_after_
         await hub.mutate("encounter", "fight", lambda d: d.update(description="1"))
         took = time.monotonic() - started
         assert took < 0.6, took            # five waits of 0.2s one after another would be 1s
-        assert len(fine.sent) == 1 and not any(websocket in hub._sockets for websocket in asleep)
+        assert len(fine.sent) == 1 and not any(websocket in hub.sockets.sockets for websocket in asleep)
 
     run(scenario())
 
 
 def test_the_connection_limit(hub_and_collections, monkeypatch):
     hub, _, _ = hub_and_collections
-    monkeypatch.setattr(sync_hub, "MAX_SYNC_CONNECTIONS", 1)
+    monkeypatch.setattr(hub.sockets, "limit", 1)
     assert hub.connect(FakeSocket())
     assert not hub.connect(FakeSocket())
 

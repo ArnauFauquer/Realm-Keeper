@@ -25,6 +25,17 @@ class BattlemapScreen:
         self.manager = manager
         self._pending = False
         self._tasks: set = set()
+        # How many projections of each map were asked for. One computed before
+        # the last (a map shown, then a token hidden a moment later) is not
+        # sent once a newer one is on its way: it could reach the screens
+        # after it, and show the hidden token again.
+        self._generations: Dict[str, int] = {}
+
+    async def _fresh_projection(self, battlemap_id: str) -> Optional[Dict[str, Any]]:
+        """The map's projection, or None if a newer one was asked for meanwhile."""
+        generation = self._generations[battlemap_id] = self._generations.get(battlemap_id, 0) + 1
+        projection = await self.projection(battlemap_id)
+        return projection if self._generations.get(battlemap_id) == generation else None
 
     def displayed(self) -> Optional[str]:
         state = self.manager.current_state or {}
@@ -53,9 +64,18 @@ class BattlemapScreen:
     async def show(self, battlemap_id: str) -> None:
         """Raises ValueError if there is no such battlemap (DocNotFound), or no
         such id could name one."""
-        projection = await self.projection(battlemap_id)
-        await self.manager.broadcast({"type": "display_battlemap", "battlemap_id": battlemap_id})
-        await self.manager.broadcast({"type": "update_battlemap", **projection})
+        # Made again if a newer one was asked for while it was being made (the
+        # map is being changed as it is shown); the last try is sent anyway.
+        for _ in range(3):
+            projection = await self._fresh_projection(battlemap_id)
+            if projection is not None:
+                break
+        else:
+            projection = await self.projection(battlemap_id)
+        await self.manager.broadcast(
+            {"type": "display_battlemap", "battlemap_id": battlemap_id},
+            {"type": "update_battlemap", **projection},
+        )
 
     async def on_event(self, event: Dict[str, Any]) -> None:
         """Called by the hub after every change to a live document."""
@@ -94,6 +114,8 @@ class BattlemapScreen:
         if not displayed:
             return
         try:
-            await self.manager.broadcast({"type": "update_battlemap", **await self.projection(displayed)})
+            projection = await self._fresh_projection(displayed)
+            if projection is not None and self.displayed() == displayed:
+                await self.manager.broadcast({"type": "update_battlemap", **projection})
         except Exception:
             logger.exception("Could not update the battlemap on the screens")
