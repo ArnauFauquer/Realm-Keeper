@@ -3,6 +3,7 @@ import { parseDiceFormula, formatDiceFormula, resolveDuality, resolveNatural } f
 import { post } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { themeForSlot } from '@/dice/diceTheme'
+import { rollWithoutDice } from '@/dice/randomRoll'
 import { useAuth } from '@/composables/useAuth'
 
 // Module-scoped singleton (no Pinia in this app) shared by DiceFab,
@@ -22,6 +23,9 @@ let worldInstance = null
 let canvasEl = null
 let toastSeq = 0
 let hideTimer = null
+// Set once this device turned out unable to draw the dice (no WebGL): later
+// rolls skip straight to the plain roll instead of failing again every time.
+let diceUnavailable = false
 
 function registerCanvas(el) {
   canvasEl = el
@@ -31,7 +35,13 @@ async function ensureWorld() {
   if (worldInstance) return worldInstance
   if (!canvasEl) throw new Error('Dice canvas is not mounted yet')
   const { createDiceWorld } = await import('@/dice/diceWorld')
-  worldInstance = createDiceWorld(canvasEl)
+  try {
+    worldInstance = createDiceWorld(canvasEl)
+  } catch (e) {
+    // The WebGL renderer throws when the browser won't give it a context.
+    diceUnavailable = true
+    throw e
+  }
   const rect = canvasEl.getBoundingClientRect()
   worldInstance.resize(rect.width || window.innerWidth, rect.height || window.innerHeight)
   return worldInstance
@@ -77,7 +87,8 @@ function broadcastToScreen(formula, result, label) {
 
 /** Parses and rolls a formula (e.g. "4d8+5"); silently no-ops on an invalid
  * formula or while another roll is still in flight. Returns the result, or
- * null if the roll didn't happen. `label` says who rolls and what for
+ * null if the roll didn't happen; never rejects - where the 3D dice can't be
+ * thrown, the roll is made without them (dice/randomRoll.js). `label` says who rolls and what for
  * ("Bugboar · Gore") and is shown with it, here and on the screen; without
  * one, the player's name is shown instead. `outcome(result)` names what the
  * roll landed on (a roll table's row); only the local toast shows it, so a
@@ -87,6 +98,18 @@ async function roll(formulaText, { label = null, outcome = null } = {}) {
   if (!parsed || state.isRolling) return null
 
   state.isPanelOpen = false
+  const result = diceUnavailable ? rollWithoutDice(parsed) : await throwDice(parsed)
+  const formula = formatDiceFormula(parsed)
+  // A roll without a sheet behind it is the player's own: name them. The
+  // screen gets the name from the session instead (routes/screen.py).
+  pushToast(formula, result, label || user.value?.name || null, outcome?.(result) ?? null)
+  broadcastToScreen(formula, result, label)
+  return result
+}
+
+// The 3D roll, read off the dice once they settle. If they can't be thrown
+// (no WebGL, the 3D code didn't load) the roll is made without them.
+async function throwDice(parsed) {
   state.isRolling = true
   state.overlayVisible = true
   if (hideTimer) {
@@ -98,20 +121,20 @@ async function roll(formulaText, { label = null, outcome = null } = {}) {
     const world = await ensureWorld()
     world.clearDice()
     const { rollParsedFormula } = await import('@/dice/diceRoller')
-    const result = await rollParsedFormula(world, parsed, themeForSlot(user.value?.diceSlot))
-    const formula = formatDiceFormula(parsed)
-    // A roll without a sheet behind it is the player's own: name them. The
-    // screen gets the name from the session instead (routes/screen.py).
-    pushToast(formula, result, label || user.value?.name || null, outcome?.(result) ?? null)
-    broadcastToScreen(formula, result, label)
-    return result
+    return await rollParsedFormula(world, parsed, themeForSlot(user.value?.diceSlot))
+  } catch (e) {
+    console.warn('Rolling without 3D dice:', e)
+    state.overlayVisible = false
+    return rollWithoutDice(parsed)
   } finally {
     state.isRolling = false
-    hideTimer = setTimeout(() => {
-      state.overlayVisible = false
-      worldInstance?.stop()
-      hideTimer = null
-    }, 2200)
+    if (state.overlayVisible) {
+      hideTimer = setTimeout(() => {
+        state.overlayVisible = false
+        worldInstance?.stop()
+        hideTimer = null
+      }, 2200)
+    }
   }
 }
 
