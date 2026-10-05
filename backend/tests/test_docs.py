@@ -146,6 +146,19 @@ def test_a_document_cannot_be_in_a_folder_named_like_one_of_its_lists(collection
         collection.move_item("a/b", "a/combatants")
 
 
+def test_a_save_over_a_copy_that_changed_since_is_refused(collection):
+    from services.doc_collection import DocConflict
+    opened = collection.create("Ambush").model_dump()
+    elsewhere = collection.save("ambush", {"name": "Ambush", "description": "saved in another tab"})
+    with pytest.raises(DocConflict):
+        collection.save("ambush", {"name": "Mine", "base_updated_at": opened["updated_at"]})
+    assert collection.get("ambush").description == "saved in another tab"
+    # Over the copy that is stored, or without saying which (overwriting), it is saved.
+    saved = collection.save("ambush", {"name": "Mine", "base_updated_at": elsewhere.updated_at})
+    assert saved.name == "Mine" and "base_updated_at" not in saved.model_dump()
+    collection.save("ambush", {"name": "Anyway"})
+
+
 def test_a_damaged_document_can_still_be_deleted(collection, tmp_path):
     collection.create("Broken")
     collection.backend.put(collection.key("broken"), "{not json")

@@ -125,9 +125,26 @@ describe('DocumentModal — a document edited whole and saved', () => {
 
     const [id, body] = api.save.mock.calls[0]
     expect(id).toBe('regions/tavern')
-    expect(Object.keys(body).sort()).toEqual(['annotations', 'description', 'name', 'paths', 'pins'])
+    expect(Object.keys(body).sort()).toEqual(['annotations', 'base_updated_at', 'description', 'name', 'paths', 'pins'])
     expect(body.pins.map((p) => p.id)).toEqual(['p', 'q'])
     expect(buttonByText(wrapper, 'Saved')).toBeDefined()
+  })
+
+  it('says when the document changed elsewhere, and a second Save overwrites it', async () => {
+    api.save.mockRejectedValueOnce({ message: 'x', response: { status: 409, data: { detail: 'changed' } } })
+    const { wrapper, slotProps } = mountModal()
+    await openOn(wrapper, 'regions/tavern')
+    slotProps.markDirty()
+    await nextTick()
+    await buttonByText(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.modal-header [role="alert"]').text()).toMatch(/Changed elsewhere/)
+    expect(api.save.mock.calls[0][1]).toHaveProperty('base_updated_at')
+
+    await buttonByText(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(api.save.mock.calls[1][1]).not.toHaveProperty('base_updated_at')
+    expect(wrapper.find('.modal-header [role="alert"]').exists()).toBe(false)
   })
 
   it('keeps the changes unsaved when saving fails, and says why', async () => {

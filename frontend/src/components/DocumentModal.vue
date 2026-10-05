@@ -110,6 +110,9 @@ const saveError = ref(null)
 // Counts the editor's changes: a save only marks the document saved if
 // nothing changed while it was on its way.
 let edits = 0
+// Set when a save was refused because the document changed elsewhere since it
+// was opened (another tab, another GM): Save again overwrites it.
+let overwrite = false
 
 // A live document is its editor's, and the same copy (useSyncedDoc shares it)
 // gives the header its name, which follows a rename made anywhere.
@@ -158,6 +161,7 @@ function reset() {
   loadError.value = null
   saveError.value = null
   hasUnsavedChanges.value = false
+  overwrite = false
 }
 
 function leave() {
@@ -209,13 +213,24 @@ async function saveNow() {
   saving.value = true
   const sent = edits
   try {
-    await props.api.save(doc.id, savePayload(props.kind, doc))
+    // The copy this was edited from: the server refuses the save (409) if the
+    // stored one is no longer it, rather than silently undo the other save.
+    const base = overwrite ? {} : { base_updated_at: doc.updated_at ?? null }
+    const stored = await props.api.save(doc.id, { ...savePayload(props.kind, doc), ...base })
+    doc.updated_at = stored?.updated_at ?? doc.updated_at
+    overwrite = false
     if (activeDoc.value !== doc) return // another one is open now
     saveError.value = null
     // Changed while the save was on its way: those changes are still unsaved.
     if (edits === sent) hasUnsavedChanges.value = false
   } catch (err) {
-    if (activeDoc.value === doc) saveError.value = `Not saved: ${errorMessage(err)}`
+    if (activeDoc.value !== doc) return
+    if (err.response?.status === 409) {
+      overwrite = true
+      saveError.value = 'Changed elsewhere since you opened it. Save again to overwrite it.'
+    } else {
+      saveError.value = `Not saved: ${errorMessage(err)}`
+    }
   } finally {
     saving.value = false
   }
@@ -229,6 +244,8 @@ async function setAsset(route, url) {
   try {
     const updated = await props.api.setAsset(doc.id, route, url)
     doc[props.kind.imageField] = updated[props.kind.imageField]
+    // Stored anew: the next save is over this copy.
+    doc.updated_at = updated.updated_at ?? doc.updated_at
     if (activeDoc.value === doc) saveError.value = null
   } catch (err) {
     if (activeDoc.value === doc) saveError.value = `Picture not changed: ${errorMessage(err)}`

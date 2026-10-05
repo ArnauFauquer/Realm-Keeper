@@ -35,6 +35,11 @@ class DocNotFound(ValueError):
     pass
 
 
+class DocConflict(ValueError):
+    """The document changed since the client loaded what it is saving over."""
+    pass
+
+
 def _first_error(e: ValidationError) -> str:
     error = e.errors()[0]
     where = ".".join(str(part) for part in error["loc"])
@@ -188,8 +193,16 @@ class DocCollection:
             raise DocNotFound(f"{self.doctype.kind.capitalize()} not found: {doc_id}")
 
     def save(self, doc_id: str, fields: Dict[str, Any]) -> BaseModel:
-        """Replaces a document with `fields`, keeping its locked fields."""
+        """Replaces a document with `fields`, keeping its locked fields.
+        `fields["base_updated_at"]`, if given, is the `updated_at` of the copy
+        the client edited: if the stored one is no longer that (saved from
+        another tab, by another GM), DocConflict and nothing is written,
+        rather than the last save silently undoing the other."""
+        fields = dict(fields)
+        base = fields.pop("base_updated_at", None)
         existing = self._require(doc_id)
+        if base is not None and existing.get("updated_at") != base:
+            raise DocConflict(f"This {self.doctype.kind} was changed elsewhere since you opened it")
         data = {**fields, "id": existing["id"]}
         for name in self.doctype.locked_fields:
             data[name] = existing.get(name)

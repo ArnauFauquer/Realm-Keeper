@@ -8,7 +8,7 @@ from logging import Logger
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import HTTPException
 
-from services.doc_collection import DocNotFound
+from services.doc_collection import DocConflict, DocNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -26,14 +26,16 @@ async def blocking(fn, *args):
 
 def guarded(handler):
     """Turns what a handler raises into the HTTP error it means: DocNotFound
-    is 404, PermissionError 403, any other ValueError 400 (the caller's
-    mistake), and a storage error 502."""
+    is 404, DocConflict 409, PermissionError 403, any other ValueError 400
+    (the caller's mistake), and a storage error 502."""
     @functools.wraps(handler)
     async def wrapper(*args, **kwargs):
         try:
             return await handler(*args, **kwargs)
         except DocNotFound as e:
             raise HTTPException(status_code=404, detail=str(e))
+        except DocConflict as e:
+            raise HTTPException(status_code=409, detail=str(e))
         except PermissionError:
             raise HTTPException(status_code=403, detail="Not allowed")
         except ValueError as e:
