@@ -41,6 +41,11 @@ describe('combatantsFromSheet', () => {
     const existing = [{ sheet: BUGBOAR.ref }, { sheet: BUGBOAR.ref }]
     expect(combatantsFromSheet(BUGBOAR, 2, existing).map((c) => c.name)).toEqual(['Bugboar 3', 'Bugboar 4'])
     expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref }])[0].name).toBe('Bugboar 2')
+    // after the highest number left, never a second "Bugboar 3"
+    const gap = [{ sheet: BUGBOAR.ref, name: 'Bugboar 1' }, { sheet: BUGBOAR.ref, name: 'Bugboar 3' }]
+    expect(combatantsFromSheet(BUGBOAR, 1, gap)[0].name).toBe('Bugboar 4')
+    expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, name: 'Bugboar' }])[0].name).toBe('Bugboar 2')
+    expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, name: 'The boss' }])[0].name).toBe('Bugboar 2')
     // a character that happens to share the id is not a copy
     expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, type: 'character' }])[0].name).toBe('Bugboar')
   })

@@ -27,7 +27,8 @@ const libraryImage = (image) => (image && image.startsWith(LIBRARY_PREFIX) ? ima
  * `count` combatants for an encounter, from a sheet ({ ref, id, name, type,
  * image, resources }; `ref`, or else `id`, is its document's id). Each copy of an adversary has its own counters,
  * starting where the sheet says; they are named "Bugboar 1", "Bugboar 2"...
- * continuing from the ones already there. A character is added once, and has
+ * continuing after the highest number already there (with Bugboar 1 and 3
+ * left, the next is Bugboar 4, not a second Bugboar 3). A character is added once, and has
  * no counters of its own: they are the character's saved ones.
  * `existing` is the encounter's combatants.
  */
@@ -37,14 +38,24 @@ export function combatantsFromSheet(sheet, count, existing = []) {
     return [{ name: sheet.name, type: 'character', sheet: sheet.ref ?? sheet.id, image_url }]
   }
   const ref = sheet.ref ?? sheet.id
-  const taken = existing.filter((c) => c.type !== 'character' && c.sheet === ref).length
+  const copies = existing.filter((c) => c.type !== 'character' && c.sheet === ref)
+  const last = Math.max(copies.length, ...copies.map((c) => copyNumber(sheet.name, c.name)))
   return Array.from({ length: count }, (_, i) => ({
-    name: taken === 0 && count === 1 ? sheet.name : `${sheet.name} ${taken + i + 1}`,
+    name: copies.length === 0 && count === 1 ? sheet.name : `${sheet.name} ${last + i + 1}`,
     type: 'adversary',
     sheet: ref,
     resources: counters(sheet.resources),
     image_url
   }))
+}
+
+// The number a copy's name ends with ("Bugboar 3" is 3; a lone "Bugboar" is
+// 1), or 0 for one that was renamed.
+function copyNumber(base, name) {
+  if (name === base) return 1
+  if (!name?.startsWith(`${base} `)) return 0
+  const suffix = name.slice(base.length + 1)
+  return /^\d+$/.test(suffix) ? Number(suffix) : 0
 }
 
 /** A combatant that isn't from a sheet. */
