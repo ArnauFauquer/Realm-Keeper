@@ -18,6 +18,7 @@ const ARIA = { id: 'party/aria', name: 'Aria', rev: 3, sheet: SHEET, resources: 
 const mountEditor = (props = {}) => mount(CharacterEditor, { props: { characterId: 'party/aria', canInteract: true, ...props } })
 const saveButton = (wrapper) => wrapper.findAll('button').find((b) => /Save/.test(b.text()))
 const subtitle = (wrapper) => wrapper.find('input[placeholder^="Tier 1"]')
+const edit = (wrapper) => wrapper.findAll('button').find((b) => b.text() === 'Edit').trigger('click')
 
 beforeEach(() => {
   state.value = ARIA
@@ -29,9 +30,12 @@ beforeEach(() => {
 })
 
 describe('CharacterEditor', () => {
-  it("shows its sheet's builder beside the sheet, with the character's own counters", async () => {
+  it("opens on its sheet, with the character's own counters, and Edit shows the builder beside it", async () => {
     const wrapper = mountEditor()
     await flushPromises()
+    expect(wrapper.find('.sheet-builder').exists()).toBe(false)
+    expect(wrapper.find('.rc-value').text()).toBe('4 / 9')
+    await edit(wrapper)
     expect(wrapper.find('input[aria-label="Counter name"]').element.value).toBe('HP')
     expect(wrapper.find('.rc-value').text()).toBe('4 / 9')
     expect(wrapper.text()).toContain('character:party/aria')
@@ -48,6 +52,7 @@ describe('CharacterEditor', () => {
   it('saves the sheet with its own button', async () => {
     const wrapper = mountEditor()
     await flushPromises()
+    await edit(wrapper)
     await subtitle(wrapper).setValue('Ranger')
     expect(wrapper.find('.sheet-editor-preview').text()).toContain('Ranger')   // the preview follows
     await saveButton(wrapper).trigger('click')
@@ -60,6 +65,7 @@ describe('CharacterEditor', () => {
   it('is no longer unsaved once what was typed is undone', async () => {
     const wrapper = mountEditor()
     await flushPromises()
+    await edit(wrapper)
     await subtitle(wrapper).setValue('Ranger')
     expect(saveButton(wrapper).attributes('disabled')).toBeUndefined()
     await subtitle(wrapper).setValue('')
@@ -70,6 +76,7 @@ describe('CharacterEditor', () => {
     characters.patch.mockRejectedValue({ response: { data: { detail: 'The document is too large' } } })
     const wrapper = mountEditor()
     await flushPromises()
+    await edit(wrapper)
     await subtitle(wrapper).setValue('Ranger')
     await saveButton(wrapper).trigger('click')
     await flushPromises()
