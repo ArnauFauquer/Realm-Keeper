@@ -3,7 +3,7 @@
     <div v-if="!vista.background_url" class="empty-stage">
       <span class="mdi mdi-image-plus"></span>
       <p>This vista has no background yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForBackground">
+      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibrary('background')">
         <span class="mdi mdi-folder-multiple-image"></span> Choose background
       </button>
     </div>
@@ -122,10 +122,10 @@
         <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'select' }" title="Select / move" aria-label="Select / move" :aria-pressed="mode === 'select'" @click="setMode('select')">
           <span class="mdi mdi-cursor-default"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'asset' }" title="Place asset" aria-label="Place asset" :aria-pressed="mode === 'asset'" @click="openLibraryForNewAsset">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'asset' }" title="Place asset" aria-label="Place asset" :aria-pressed="mode === 'asset'" @click="openLibrary('new')">
           <span class="mdi mdi-account-plus-outline"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" title="Replace background" aria-label="Replace background" @click="openLibraryForBackground">
+        <button class="tool-btn rk-icon-btn" title="Replace background" aria-label="Replace background" @click="openLibrary('background')">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
@@ -151,7 +151,7 @@
         </div>
 
         <div class="panel-row">
-          <button class="rk-btn rk-btn--sm" @click="openLibraryForAsset(selectedAsset)">
+          <button class="rk-btn rk-btn--sm" @click="openLibrary(selectedAsset)">
             <span class="mdi mdi-folder-multiple-image"></span> {{ selectedAsset.image_url ? 'Change image' : 'Choose image' }}
           </button>
           <button class="rk-btn rk-btn--sm" title="Reset scale, rotation, flip and color adjustments" @click="resetAsset(selectedAsset)">
@@ -190,10 +190,10 @@
     </div>
 
     <ObservatoryModal
-      :is-open="libraryModalOpen"
+      :is-open="libraryOpen"
       picker-mode
       :start-path="folderOf(vista.id)"
-      @close="libraryModalOpen = false"
+      @close="closeLibrary"
       @select="onLibrarySelect"
     />
   </div>
@@ -206,6 +206,7 @@ import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { uuid } from '@/utils/ids'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
 import { useImageSize } from '@/composables/useImageSize'
 import CanvasEmptyState from './CanvasEmptyState.vue'
 
@@ -216,10 +217,7 @@ const props = defineProps({
 
 const emit = defineEmits(['change', 'set-background'])
 
-const libraryModalOpen = ref(false)
 const pendingLibraryItem = ref(null)
-let libraryTargetAsset = null
-let libraryForBackground = false
 
 // A distant asset never shrinks below this fraction of its base size — keeps
 // far-away characters visible instead of vanishing to a single pixel.
@@ -447,40 +445,22 @@ function setMode(m) {
   if (m !== 'asset') pendingLibraryItem.value = null
 }
 
-function openLibraryForNewAsset() {
-  libraryTargetAsset = null
-  libraryForBackground = false
-  libraryModalOpen.value = true
-}
-
-function openLibraryForAsset(asset) {
-  libraryTargetAsset = asset
-  libraryForBackground = false
-  libraryModalOpen.value = true
-}
-
-function openLibraryForBackground() {
-  libraryTargetAsset = null
-  libraryForBackground = true
-  libraryModalOpen.value = true
-}
-
-function onLibrarySelect(item) {
-  libraryModalOpen.value = false
-  if (libraryForBackground) {
-    libraryForBackground = false
+// The picker chooses the background ('background'), the image of an asset
+// (the asset), or one to place as a new asset ('new': it is placed where the
+// stage is clicked next).
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'background') {
     emit('set-background', item.image_url)
-  } else if (libraryTargetAsset) {
-    libraryTargetAsset.image_url = item.image_url
-    if (!libraryTargetAsset.name) libraryTargetAsset.name = item.name
-    libraryTargetAsset = null
-    emitChange()
-  } else {
+  } else if (target === 'new') {
     pendingLibraryItem.value = item
     mode.value = 'asset'
     selectedId.value = null
+  } else {
+    target.image_url = item.image_url
+    if (!target.name) target.name = item.name
+    emitChange()
   }
-}
+})
 
 // Where a pointer is on the stage, from the stage's rectangle as drawn right
 // now (transforms included, like the pointer's own coordinates), so the two

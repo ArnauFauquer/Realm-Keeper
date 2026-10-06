@@ -48,7 +48,7 @@
           <template #empty>
             <span class="mdi mdi-image-plus"></span>
             <p>This map has no image yet.</p>
-            <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="libraryTarget = 'map'">
+            <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
               <span class="mdi mdi-folder-multiple-image"></span> Choose map image
             </button>
           </template>
@@ -114,7 +114,7 @@
             </div>
 
             <div class="row">
-              <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="libraryTarget = 'token'">
+              <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('token')">
                 <span class="mdi mdi-folder-multiple-image"></span> {{ selected.image_url ? 'Change image' : 'Choose image' }}
               </button>
               <button v-if="selected.image_url" type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="patchToken({ image_url: null })">Remove image</button>
@@ -145,7 +145,7 @@
         <!-- Map -->
         <div v-else class="tab-body">
           <div class="row">
-            <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="libraryTarget = 'map'">
+            <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('map')">
               <span class="mdi mdi-folder-multiple-image"></span> {{ doc.image_url ? 'Change map image' : 'Choose map image' }}
             </button>
           </div>
@@ -207,10 +207,10 @@
       </aside>
 
       <ObservatoryModal
-        :is-open="!!libraryTarget"
+        :is-open="libraryOpen"
         picker-mode
         :start-path="folderOf(id)"
-        @close="libraryTarget = null"
+        @close="closeLibrary"
         @select="onLibrarySelect"
       />
     </template>
@@ -224,6 +224,7 @@ import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
 import { TOKEN_COLORS } from '@/utils/palette'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
 import { errorMessage } from '@/api/http'
 import { screenApi } from '@/api/screen'
 import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
@@ -256,7 +257,10 @@ const DEFAULT_COLOR = COLORS[0]
 const tab = ref('tokens')
 const tool = ref('select')
 const selectedId = ref(null)
-const libraryTarget = ref(null) // 'map' | 'token'
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'map') send(commands.patch(id, { image_url: item.image_url }))
+  else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
+})
 const encounters = ref([])
 const actionError = ref('')
 const onScreen = ref(false)
@@ -392,12 +396,6 @@ function onMove(tokenId, position) {
 
 onBeforeUnmount(() => clearTimeout(moveTimer))
 
-function onLibrarySelect(item) {
-  const target = libraryTarget.value
-  libraryTarget.value = null
-  if (target === 'map') send(commands.patch(id, { image_url: item.image_url }))
-  else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
-}
 
 async function toggleScreen() {
   const wasShowing = onScreen.value

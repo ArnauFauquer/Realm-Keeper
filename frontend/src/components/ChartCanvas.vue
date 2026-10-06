@@ -3,7 +3,7 @@
     <div v-if="!chart.image_url" class="empty-map">
       <span class="mdi mdi-image-plus"></span>
       <p>This chart has no map image yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForMap">
+      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
         <span class="mdi mdi-folder-multiple-image"></span> Choose map image
       </button>
     </div>
@@ -176,7 +176,7 @@
       <CanvasEmptyState v-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
         The map image could not be loaded. It may have been deleted from the Observatory.
         <template v-if="editable" #actions>
-          <button class="rk-btn rk-btn--primary" @click="openLibraryForMap">
+          <button class="rk-btn rk-btn--primary" @click="openLibrary('map')">
             <span class="mdi mdi-folder-multiple-image"></span> Choose map image
           </button>
         </template>
@@ -203,7 +203,7 @@
         <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'annotation' }" title="Add annotation" aria-label="Add annotation" :aria-pressed="mode === 'annotation'" @click="setMode('annotation')">
           <span class="mdi mdi-note-plus-outline"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" title="Replace map image" aria-label="Replace map image" @click="openLibraryForMap">
+        <button class="tool-btn rk-icon-btn" title="Replace map image" aria-label="Replace map image" @click="openLibrary('map')">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
@@ -291,7 +291,7 @@
           <span class="mdi mdi-map-marker"></span>
         </div>
 
-        <button class="upload-btn rk-btn rk-btn--sm" @click="openLibraryForPinIcon(selectedPin)">
+        <button class="upload-btn rk-btn rk-btn--sm" @click="openLibrary(selectedPin)">
           <span class="mdi mdi-folder-multiple-image"></span> {{ selectedPin.icon_url ? 'Change icon' : 'Choose icon' }}
         </button>
       </div>
@@ -327,10 +327,10 @@
     </div>
 
     <ObservatoryModal
-      :is-open="libraryModalOpen"
+      :is-open="libraryOpen"
       picker-mode
       :start-path="folderOf(chart.id)"
-      @close="libraryModalOpen = false"
+      @close="closeLibrary"
       @select="onLibrarySelect"
     />
   </div>
@@ -346,6 +346,7 @@ import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { uuid } from '@/utils/ids'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
 import { CHART_COLORS } from '@/utils/palette'
 
 const props = defineProps({
@@ -394,9 +395,15 @@ function setPinScale(pin, scale) {
 
 const emit = defineEmits(['change', 'set-map-image', 'open-note'])
 
-const libraryModalOpen = ref(false)
-// Pin whose icon the open library picker will set; null means it picks the map image.
-let libraryTargetPin = null
+// The picker chooses the map image ('map') or a pin's icon (the pin).
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'map') {
+    emit('set-map-image', item.image_url)
+  } else {
+    target.icon_url = item.image_url
+    emitChange()
+  }
+})
 
 const svgRef = ref(null)
 const zoomGroupRef = ref(null)
@@ -669,26 +676,6 @@ function setPathDirection(id, direction) {
   if (path) { path.direction = direction; emitChange() }
 }
 
-function openLibraryForMap() {
-  libraryTargetPin = null
-  libraryModalOpen.value = true
-}
-
-function openLibraryForPinIcon(pin) {
-  libraryTargetPin = pin
-  libraryModalOpen.value = true
-}
-
-function onLibrarySelect(item) {
-  libraryModalOpen.value = false
-  if (libraryTargetPin) {
-    libraryTargetPin.icon_url = item.image_url
-    libraryTargetPin = null
-    emitChange()
-  } else {
-    emit('set-map-image', item.image_url)
-  }
-}
 
 </script>
 
