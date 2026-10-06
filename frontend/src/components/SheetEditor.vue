@@ -1,34 +1,43 @@
 <template>
-  <div class="sheet-editor">
-    <section class="sheet-editor-form" aria-label="Sheet">
-      <div v-if="(canEdit && isEmpty) || $slots.actions" class="form-bar">
-        <div v-if="canEdit && isEmpty" ref="templateMenuRef" class="template-menu" @keydown.esc.stop="closeTemplateMenu">
-          <button
-            type="button"
-            class="rk-btn rk-btn--sm"
-            aria-haspopup="menu"
-            :aria-expanded="templateMenuOpen"
-            @click="templateMenuOpen = !templateMenuOpen"
-          >
-            <span class="mdi mdi-file-document-outline"></span> Start from a template
-            <span class="mdi mdi-chevron-down template-caret" aria-hidden="true"></span>
-          </button>
-          <div v-if="templateMenuOpen" class="template-menu-list" role="menu" aria-label="Game system">
-            <template v-for="(system, i) in SHEET_SYSTEMS" :key="system.id">
-              <div v-if="i === 1" class="template-menu-divider" role="separator"></div>
-              <button type="button" class="template-menu-item" role="menuitem" @click="startFromTemplate(system.id)">
-                <span class="mdi" :class="system.icon" aria-hidden="true"></span>
-                <span class="template-menu-text">
-                  <span class="template-menu-name">{{ system.name }}</span>
-                  <span class="template-menu-hint">{{ system.hint[type] }}</span>
-                </span>
-              </button>
-            </template>
-          </div>
-        </div>
-        <span class="form-bar-spacer"></span>
-        <slot name="actions"></slot>
+  <div class="sheet-editor" :class="{ 'sheet-editor--preview': !editing }">
+    <div v-if="canEdit || $slots.actions" class="form-bar">
+      <div v-if="canEdit" class="mode-switch" role="group" aria-label="Sheet mode">
+        <button type="button" class="mode-option" :class="{ active: !editing }" :aria-pressed="!editing" @click="editing = false">
+          <span class="mdi mdi-eye-outline" aria-hidden="true"></span> Preview
+        </button>
+        <button type="button" class="mode-option" :class="{ active: editing }" :aria-pressed="editing" @click="editing = true">
+          <span class="mdi mdi-pencil-outline" aria-hidden="true"></span> Edit
+        </button>
       </div>
+      <div v-if="editing && isEmpty" ref="templateMenuRef" class="template-menu" @keydown.esc.stop="closeTemplateMenu">
+        <button
+          type="button"
+          class="rk-btn rk-btn--sm"
+          aria-haspopup="menu"
+          :aria-expanded="templateMenuOpen"
+          @click="templateMenuOpen = !templateMenuOpen"
+        >
+          <span class="mdi mdi-file-document-outline"></span> Start from a template
+          <span class="mdi mdi-chevron-down template-caret" aria-hidden="true"></span>
+        </button>
+        <div v-if="templateMenuOpen" class="template-menu-list" role="menu" aria-label="Game system">
+          <template v-for="(system, i) in SHEET_SYSTEMS" :key="system.id">
+            <div v-if="i === 1" class="template-menu-divider" role="separator"></div>
+            <button type="button" class="template-menu-item" role="menuitem" @click="startFromTemplate(system.id)">
+              <span class="mdi" :class="system.icon" aria-hidden="true"></span>
+              <span class="template-menu-text">
+                <span class="template-menu-name">{{ system.name }}</span>
+                <span class="template-menu-hint">{{ system.hint[type] }}</span>
+              </span>
+            </button>
+          </template>
+        </div>
+      </div>
+      <span class="form-bar-spacer"></span>
+      <slot name="actions"></slot>
+    </div>
+
+    <section v-if="editing" class="sheet-editor-form" aria-label="Sheet">
       <ul v-if="problems.length" class="form-problems" role="alert">
         <li v-for="problem in problems" :key="problem"><span class="mdi mdi-alert-circle-outline"></span>{{ problem }}</li>
       </ul>
@@ -47,7 +56,10 @@
     </section>
 
     <section class="sheet-editor-preview" aria-label="Preview">
-      <SheetView :sheet="drawn.sheet" :warnings="drawn.warnings" can-interact>
+      <p v-if="!editing && isEmpty" class="preview-empty">
+        Nothing on this sheet yet.<template v-if="canEdit"> Switch to Edit to build it.</template>
+      </p>
+      <SheetView v-else :sheet="drawn.sheet" :warnings="drawn.warnings" can-interact>
         <template v-if="$slots.counter" #counter="slotProps">
           <slot name="counter" v-bind="slotProps"></slot>
         </template>
@@ -64,7 +76,8 @@ import { sheetFromDoc, sheetProblems } from '@/utils/sheet'
 import { SHEET_SYSTEMS, sheetTemplate } from '@/utils/sheetTemplates'
 
 // A character's or an adversary's sheet, built with forms (SheetBuilder)
-// beside the sheet it draws. `modelValue` is the sheet as its document keeps
+// beside the sheet it draws, or the sheet alone (preview, what it opens on).
+// `modelValue` is the sheet as its document keeps
 // it (JSON). Saving is the caller's (a Save button: the modal's for an
 // adversary, the character editor's own), and so is what a counter shows (the
 // `counter` slot).
@@ -84,6 +97,11 @@ const isEmpty = computed(() => {
   const sheet = props.modelValue || {}
   return !sheet.sections?.length && !sheet.subtitle && !sheet.image && !sheet.text && !sheet.tags?.length
 })
+
+// Opened to read, unless there is nothing to read yet (just made): then to
+// build it. Only who can edit it can switch.
+const editing = ref(props.canEdit && isEmpty.value)
+watch(() => props.canEdit, (can) => { if (!can) editing.value = false })
 
 // An empty sheet can start from a game system's: the menu lists them.
 const templateMenuOpen = ref(false)
@@ -119,7 +137,8 @@ function startFromTemplate(systemId) {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
-  gap: var(--space-4);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--space-3) var(--space-4);
   padding: var(--space-4);
   overflow: hidden;
 }
@@ -131,7 +150,9 @@ function startFromTemplate(systemId) {
   min-height: 0;
 }
 
+/* The bar spans both columns: mode, template, then the caller's actions. */
 .form-bar {
+  grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -141,6 +162,55 @@ function startFromTemplate(systemId) {
 
 .form-bar-spacer {
   flex: 1;
+}
+
+.mode-switch {
+  display: inline-flex;
+  padding: 2px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.mode-option:hover {
+  color: var(--text-primary);
+}
+
+.mode-option.active {
+  background: var(--surface-overlay);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Preview: the sheet alone, at a readable width. */
+.sheet-editor--preview {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.sheet-editor--preview .sheet-editor-preview {
+  width: 100%;
+  max-width: 60rem;
+  justify-self: center;
+}
+
+.preview-empty {
+  margin: var(--space-6) 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .template-menu {

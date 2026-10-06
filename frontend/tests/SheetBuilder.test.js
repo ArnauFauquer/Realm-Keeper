@@ -16,8 +16,15 @@ const BUGBOAR = {
   ]
 }
 
-// The editor as the adversaries' modal uses it: v-model on the sheet.
+// The editor as the adversaries' modal uses it: v-model on the sheet, switched
+// to Edit (a sheet with something on it opens in preview).
 function mountEditor(sheet = BUGBOAR, props = {}) {
+  const wrapper = mountSheet(sheet, props)
+  if (!wrapper.find('.sheet-builder').exists()) button(wrapper, 'Edit')?.trigger('click')
+  return wrapper
+}
+
+function mountSheet(sheet = BUGBOAR, props = {}) {
   const wrapper = mount(SheetEditor, {
     props: {
       type: 'adversary',
@@ -145,9 +152,29 @@ describe('SheetBuilder', () => {
     expect(wrapper.findAll('input[aria-label="Counter name"]')).toHaveLength(0)
   })
 
-  it('is read-only without the right to edit', async () => {
-    const wrapper = mountEditor(BUGBOAR, { canEdit: false })
+  it('opens a sheet with something on it in preview, and Edit shows the builder', async () => {
+    const wrapper = mountSheet()
     await flushPromises()
-    expect(wrapper.find('fieldset.builder-form').attributes('disabled')).toBeDefined()
+    expect(wrapper.find('.sheet-builder').exists()).toBe(false)
+    expect(wrapper.find('.sheet-editor-preview .sheet-card').exists()).toBe(true)
+    await button(wrapper, 'Edit').trigger('click')
+    expect(wrapper.find('.sheet-builder').exists()).toBe(true)
+    await button(wrapper, 'Preview').trigger('click')
+    expect(wrapper.find('.sheet-builder').exists()).toBe(false)
+  })
+
+  it('opens an empty sheet (one just made) in Edit', async () => {
+    const wrapper = mountSheet({})
+    await flushPromises()
+    expect(wrapper.find('.sheet-builder').exists()).toBe(true)
+    expect(button(wrapper, 'Edit').attributes('aria-pressed')).toBe('true')
+  })
+
+  it('only shows the sheet without the right to edit', async () => {
+    const wrapper = mountSheet(BUGBOAR, { canEdit: false })
+    await flushPromises()
+    expect(wrapper.find('.sheet-builder').exists()).toBe(false)
+    expect(button(wrapper, 'Edit')).toBeUndefined()
+    expect(wrapper.find('.sheet-editor-preview .sheet-card').exists()).toBe(true)
   })
 })
