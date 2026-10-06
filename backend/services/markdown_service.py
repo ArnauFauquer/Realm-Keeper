@@ -56,12 +56,12 @@ class MarkdownService:
         with self._git_lock:
             return fn()
 
-    def resolve_note_path(self, note_id: str) -> Path:
-        return self._resolve_note_path(note_id)
-
-    def _resolve_note_path(self, note_id: str) -> Path:
-        """Validate a note id and resolve it to a path guaranteed to stay
-        inside the vault. Raises ValueError on any traversal/invalid segment."""
+    @staticmethod
+    def check_note_id(note_id: str) -> str:
+        """A note id, normalized, if it could name a note: no empty, hidden
+        (".", "..", ".git") or backslashed segment. Raises ValueError. Says
+        nothing of whether the note exists (or, through a symlink, resolves
+        outside the vault: that one simply isn't a note, see get_note)."""
         normalized = note_id.strip('/')
         if not normalized:
             raise ValueError("Note path cannot be empty")
@@ -71,6 +71,12 @@ class MarkdownService:
             # which get_all_notes() never lists either.
             if not segment or segment.startswith('.') or '\\' in segment or '\x00' in segment:
                 raise ValueError(f"Invalid note path segment: {segment!r}")
+        return normalized
+
+    def _resolve_note_path(self, note_id: str) -> Path:
+        """Validate a note id and resolve it to a path guaranteed to stay
+        inside the vault. Raises ValueError on any traversal/invalid segment."""
+        normalized = self.check_note_id(note_id)
 
         full_path = (self.vault_path / f"{normalized}.md").resolve()
         vault_resolved = self.vault_path.resolve()

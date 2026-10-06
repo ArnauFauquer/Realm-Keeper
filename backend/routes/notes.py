@@ -27,13 +27,13 @@ def get_markdown_service() -> MarkdownService:
 
 
 def _note_id(service: MarkdownService, note_path: str) -> str:
-    """The note's id, if it is one that stays inside the vault; 403 otherwise."""
-    normalized = note_path.strip('/')
+    """The note's id, if it could name one (403 for "..", ".git"...). One that
+    resolves outside the vault (a symlink) is then simply not found: a 404
+    that doesn't say there is something there."""
     try:
-        service.resolve_note_path(normalized)
+        return service.check_note_id(note_path)
     except ValueError as e:
         raise HTTPException(status_code=403, detail=str(e))
-    return normalized
 
 
 @router.get("/notes", response_model=List[NoteMetadata])
@@ -76,7 +76,10 @@ def get_note_raw(
     user: dict = Depends(require_auth),
     service: MarkdownService = Depends(get_markdown_service),
 ):
-    content = service.get_raw_content(_note_id(service, note_path))
+    try:
+        content = service.get_raw_content(_note_id(service, note_path))
+    except ValueError:
+        content = None   # resolves outside the vault: not a note
     if content is None:
         raise HTTPException(status_code=404, detail=f"Note not found: {note_path}")
     return {"content": content, "sha": content_sha(content)}

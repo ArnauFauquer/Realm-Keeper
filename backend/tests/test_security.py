@@ -151,6 +151,11 @@ def test_symlinks_out_of_vault_are_not_listed(client):
     ids = {n["id"] for n in client.get("/api/notes").json()}
     assert "linked" not in ids
     assert client.get("/api/note/linked").status_code == 404
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
+    try:
+        assert client.get("/api/note-raw/linked").status_code == 404   # the editor's source neither
+    finally:
+        client.cookies.clear()
 
 
 def test_screen_socket_limit(client, monkeypatch):
