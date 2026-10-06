@@ -2,25 +2,41 @@
 // normalized shape the sheet component renders. backend/services/sheet_parser.py
 // does the same normalization; both are checked against the shared cases in
 // backend/tests/fixtures/sheets/, so a change here needs the same change there.
-import { parse } from 'yaml'
+// The YAML is read as the backend reads it (utils/pythonYaml.js), and turned
+// into text as Python would: the backend stores the sheet, so what it makes of
+// `wide: yes` or `subtitle: 1.0` is what the sheet says.
+import { PyDict, PyFloat, YamlError, loadYaml, pyStr, pyStrip, toJson } from './pythonYaml'
 import { OBSERVATORY_IMAGE_PREFIX as IMAGE_URL_PREFIX } from './docTypes'
 
 export const SHEET_TYPES = ['character', 'adversary']
 
-// Same limit as the backend (services/sheet_parser.py), and no aliases for the
-// same reason: a few nested ones expand to gigabytes.
+// Same limit as the backend (services/sheet_parser.py), in characters as
+// Python counts them (an emoji is one), and no aliases for the same reason: a
+// few nested ones expand to gigabytes.
 const MAX_SOURCE_LENGTH = 100_000
+// What an encounter or a character may hold (models/encounter.py,
+// ResourceState and Combatant): a sheet with more would parse and then not fit.
+export const MAX_COUNTERS = 24
+const MAX_COLOR_LENGTH = 40
+const MAX_STYLE_LENGTH = 20
 
 const KNOWN_FIELDS = new Set(['id', 'name', 'type', 'subtitle', 'image', 'tags', 'stats', 'sections', 'columns', 'text'])
 // How many columns a layout may ask for (the sheet's sections, a section's
 // items, a group of stats). Narrow screens fall back to fewer on their own.
 const MAX_COLUMNS = 12
-// An Observatory image's file name: its uid, then its name ("1a2b3c4d-boar.png").
-const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^/]+\.(png|jpe?g|webp|gif|svg)$/i
+// An Observatory image's file name: its uid (lower-case hex, as uploads are
+// named), then its name ("1a2b3c4d-boar.png").
+const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^\n]+$/
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.svg'])
+const extension = (name) => (name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '')
 
 export class SheetParseError extends Error {}
 
-const isMapping = (value) => value !== null && typeof value === 'object' && !Array.isArray(value)
+const isMapping = (value) => value instanceof PyDict
+const isAbsent = (value) => value === null || value === undefined
+// Lengths in characters as Python counts them: a character outside the BMP
+// (an emoji) is two UTF-16 units but one character.
+const codePoints = (text) => text.length - (text.match(/[\uD800-\uDBFF][\uDC00-\uDFFF]/g)?.length || 0)
 
 /** Lowercase ASCII with hyphens: "Jabalí Gigante" -> "jabali-gigante". */
 export function slugify(text) {
@@ -33,13 +49,13 @@ export function slugify(text) {
 }
 
 function text(value) {
-  if (value === null || value === undefined) return null
-  const trimmed = String(value).trim()
+  if (isAbsent(value)) return null
+  const trimmed = pyStrip(pyStr(value))
   return trimmed || null
 }
 
 function tags(value) {
-  if (value === null || value === undefined) return []
+  if (isAbsent(value)) return []
   const items = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? value : [value]
   return items.map(text).filter(Boolean)
 }
@@ -56,52 +72,72 @@ export function normalizeImage(value) {
   if (!image) return [null, null]
   const marker = image.indexOf(IMAGE_URL_PREFIX)
   if (marker !== -1) return [image.slice(marker), null]
-  if (IMAGE_FILE_NAME.test(image)) return [IMAGE_URL_PREFIX + quoteName(image), null]
+  if (IMAGE_FILE_NAME.test(image) && IMAGE_EXTENSIONS.has(extension(image)) && !image.includes('/')) {
+    return [IMAGE_URL_PREFIX + quoteName(image), null]
+  }
   if (/^https?:\/\//i.test(image)) return [image, null]
   return [null, 'image must be the URL of an Observatory image, as copied from the Observatory']
 }
 
+// A whole number: an int, or a float with nothing after the point (`6.0`),
+// never a boolean.
 function integer(value, what) {
-  if (typeof value !== 'number' || !Number.isInteger(value)) throw new SheetParseError(`${what} must be a whole number`)
-  return value
+  if (typeof value === 'number' || typeof value === 'bigint') return Number(value)
+  if (value instanceof PyFloat && Number.isInteger(value.value)) return value.value
+  throw new SheetParseError(`${what} must be a whole number`)
 }
 
 function counter(name, raw) {
   let spec
   if (isMapping(raw)) {
-    if (!('max' in raw)) throw new SheetParseError(`counter '${name}' needs a max`)
+    if (!raw.has('max')) throw new SheetParseError(`counter '${name}' needs a max`)
+    // `min: ~` is a min that isn't a number, not a missing one.
     spec = {
-      max: integer(raw.max, `counter '${name}' max`),
-      min: integer(raw.min ?? 0, `counter '${name}' min`),
-      start: raw.start === null || raw.start === undefined ? null : integer(raw.start, `counter '${name}' start`),
-      color: text(raw.color),
-      style: text(raw.style)
+      max: integer(raw.get('max'), `counter '${name}' max`),
+      min: raw.has('min') ? integer(raw.get('min'), `counter '${name}' min`) : 0,
+      start: isAbsent(raw.get('start')) ? null : integer(raw.get('start'), `counter '${name}' start`),
+      color: text(raw.get('color')),
+      style: text(raw.get('style'))
     }
   } else {
     spec = { max: integer(raw, `counter '${name}'`), min: 0, start: null, color: null, style: null }
   }
   if (spec.min > spec.max) throw new SheetParseError(`counter '${name}' has a min above its max`)
+  if (spec.color && codePoints(spec.color) > MAX_COLOR_LENGTH) {
+    throw new SheetParseError(`counter '${name}' color can't be longer than ${MAX_COLOR_LENGTH} characters`)
+  }
+  if (spec.style && codePoints(spec.style) > MAX_STYLE_LENGTH) {
+    throw new SheetParseError(`counter '${name}' style can't be longer than ${MAX_STYLE_LENGTH} characters`)
+  }
   return spec
 }
 
+/** A Map of name to counter, in the order they were written (a Map, since an
+ * object would put names that look like numbers first). Two keys that are
+ * the same text (1 and '1') are one counter, the last one, as in Python. */
 function counters(raw) {
-  if (raw === null || raw === undefined) return {}
+  if (isAbsent(raw)) return new Map()
   if (!isMapping(raw)) throw new SheetParseError("a section's counters must be a mapping of name to maximum, e.g. HP: 6")
-  return Object.fromEntries(Object.entries(raw).map(([name, value]) => [name, counter(name, value)]))
+  const own = new Map()
+  for (const [key, value] of raw.entries()) {
+    const name = pyStr(key)
+    own.set(name, counter(name, value))
+  }
+  return own
 }
 
 function columns(value, what) {
-  if (value === null || value === undefined) return null
+  if (isAbsent(value)) return null
   const n = integer(value, what)
   if (n < 1 || n > MAX_COLUMNS) throw new SheetParseError(`${what} must be between 1 and ${MAX_COLUMNS}`)
   return n
 }
 
 function statList(raw) {
-  return Object.entries(raw).map(([label, value]) =>
+  return raw.entries().map(([label, value]) =>
     isMapping(value)
-      ? { label, value: value.value ?? null, roll: text(value.roll) }
-      : { label, value: value ?? null, roll: null }
+      ? { label: pyStr(label), value: toJson(value.get('value')), roll: text(value.get('roll')) }
+      : { label: pyStr(label), value: toJson(value), roll: null }
   )
 }
 
@@ -109,24 +145,31 @@ function statList(raw) {
 // (told apart by having a `stats` key).
 function statGroup(raw) {
   if (!isMapping(raw)) throw new SheetParseError('each group of stats must be a mapping of label to value')
-  if ('stats' in raw) {
-    if (!isMapping(raw.stats)) throw new SheetParseError("a stat group's stats must be a mapping of label to value")
-    return { title: text(raw.title), columns: columns(raw.columns, "a stat group's columns"), stats: statList(raw.stats) }
+  if (raw.has('stats')) {
+    const list = raw.get('stats')
+    if (!isMapping(list)) throw new SheetParseError("a stat group's stats must be a mapping of label to value")
+    return { title: text(raw.get('title')), columns: columns(raw.get('columns'), "a stat group's columns"), stats: statList(list) }
   }
   return { title: null, columns: null, stats: statList(raw) }
 }
 
 /** Always a list of groups: a single mapping is one untitled group. */
 function stats(raw) {
-  if (raw === null || raw === undefined) return []
+  if (isAbsent(raw)) return []
   if (Array.isArray(raw)) return raw.map(statGroup)
   if (!isMapping(raw)) throw new SheetParseError('stats must be a mapping of label to value, or a list of groups of them')
-  return Object.keys(raw).length ? [statGroup(raw)] : []
+  return raw.size ? [statGroup(raw)] : []
 }
 
 function item(raw) {
   if (isMapping(raw)) {
-    return { name: text(raw.name), text: text(raw.text), roll: text(raw.roll), tags: tags(raw.tags), cost: text(raw.cost) }
+    return {
+      name: text(raw.get('name')),
+      text: text(raw.get('text')),
+      roll: text(raw.get('roll')),
+      tags: tags(raw.get('tags')),
+      cost: text(raw.get('cost'))
+    }
   }
   return { name: null, text: text(raw), roll: null, tags: [], cost: null }
 }
@@ -135,32 +178,32 @@ function item(raw) {
  * counter of the sheet is also in `resources` (by name, in order), which is
  * what encounters and saved characters go by. */
 function sections(raw) {
-  if (raw === null || raw === undefined) return { sections: [], resources: {} }
+  if (isAbsent(raw)) return { sections: [], resources: {} }
   if (!Array.isArray(raw) || !raw.every(isMapping)) {
     throw new SheetParseError('sections must be a list, each with a title and its items')
   }
-  const resources = {}
+  const resources = new Map()
   const list = raw.map((section) => {
-    if (section.items !== null && section.items !== undefined && !Array.isArray(section.items)) {
-      throw new SheetParseError("a section's items must be a list")
-    }
-    const own = counters(section.counters)
-    for (const [name, spec] of Object.entries(own)) {
-      if (name in resources) throw new SheetParseError(`counter '${name}' is defined twice: counter names must be unique in a sheet`)
-      resources[name] = spec
+    const items = section.get('items')
+    if (!isAbsent(items) && !Array.isArray(items)) throw new SheetParseError("a section's items must be a list")
+    const own = counters(section.get('counters'))
+    for (const [name, spec] of own) {
+      if (resources.has(name)) throw new SheetParseError(`counter '${name}' is defined twice: counter names must be unique in a sheet`)
+      resources.set(name, spec)
     }
     return {
-      title: text(section.title),
-      columns: columns(section.columns, "a section's columns"),
-      wide: section.wide === true,
-      collapsed: section.collapsed === true,
-      tab: text(section.tab),
-      counters: Object.keys(own),
-      stats: stats(section.stats),
-      items: (section.items || []).map(item)
+      title: text(section.get('title')),
+      columns: columns(section.get('columns'), "a section's columns"),
+      wide: section.get('wide') === true,
+      collapsed: section.get('collapsed') === true,
+      tab: text(section.get('tab')),
+      counters: [...own.keys()],
+      stats: stats(section.get('stats')),
+      items: (items || []).map(item)
     }
   })
-  return { sections: list, resources }
+  if (resources.size > MAX_COUNTERS) throw new SheetParseError(`a sheet can't have more than ${MAX_COUNTERS} counters`)
+  return { sections: list, resources: Object.fromEntries(resources) }
 }
 
 // What a sheet document holds outside its YAML: its name is the document's
@@ -175,58 +218,77 @@ const DOCUMENT_FIELDS = ['id', 'name', 'type']
  * source is an empty sheet (see parseSheetDoc).
  */
 export function parseSheetSource(source, document = null) {
-  if (source.length > MAX_SOURCE_LENGTH) throw new SheetParseError(`A sheet can't be longer than ${MAX_SOURCE_LENGTH / 1000} KB`)
+  if (source.length > MAX_SOURCE_LENGTH && codePoints(source) > MAX_SOURCE_LENGTH) {
+    throw new SheetParseError(`A sheet can't be longer than ${MAX_SOURCE_LENGTH / 1000} KB`)
+  }
   let data
   try {
-    data = parse(source, { maxAliasCount: 0 })
+    data = loadYaml(source)
   } catch (e) {
-    throw new SheetParseError(`Invalid YAML: ${e.message.split('\n')[0]}`)
+    if (!(e instanceof YamlError)) throw e
+    throw new SheetParseError(`Invalid YAML: ${e.message}`)
   }
-  if ((data === null || data === undefined) && document) data = {}
+  if (isAbsent(data) && document) data = new PyDict()
   if (!isMapping(data)) throw new SheetParseError('A sheet must be a YAML mapping (subtitle: ..., sections: ...)')
-  if ('resources' in data) {
+  if (data.has('resources')) {
     throw new SheetParseError("'resources' is gone: counters go in a section, as its `counters` (the same name: max mapping)")
   }
 
-  const warnings = Object.keys(data).filter((key) => !KNOWN_FIELDS.has(key)).map((key) => `Unknown field '${key}'`)
+  const warnings = data
+    .entries()
+    .map(([key]) => pyStr(key))
+    .filter((key) => !KNOWN_FIELDS.has(key))
+    .map((key) => `Unknown field '${key}'`)
+  // A field of the sheet, by name. In a document, its name, id and type are
+  // the document's.
+  let get = (key) => data.get(key)
   if (document) {
     for (const key of DOCUMENT_FIELDS) {
-      if (key in data) warnings.push(`'${key}' is ignored here: the sheet's ${key} is its document's`)
+      if (data.has(key)) warnings.push(`'${key}' is ignored here: the sheet's ${key} is its document's`)
     }
-    data = { ...Object.fromEntries(Object.entries(data).filter(([key]) => !DOCUMENT_FIELDS.includes(key))), name: document.name, type: document.type }
+    const own = { name: document.name, type: document.type, id: null }
+    get = (key) => (key in own ? own[key] : data.get(key))
   }
 
-  const name = text(data.name)
+  const name = text(get('name'))
   if (!name) throw new SheetParseError('A sheet needs a name')
-  const type = (text(data.type) || 'adversary').toLowerCase()
+  const type = (text(get('type')) || 'adversary').toLowerCase()
   if (!SHEET_TYPES.includes(type)) throw new SheetParseError(`type must be one of: ${SHEET_TYPES.join(', ')}`)
 
-  const explicitId = document?.id || slugify(text(data.id) || '')
+  const explicitId = document?.id || slugify(text(get('id')) || '')
   const id = explicitId || slugify(name)
   if (!id) throw new SheetParseError("The sheet's id needs at least one letter or number")
   if (type === 'character' && !explicitId) {
     warnings.push('A character should declare a stable id: its saved values are kept under it')
   }
-  const [image, imageWarning] = normalizeImage(data.image)
+  const [image, imageWarning] = normalizeImage(get('image'))
   if (imageWarning) warnings.push(imageWarning)
-  const parts = sections(data.sections)
+  const parts = sections(get('sections'))
 
   return {
     sheet: {
       id,
       name,
       type,
-      subtitle: text(data.subtitle),
+      subtitle: text(get('subtitle')),
       image,
-      tags: tags(data.tags),
+      tags: tags(get('tags')),
       resources: parts.resources,
-      stats: stats(data.stats),
+      stats: stats(get('stats')),
       sections: parts.sections,
-      columns: columns(data.columns, 'columns'),
-      text: text(data.text)
+      columns: columns(get('columns'), 'columns'),
+      text: text(get('text'))
     },
     warnings
   }
+}
+
+/** Where a counter of a sheet starts: its `start`, or its max, within its
+ * range. The parser keeps `start` as written (`{ max: 3, start: 9 }`), and the
+ * backend starts such a counter at 3 (services/sheet_docs.py), so this does too. */
+export function counterStart(spec) {
+  const min = spec.min ?? 0
+  return Math.max(min, Math.min(spec.max, spec.start ?? spec.max))
 }
 
 /** The sheet a character or adversary document describes: { sheet, warnings }. */

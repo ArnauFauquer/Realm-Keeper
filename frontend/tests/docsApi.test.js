@@ -54,6 +54,10 @@ describe('the document clients', () => {
     )
     await charactersApi.commands.adjustOwn('aria', 'HP', 3)
     expect(client.post).toHaveBeenLastCalledWith('https://api.test/api/characters/aria/adjust', { resource: 'HP', by: 3 })
+    await encountersApi.commands.editList('fight', 'combatants', 'orc 1', 'conditions', { remove: ['c1'] })
+    expect(client.post).toHaveBeenLastCalledWith(
+      'https://api.test/api/encounters/fight/combatants/orc%201/list', { field: 'conditions', add: [], remove: ['c1'] }
+    )
   })
 
   it('gives the client of a kind by its name', () => {

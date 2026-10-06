@@ -138,7 +138,16 @@ is never behind what is being played.
 The frontend parses the same sources (`utils/sheet.js` `parseSheetDoc`); the two
 normalizations are checked against shared fixtures in
 `backend/tests/fixtures/sheets/`, so a change in one needs the same change in
-the other.
+the other. The backend is the authority (it stores the sheet), and it reads YAML
+with PyYAML, which is YAML 1.1: `yes` is true, `010` is 8, `1e3` is text, a
+duplicated key keeps its last value, `<<` merges. So the frontend reads it the
+same way (`utils/pythonYaml.js`: the `yaml` package for the syntax, PyYAML's own
+patterns for the types, Python dicts' keys and Python's `str()` for the text),
+and counts lengths in characters as Python does. The differences left are noted
+at the top of that file (`!!set`, `!!binary` and the like, refused in the
+browser; error messages worded differently). A sheet is also held to what an
+encounter can hold (at most 24 counters, a counter's `color` and `style` at most
+40 and 20 characters), so one that parses can always be added to a fight.
 
 **Importing the sheets notes used to hold.** Earlier versions wrote sheets in
 notes, as ` ```sheet ` blocks. On startup, after the legacy charts and vistas,
@@ -253,8 +262,11 @@ it change. `services/sync_hub.py` (`DocHub`) is built for that.
 - **Commands are typed REST calls**, not a generic patch protocol:
   `POST/PATCH/DELETE /<id>/<collection>[/<entity>]`, `…/order`, and
   `…/<entity>/adjust {resource, by}` — a *relative* change clamped to the
-  counter's `min`/`max`, so two people hitting the same counter both count.
-  Clients never write a whole live document.
+  counter's `min`/`max`, so two people hitting the same counter both count —
+  and `…/<entity>/list {field, add, remove}`, entries in or out of an entity's
+  list (a combatant's conditions, a token's bars) for the same reason: two
+  people adding a condition at once both add one, where writing the whole list
+  would keep only the last. Clients never write a whole live document.
 - **The socket only talks one way.** `/ws/sync` (login required) carries events
   server → client; nobody sends anything on it. An event is
   `{type: "doc", doc: "encounter:fight", rev, set, upsert, remove, order}`: whole
@@ -414,6 +426,12 @@ src/
   `useMapViewport` (zoom, pan, screen ↔ map coordinates) was extracted from
   `ChartCanvas` and is used by `BattlemapCanvas` too; `battlemapGeometry.js` is
   pure functions (cells ↔ pixels, snapping, measuring) with its own tests.
+  Every canvas drags with `usePointerDrag` (primary button and one pointer
+  only, captured, a threshold in screen pixels, `pointercancel` puts things
+  back, the click after a drag swallowed), sizes its image with `useImageSize`
+  (and says so when it can't be loaded, `CanvasEmptyState`), and picks images
+  with `useLibraryPicker`. The live editors (tracker, battlemap) share
+  `useLiveDocument`, `LiveBadge` and `LiveDocumentState`.
 - **Sheets in notes.** A `` `character:<id>` `` or `` `adversary:<id>` `` link
   becomes a placeholder like a chart's, and `MarkdownBody` (`useDocEmbeds`) mounts
   a `SheetEmbed` on it (a `DocumentEmbed` for a chart or vista) — also in the

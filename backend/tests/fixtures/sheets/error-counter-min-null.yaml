@@ -1,0 +1,4 @@
+name: A
+sections:
+  - counters:
+      HP: { max: 5, min: ~ }

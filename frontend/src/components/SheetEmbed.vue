@@ -20,7 +20,7 @@
       <template v-if="type === 'character'" #counter="{ resource: r }">
         <ResourceCounter
           :name="r.name"
-          :current="doc.resources?.[r.name]?.current ?? r.start ?? r.max"
+          :current="doc.resources?.[r.name]?.current ?? counterStart(r)"
           :max="doc.resources?.[r.name]?.max ?? r.max"
           :min="doc.resources?.[r.name]?.min ?? r.min"
           :display="r.style"
@@ -51,7 +51,7 @@ import { adversariesApi } from '@/api/docs'
 import { useCharacters } from '@/composables/useCharacters'
 import { useDocModal } from '@/composables/useDocModal'
 import { DOC_TYPES } from '@/utils/docTypes'
-import { parseSheetDoc } from '@/utils/sheet'
+import { counterStart, parseSheetDoc } from '@/utils/sheet'
 import { errorMessage } from '@/api/http'
 
 // A character or an adversary shown in a note (`character:<id>`,

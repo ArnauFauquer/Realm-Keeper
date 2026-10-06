@@ -40,6 +40,26 @@ describe('limits', () => {
   it('does not parse a sheet that is far too long', () => {
     expect(() => parseSheetSource(`name: A\ntext: ${'x'.repeat(200_000)}`)).toThrow(/longer/)
   })
+
+  it('counts characters as the backend does: an emoji is one', () => {
+    // 120,000 UTF-16 units, but 60,000 characters: under the limit.
+    expect(parseSheetSource(`name: A\ntext: ${'😀'.repeat(60_000)}\n`).sheet.text).toHaveLength(120_000)
+    const color = (text) => `name: A\nsections:\n  - counters:\n      HP: { max: 3, color: '${text}' }\n`
+    expect(parseSheetSource(color('😀'.repeat(40))).sheet.resources.HP.color).toBe('😀'.repeat(40))
+    expect(() => parseSheetSource(color('😀'.repeat(41)))).toThrow(/color/)
+  })
+})
+
+describe('YAML 1.1, read as the backend reads it', () => {
+  it('a missing min is 0, but a null one is refused', () => {
+    expect(parseSheetSource('name: A\nsections:\n  - counters:\n      HP: { max: 5 }\n').sheet.resources.HP.min).toBe(0)
+    expect(() => parseSheetSource('name: A\nsections:\n  - counters:\n      HP: { max: 5, min: ~ }\n')).toThrow(/min/)
+  })
+
+  it('keeps counters in the order they were written, even when named like numbers', () => {
+    const { sheet } = parseSheetSource('name: A\nsections:\n  - counters:\n      10: 1\n      2: 1\n      HP: 1\n')
+    expect(sheet.sections[0].counters).toEqual(['10', '2', 'HP'])
+  })
 })
 
 describe('slugify', () => {

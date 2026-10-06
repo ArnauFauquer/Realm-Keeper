@@ -42,6 +42,10 @@ export function createDocApi(prefix, { itemsKey = prefix } = {}) {
       removeItem: (id, collection, entityId) =>
         client.delete(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}`).then(data),
       orderItems: (id, collection, ids) => client.post(`${docUrl(id)}/${collection}/order`, { ids }).then(data),
+      // Entries in or out of an entity's list (conditions, bars): relative, so
+      // two people adding at once both add.
+      editList: (id, collection, entityId, field, { add = [], remove = [] } = {}) =>
+        client.post(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}/list`, { field, add, remove }).then(data),
       adjust: (id, collection, entityId, resource, by) =>
         client.post(`${docUrl(id)}/${collection}/${encodeURIComponent(entityId)}/adjust`, { resource, by }).then(data),
       // A document's own counters (a character's).

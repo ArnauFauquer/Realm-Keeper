@@ -1,11 +1,10 @@
 <template>
   <div class="battlemap-canvas">
-    <div v-if="!imageUrl" class="empty-map">
-      <slot name="empty">
-        <span class="mdi mdi-image-plus"></span>
-        <p>This map has no image yet.</p>
-      </slot>
-    </div>
+    <!-- What to do about it is the owner's (the `empty-actions` slot). -->
+    <CanvasEmptyState v-if="!imageUrl">
+      This map has no image yet.
+      <template #actions><slot name="empty-actions" /></template>
+    </CanvasEmptyState>
 
     <div v-else class="canvas-viewport">
       <svg
@@ -16,9 +15,6 @@
         :viewBox="`0 0 ${naturalWidth} ${naturalHeight}`"
         preserveAspectRatio="xMidYMid meet"
         @pointerdown="onBackgroundDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
       >
         <g ref="groupRef">
           <image :href="resolvedImageUrl" x="0" y="0" :width="naturalWidth" :height="naturalHeight" preserveAspectRatio="none" />
@@ -45,11 +41,13 @@
             <title>{{ token.name }}</title>
             <clipPath :id="`clip-${uid}-${token.id}`"><circle :r="radius(token)" /></clipPath>
             <circle class="token-body" :r="radius(token)" :fill="token.color || DEFAULT_COLOR" />
+            <!-- The art turns with the token (which way it faces); its name and bars don't. -->
             <image
               v-if="token.image_url"
               :href="resolveUrl(token.image_url)"
               :x="-radius(token)" :y="-radius(token)" :width="radius(token) * 2" :height="radius(token) * 2"
               :clip-path="`url(#clip-${uid}-${token.id})`"
+              :transform="token.rotation ? `rotate(${token.rotation})` : null"
               preserveAspectRatio="xMidYMid slice"
             />
             <text v-else class="token-initials" :font-size="radius(token) * 0.9" text-anchor="middle" dominant-baseline="central">{{ initials(token.name) }}</text>
@@ -75,6 +73,9 @@
           </g>
         </g>
       </svg>
+      <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
+        The map image could not be loaded. It may have been deleted from the Observatory.
+      </CanvasEmptyState>
     </div>
   </div>
 </template>
@@ -82,6 +83,8 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMapViewport } from '@/composables/useMapViewport'
+import CanvasEmptyState from './CanvasEmptyState.vue'
+import { usePointerDrag } from '@/composables/usePointerDrag'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
   cellCenter, initials, measure, meterFill, snapPosition, toCells, toPixels, tokenCenter
@@ -91,8 +94,8 @@ import {
 // nothing itself: moving a token is reported (`moving` while it is dragged,
 // `move` once dropped) for whoever owns the map to apply, and the screen's
 // copy is just this with nothing editable. `tokens` carry what to draw:
-// { id, name, x, y, size, image_url, color, hidden, meters: [{ name, current,
-// max, min, color }] }.
+// { id, name, x, y, size, rotation (degrees, clockwise), image_url, color,
+// hidden, meters: [{ name, current, max, min, color }] }.
 const props = defineProps({
   imageUrl: { type: String, default: null },
   grid: { type: Object, required: true },
@@ -110,14 +113,17 @@ const emit = defineEmits(['select', 'moving', 'move'])
 
 const DEFAULT_COLOR = '#6d4fc2'
 const DEFAULT_METER = '#4ade80'
-const DRAG_THRESHOLD = 4 // px of the map
+// How far a press may wander, in pixels of the screen (not of the map: on a
+// big map shown small, a few pixels of the map are less than a finger's
+// wobble), and still be a tap that only selects.
+const DRAG_THRESHOLD_PX = 4
 
 const uid = Math.random().toString(36).slice(2, 8)
 const svgRef = ref(null)
 const groupRef = ref(null)
 
 const resolvedImageUrl = computed(() => resolveUrl(props.imageUrl))
-const { naturalWidth, naturalHeight, pointer } = useMapViewport({
+const { naturalWidth, naturalHeight, imageStatus, pointer } = useMapViewport({
   svgRef,
   groupRef,
   imageUrl: () => props.imageUrl,
@@ -141,7 +147,6 @@ const radius = (token) => Math.max(4, ((token.size ?? 1) * cell.value) / 2 - rin
 // document still has it.
 const override = ref(null)
 const draggingId = ref(null)
-let drag = null
 let releaseTimer = null
 
 const placed = (token) => (override.value?.id === token.id ? { ...token, x: override.value.x, y: override.value.y } : token)
@@ -149,38 +154,64 @@ const center = (token) => tokenCenter(props.grid, placed(token))
 
 watch(() => props.tokens, (tokens) => {
   const held = override.value
-  if (!held || drag) return
+  if (!held || tokenDrag.active()) return
   const token = tokens.find((t) => t.id === held.id)
   if (!token || (token.x === held.x && token.y === held.y)) override.value = null
 }, { deep: true })
 
+// A token follows the pointer that grabbed it (the primary button, one
+// pointer); where it is let go is where it goes. If the browser cancels the
+// gesture it goes back where it was, and so does everyone else's copy, which
+// was following it as it moved.
+const tokenDrag = usePointerDrag({
+  toPoint: pointer,
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(point, _event, drag) {
+    const cells = toCells(props.grid, point.x - drag.grab.x, point.y - drag.grab.y)
+    const position = snapPosition(props.grid, cells.x, cells.y)
+    override.value = { id: drag.id, ...position }
+    emit('moving', drag.id, position)
+  },
+  onEnd(drag, { moved }) {
+    draggingId.value = null
+    if (!moved || !override.value) {
+      override.value = null
+      return
+    }
+    const { x, y } = override.value
+    emit('move', drag.id, { x, y })
+    // Let go of the pointer's position once the document has had time to agree.
+    releaseTimer = setTimeout(() => { override.value = null }, 1000)
+  },
+  onCancel(drag, { moved }) {
+    draggingId.value = null
+    override.value = null
+    if (moved) emit('move', drag.id, drag.from)
+  }
+})
+
 function onTokenDown(token, event) {
   emit('select', token.id)
-  if (!props.editable || props.tool !== 'select' || event.button) return
+  if (!props.editable || props.tool !== 'select') return
   const point = pointer(event)
   if (!point) return
   const topLeft = toPixels(props.grid, token.x, token.y)
+  const grab = { x: point.x - topLeft.x, y: point.y - topLeft.y }
+  if (!tokenDrag.start(event, { id: token.id, grab, from: { x: token.x, y: token.y } })) return
   clearTimeout(releaseTimer)
-  drag = { id: token.id, grab: { x: point.x - topLeft.x, y: point.y - topLeft.y }, moved: false, from: { x: point.x, y: point.y } }
   draggingId.value = token.id
-  event.currentTarget.setPointerCapture?.(event.pointerId)
-}
-
-function dragTo(event) {
-  const point = pointer(event)
-  if (!point) return
-  if (!drag.moved && Math.hypot(point.x - drag.from.x, point.y - drag.from.y) < DRAG_THRESHOLD) return
-  drag.moved = true
-  const cells = toCells(props.grid, point.x - drag.grab.x, point.y - drag.grab.y)
-  const position = snapPosition(props.grid, cells.x, cells.y)
-  override.value = { id: drag.id, ...position }
-  emit('moving', drag.id, position)
 }
 
 // ── ruler ──────────────────────────────────────────────────────────────────
 
 const ruler = ref(null)
-let measuring = false
+
+const measuring = usePointerDrag({
+  toPoint: (event) => rulerPoint(event),
+  onMove(to) {
+    ruler.value = { from: ruler.value.from, to, label: measure(props.grid, ruler.value.from, to).label }
+  }
+})
 
 watch(() => props.tool, () => { ruler.value = null })
 
@@ -193,38 +224,11 @@ function onBackgroundDown(event) {
   if (props.tool === 'ruler') {
     if (event.button) return
     const from = rulerPoint(event)
-    if (!from) return
-    measuring = true
+    if (!from || !measuring.start(event)) return
     ruler.value = { from, to: from, label: measure(props.grid, from, from).label }
-    event.currentTarget.setPointerCapture?.(event.pointerId)
   } else {
     emit('select', null)
   }
-}
-
-function onPointerMove(event) {
-  if (measuring) {
-    const to = rulerPoint(event)
-    if (to) ruler.value = { from: ruler.value.from, to, label: measure(props.grid, ruler.value.from, to).label }
-  } else if (drag) {
-    dragTo(event)
-  }
-}
-
-function onPointerUp() {
-  measuring = false
-  if (!drag) return
-  const { id, moved } = drag
-  drag = null
-  draggingId.value = null
-  if (!moved) {
-    override.value = null
-    return
-  }
-  const { x, y } = override.value
-  emit('move', id, { x, y })
-  // Let go of the pointer's position once the document has had time to agree.
-  releaseTimer = setTimeout(() => { override.value = null }, 1000)
 }
 
 onBeforeUnmount(() => clearTimeout(releaseTimer))
@@ -238,23 +242,6 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   height: 100%;
   position: relative;
   background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
-}
-
-.empty-map {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-8);
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.empty-map :deep(.mdi) {
-  font-size: 3rem;
-  color: var(--text-muted);
 }
 
 .canvas-viewport {

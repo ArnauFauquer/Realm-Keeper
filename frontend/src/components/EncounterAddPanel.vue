@@ -57,6 +57,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { fetchSheets } from '@/api/sheets'
 import { errorMessage } from '@/api/http'
+import { MAX_COPIES, copiesCount } from '@/utils/encounter'
 
 // The sheet picker of an encounter: search the characters and adversaries and add them. It
 // only says what to add (`add`, `add-custom`); the tracker does the adding.
@@ -71,7 +72,7 @@ const FILTERS = [
   { value: 'adversary', label: 'Adversaries' },
   { value: 'character', label: 'Characters' }
 ]
-const MAX_COUNT = 20
+const MAX_COUNT = MAX_COPIES
 
 const sheets = ref([])
 const loading = ref(true)
@@ -96,7 +97,7 @@ const countersText = (sheet) =>
   Object.entries(sheet.resources).map(([name, spec]) => `${name} ${spec.max}`).join(' · ')
 
 function add(sheet) {
-  const count = Math.max(1, Math.min(MAX_COUNT, Math.floor(Number(counts[sheet.ref])) || 1))
+  const count = copiesCount(counts[sheet.ref])
   emit('add', sheet, count)
 }
 

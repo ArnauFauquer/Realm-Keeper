@@ -12,6 +12,15 @@ describe('ResourceCounter', () => {
     expect(wrapper.findAll('.rc-pip.filled')).toHaveLength(4)
   })
 
+  it('counts its pips from its min, like its bar', () => {
+    const wrapper = counter({ min: 1, max: 5, current: 3 })
+    expect(wrapper.findAll('.rc-pip')).toHaveLength(4)
+    expect(wrapper.findAll('.rc-pip.filled')).toHaveLength(2)
+    const below = counter({ min: -3, max: 3, current: 0 })
+    expect(below.findAll('.rc-pip')).toHaveLength(6)
+    expect(below.findAll('.rc-pip.filled')).toHaveLength(3)
+  })
+
   it('switches to a bar when there would be too many pips', () => {
     const wrapper = counter({ current: 25, max: 50 })
     expect(wrapper.find('.rc-pip').exists()).toBe(false)

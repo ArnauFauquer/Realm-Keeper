@@ -20,7 +20,7 @@
         autocomplete="off"
         :aria-label="`${name} sheet YAML`"
         :placeholder="`subtitle: …\nsections:\n  - counters:\n      HP: 6`"
-        @input="emit('update:modelValue', $event.target.value)"
+        @input="onInput"
         @keydown.tab.prevent="indent"
       ></textarea>
       <p v-if="parsed.error" class="source-error" role="alert">{{ parsed.error }}</p>
@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import SheetView from './SheetView.vue'
 import { SHEET_TEMPLATES, parseSheetSource } from '@/utils/sheet'
 
@@ -58,16 +58,39 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 
-const parsed = computed(() => {
+function parse() {
   try {
     return parseSheetSource(props.modelValue, { name: props.name || props.id, id: props.id, type: props.type })
   } catch (e) {
     return { error: e.message }
   }
-})
+}
 
+// Parsed once typing pauses (PARSE_DELAY ms), not at every keystroke: a long
+// sheet takes a moment to read and draw. Anything else (it loaded, a
+// template, someone saved it) is parsed at once.
+const PARSE_DELAY = 150
+const parsed = ref(parse())
 const lastValid = ref(null)
+let typing = false
+let timer = null
+
+watch(() => [props.modelValue, props.name, props.id, props.type], () => {
+  clearTimeout(timer)
+  if (!typing) {
+    parsed.value = parse()
+    return
+  }
+  typing = false
+  timer = setTimeout(() => { parsed.value = parse() }, PARSE_DELAY)
+})
 watch(parsed, (result) => { if (!result.error) lastValid.value = result }, { immediate: true })
+onBeforeUnmount(() => clearTimeout(timer))
+
+function onInput(event) {
+  typing = true
+  emit('update:modelValue', event.target.value)
+}
 
 function startFromTemplate() {
   emit('update:modelValue', SHEET_TEMPLATES[props.type])
