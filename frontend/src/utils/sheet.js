@@ -134,37 +134,3 @@ export function sheetProblems(body) {
   if (count > MAX_COUNTERS) problems.push(`A sheet can have at most ${MAX_COUNTERS} counters.`)
   return [...new Set(problems)]
 }
-
-/** What a new sheet's builder offers to start from. */
-export const SHEET_TEMPLATES = {
-  adversary: {
-    sections: [
-      {
-        counters: [
-          { name: 'HP', max: 6 },
-          { name: 'Stress', max: 3, start: 0 }
-        ],
-        stats: [{ stats: [{ label: 'Difficulty', value: 12 }] }]
-      },
-      {
-        title: 'Actions',
-        items: [{ name: 'Attack', roll: '1d20+3', text: 'What it does. Dice in text work too, like `1d8+2`.' }]
-      }
-    ]
-  },
-  character: {
-    sections: [
-      {
-        counters: [
-          { name: 'HP', max: 10 },
-          { name: 'Stress', max: 5, start: 0 }
-        ],
-        stats: [{ stats: [{ label: 'Defense', value: 10 }] }]
-      },
-      {
-        title: 'Actions',
-        items: [{ name: 'Attack', roll: '1d20+3' }]
-      }
-    ]
-  }
-}

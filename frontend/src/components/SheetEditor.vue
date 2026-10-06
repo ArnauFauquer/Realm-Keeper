@@ -2,9 +2,30 @@
   <div class="sheet-editor">
     <section class="sheet-editor-form" aria-label="Sheet">
       <div v-if="(canEdit && isEmpty) || $slots.actions" class="form-bar">
-        <button v-if="canEdit && isEmpty" type="button" class="rk-btn rk-btn--sm" @click="startFromTemplate">
-          <span class="mdi mdi-file-document-outline"></span> Start from a template
-        </button>
+        <div v-if="canEdit && isEmpty" ref="templateMenuRef" class="template-menu" @keydown.esc.stop="closeTemplateMenu">
+          <button
+            type="button"
+            class="rk-btn rk-btn--sm"
+            aria-haspopup="menu"
+            :aria-expanded="templateMenuOpen"
+            @click="templateMenuOpen = !templateMenuOpen"
+          >
+            <span class="mdi mdi-file-document-outline"></span> Start from a template
+            <span class="mdi mdi-chevron-down template-caret" aria-hidden="true"></span>
+          </button>
+          <div v-if="templateMenuOpen" class="template-menu-list" role="menu" aria-label="Game system">
+            <template v-for="(system, i) in SHEET_SYSTEMS" :key="system.id">
+              <div v-if="i === 1" class="template-menu-divider" role="separator"></div>
+              <button type="button" class="template-menu-item" role="menuitem" @click="startFromTemplate(system.id)">
+                <span class="mdi" :class="system.icon" aria-hidden="true"></span>
+                <span class="template-menu-text">
+                  <span class="template-menu-name">{{ system.name }}</span>
+                  <span class="template-menu-hint">{{ system.hint[type] }}</span>
+                </span>
+              </button>
+            </template>
+          </div>
+        </div>
         <span class="form-bar-spacer"></span>
         <slot name="actions"></slot>
       </div>
@@ -36,10 +57,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import SheetView from './SheetView.vue'
 import SheetBuilder from './SheetBuilder.vue'
-import { SHEET_TEMPLATES, sheetFromDoc, sheetProblems } from '@/utils/sheet'
+import { sheetFromDoc, sheetProblems } from '@/utils/sheet'
+import { SHEET_SYSTEMS, sheetTemplate } from '@/utils/sheetTemplates'
 
 // A character's or an adversary's sheet, built with forms (SheetBuilder)
 // beside the sheet it draws. `modelValue` is the sheet as its document keeps
@@ -63,8 +85,31 @@ const isEmpty = computed(() => {
   return !sheet.sections?.length && !sheet.subtitle && !sheet.image && !sheet.text && !sheet.tags?.length
 })
 
-function startFromTemplate() {
-  emit('update:modelValue', structuredClone(SHEET_TEMPLATES[props.type]))
+// An empty sheet can start from a game system's: the menu lists them.
+const templateMenuOpen = ref(false)
+const templateMenuRef = ref(null)
+
+function closeTemplateMenu() {
+  if (!templateMenuOpen.value) return
+  templateMenuOpen.value = false
+  templateMenuRef.value?.querySelector('button')?.focus()
+}
+
+watch(templateMenuOpen, async (open) => {
+  if (!open) return
+  await nextTick()
+  templateMenuRef.value?.querySelector('[role="menuitem"]')?.focus()
+})
+
+function onOutsideClick(event) {
+  if (templateMenuOpen.value && !templateMenuRef.value?.contains(event.target)) templateMenuOpen.value = false
+}
+document.addEventListener('click', onOutsideClick, true)
+onBeforeUnmount(() => document.removeEventListener('click', onOutsideClick, true))
+
+function startFromTemplate(systemId) {
+  templateMenuOpen.value = false
+  emit('update:modelValue', sheetTemplate(systemId, props.type))
 }
 </script>
 
@@ -96,6 +141,77 @@ function startFromTemplate() {
 
 .form-bar-spacer {
   flex: 1;
+}
+
+.template-menu {
+  position: relative;
+}
+
+.template-caret {
+  margin-left: calc(var(--space-1) * -1);
+  opacity: 0.8;
+}
+
+.template-menu-list {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  min-width: 16rem;
+  max-width: min(22rem, calc(100vw - 2 * var(--space-4)));
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+}
+
+.template-menu-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.template-menu-item:hover,
+.template-menu-item:focus-visible {
+  background: var(--hover-tint);
+}
+
+.template-menu-item > .mdi {
+  color: var(--text-secondary);
+  font-size: 1.1em;
+  line-height: 1.25rem;
+}
+
+.template-menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.template-menu-name {
+  font-size: var(--text-sm);
+  line-height: 1.25rem;
+}
+
+.template-menu-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.template-menu-divider {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--border-light);
 }
 
 .form-problems {

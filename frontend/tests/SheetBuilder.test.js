@@ -86,12 +86,33 @@ describe('SheetBuilder', () => {
     })
   })
 
-  it('offers a template while the sheet is empty', async () => {
+  it('offers a template while the sheet is empty, from the system picked', async () => {
     const wrapper = mountEditor({})
     await flushPromises()
     await button(wrapper, 'Start from a template').trigger('click')
+    const systems = wrapper.findAll('[role="menuitem"]').map((b) => b.find('.template-menu-name').text())
+    expect(systems).toEqual(['Generic', 'D&D 5e', 'Daggerheart', 'Pathfinder 2e', 'Call of Cthulhu 7e'])
+    await button(wrapper, 'Daggerheart').trigger('click')
     expect(wrapper.findAll('input[aria-label="Counter name"]').map((i) => i.element.value)).toEqual(['HP', 'Stress'])
+    expect(wrapper.text()).toContain('Motives & tactics')
     expect(button(wrapper, 'Start from a template')).toBeUndefined()
+  })
+
+  it('starts from the generic template', async () => {
+    const wrapper = mountEditor({})
+    await flushPromises()
+    await button(wrapper, 'Start from a template').trigger('click')
+    await button(wrapper, 'Generic').trigger('click')
+    expect(wrapper.findAll('input[aria-label="Counter name"]').map((i) => i.element.value)).toEqual(['HP', 'Stress'])
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
+  })
+
+  it('closes the template menu on Escape', async () => {
+    const wrapper = mountEditor({})
+    await flushPromises()
+    await button(wrapper, 'Start from a template').trigger('click')
+    await wrapper.find('[role="menu"]').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.find('[role="menu"]').exists()).toBe(false)
   })
 
   it('deletes one row, not two', async () => {
