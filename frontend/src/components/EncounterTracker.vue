@@ -96,21 +96,14 @@
             </span>
           </div>
 
-          <div class="conditions">
-            <span v-for="condition in c.conditions" :key="condition.id" class="condition">
-              {{ condition.name }}
-              <button v-if="canInteract" type="button" class="condition-remove" :aria-label="`Remove ${condition.name} from ${c.name}`" @click="removeCondition(c, condition)">
-                <span class="mdi mdi-close"></span>
-              </button>
-            </span>
-            <input
-              v-if="canInteract"
-              class="condition-input"
-              placeholder="+ condition"
-              :aria-label="`Add a condition to ${c.name}`"
-              @keyup.enter="addCondition(c, $event)"
-            />
-          </div>
+          <ConditionChips
+            class="combatant-conditions"
+            :conditions="c.conditions"
+            :name="c.name"
+            :editable="canInteract"
+            @add="(name) => addCondition(c, name)"
+            @remove="(condition) => removeCondition(c, condition)"
+          />
 
           <details class="more" @toggle="(e) => e.target.open && loadSheet(c)">
             <summary>Notes{{ c.notes ? ' ·' : '' }}<template v-if="c.sheet"> and sheet</template></summary>
@@ -124,11 +117,11 @@
               @change="patchCombatant(c, { notes: $event.target.value })"
             ></textarea>
             <template v-if="c.sheet">
-              <p v-if="sheets[sheetKey(c)]?.status === 'loading'" class="sheet-note">Loading sheet…</p>
-              <p v-else-if="sheets[sheetKey(c)]?.status === 'missing'" class="sheet-note">
+              <p v-if="sheetOf(c).status === 'loading'" class="sheet-note">Loading sheet…</p>
+              <p v-else-if="sheetOf(c).status === 'missing'" class="sheet-note">
                 Its sheet is gone ({{ sheetKey(c) }}): it was moved or deleted. The counters above still work.
               </p>
-              <SheetView v-else-if="sheets[sheetKey(c)]?.sheet" :sheet="sheets[sheetKey(c)].sheet" :can-interact="canInteract" compact />
+              <SheetView v-else-if="sheetOf(c).sheet" :sheet="sheetOf(c).sheet" :roller-name="c.name" :can-interact="canInteract" compact />
             </template>
           </details>
         </li>
@@ -138,14 +131,15 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, ref } from 'vue'
 import ResourceCounter from './ResourceCounter.vue'
+import ConditionChips from './ConditionChips.vue'
 import EncounterAddPanel from './EncounterAddPanel.vue'
 import SheetView from './SheetView.vue'
 import { encountersApi } from '@/api/docs'
-import { fetchSheet } from '@/api/sheets'
 import { useLiveDocument } from '@/composables/useLiveDocument'
 import { useCharacters } from '@/composables/useCharacters'
+import { useCombatantActions, useCombatantSheets } from '@/composables/useCombatantActions'
 import { combatantsFromSheet, customCombatant, moveBefore } from '@/utils/encounter'
 import LiveBadge from './LiveBadge.vue'
 import LiveDocumentState from './LiveDocumentState.vue'
@@ -166,14 +160,17 @@ const { doc, status, error, actionError, unavailable, attempt, send } = useLiveD
 // The saved values of the characters in it: one live document each.
 const characters = useCharacters(() => (doc.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
+// The same commands a battlemap's sheet panel plays a combatant with.
+const { countersOf, adjust, patch: patchCombatant, addCondition, removeCondition } =
+  useCombatantActions({ encounterId: () => id, send, attempt, characters })
+// A combatant's sheet, shown when its details are opened.
+const { sheetOf, load: loadSheet, keyOf: sheetKey } = useCombatantSheets(characters)
+
 const adding = ref(false)
-const sheets = reactive({}) // by ref: { status: 'loading' | 'missing' | 'ready', sheet }
 
 
 const presentCharacters = computed(() => (doc.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
-
-const patchCombatant = (c, patch) => send(commands.patchItem(id, 'combatants', c.id, patch))
 
 // The order is the table's own: the arrows move one place, dragging by the
 // handle moves anywhere (a screen without a mouse has only the arrows).
@@ -234,51 +231,9 @@ function removeCombatant(c) {
   send(commands.removeItem(id, 'combatants', c.id))
 }
 
-// An adversary's counters are its own; a character's are the saved ones.
-function countersOf(c) {
-  const resources = c.type === 'character' ? characters.stateOf(c.sheet)?.resources : c.resources
-  return Object.entries(resources || {}).map(([name, state]) => ({ name, ...state }))
-}
-
-function adjust(c, resource, by) {
-  // (The characters' composable applies its own events.)
-  if (c.type === 'character') return attempt(characters.adjust(c.sheet, resource, by))
-  return send(commands.adjust(id, 'combatants', c.id, resource, by))
-}
-
-let conditionSeq = 0
-function addCondition(c, event) {
-  const name = event.target.value.trim()
-  if (!name) return
-  event.target.value = ''
-  const condition = { id: `${Date.now().toString(36)}${conditionSeq++}`, name }
-  send(commands.editList(id, 'combatants', c.id, 'conditions', { add: [condition] }))
-}
-
-// Conditions go in and out one by one, never as the whole list: two people
-// adding one at once both add theirs.
-const removeCondition = (c, condition) =>
-  send(commands.editList(id, 'combatants', c.id, 'conditions', { remove: [condition.id] }))
-
 const addFromSheet = (sheet, count) => send(commands.addItems(id, 'combatants', combatantsFromSheet(sheet, count, doc.value.combatants)))
 
 const addCustom = (name) => send(commands.addItems(id, 'combatants', [customCombatant(name)]))
-
-// A combatant's sheet is fetched when its details are opened, once. A
-// character and an adversary may share an id, so the type is part of the key.
-const sheetKey = (c) => `${c.type || 'adversary'}:${c.sheet}`
-
-async function loadSheet(c) {
-  const key = sheetKey(c)
-  if (!c.sheet || sheets[key]) return
-  sheets[key] = { status: 'loading' }
-  try {
-    const entry = await fetchSheet(c.type || 'adversary', c.sheet)
-    sheets[key] = { status: 'ready', sheet: entry.sheet }
-  } catch {
-    sheets[key] = { status: 'missing' }
-  }
-}
 </script>
 
 <style scoped>
@@ -434,46 +389,8 @@ async function loadSheet(c) {
   color: var(--text-muted);
 }
 
-.conditions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1);
+.combatant-conditions {
   padding-left: var(--space-2);
-}
-
-.condition {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
-  border: 1px solid var(--status-warning);
-  border-radius: var(--radius-full);
-  background: var(--status-warning-bg);
-  color: var(--status-warning);
-  font-size: var(--text-xs);
-  line-height: 1.7;
-}
-
-.condition-remove {
-  display: inline-flex;
-  padding: 0;
-  border: none;
-  background: none;
-  color: inherit;
-  cursor: pointer;
-}
-
-.condition-input {
-  width: 8rem;
-  padding: 0 var(--space-2);
-  border: 1px dashed var(--border-medium);
-  border-radius: var(--radius-full);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--text-xs);
-  line-height: 1.7;
 }
 
 .more {
