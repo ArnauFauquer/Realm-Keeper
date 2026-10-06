@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.0...v0.4.1) (2026-10-06)
+
+
+### Bug Fixes
+
+* **storage:** Observatory images and tracks stream again ([#51](https://github.com/ArnauFauquer/Realm-Keeper/issues/51)) ([aba1b5d](https://github.com/ArnauFauquer/Realm-Keeper/commit/aba1b5d0434db95065756561833c59b932b75ec5))
+
 ## [0.4.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.3.0...v0.4.0) (2026-10-06)
 
 
