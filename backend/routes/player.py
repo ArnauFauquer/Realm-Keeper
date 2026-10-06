@@ -109,14 +109,8 @@ def stream_track(key: str, request: Request):
         headers["Content-Range"] = obj["ContentRange"]
         status_code = 206
 
-    def iterfile():
-        # Closed however the playback ends (a seek or a skip hangs up halfway),
-        # so the connection goes back to the pool.
-        with obj["Body"] as body:
-            yield from body.iter_chunks(chunk_size=64 * 1024)
-
     return StreamingResponse(
-        iterfile(),
+        storage_service.stream_body(obj["Body"]),
         status_code=status_code,
         media_type=storage_service.content_type_for(key),
         headers=headers,

@@ -170,8 +170,12 @@ class S3DocBackend(DocBackend):
             if storage_service.is_missing(e):
                 return None
             raise
-        with body:
+        # Closed with close(), not `with`: botocore's StreamingBody gives the
+        # raw urllib3 stream to a `with`, which skips its length check.
+        try:
             return body.read().decode("utf-8")
+        finally:
+            body.close()
 
     def put(self, key: str, text: str) -> None:
         _check_key(key)
@@ -194,12 +198,7 @@ class S3DocBackend(DocBackend):
                 return None
             raise
 
-        def chunks() -> Iterator[bytes]:
-            # Closed however the reading ends (a client that hangs up halfway
-            # included), so its connection goes back to the pool.
-            with obj["Body"] as body:
-                yield from body.iter_chunks(chunk_size=64 * 1024)
-        return chunks(), obj["ContentLength"]
+        return storage_service.stream_body(obj["Body"]), obj["ContentLength"]
 
     def exists(self, key: str) -> bool:
         _check_key(key)

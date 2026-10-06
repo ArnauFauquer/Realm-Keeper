@@ -11,7 +11,7 @@ A track's key, as the player and the notes see it, is "<album>/<track>"; the
 `player/` in front of it is where it is stored, nobody else's business."""
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import BinaryIO, Iterable, Optional
+from typing import BinaryIO, Iterable, Iterator, Optional
 
 import boto3
 from botocore.client import Config
@@ -91,6 +91,18 @@ def is_missing(e: Exception) -> bool:
     """Whether a botocore ClientError says the object isn't there."""
     code = getattr(e, "response", {}).get("Error", {}).get("Code")
     return code in ("NoSuchKey", "404", "NotFound")
+
+
+def stream_body(body, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
+    """An object's bytes, in chunks, from get_object's StreamingBody, which
+    is closed however the reading ends (a viewer that hangs up halfway, a seek
+    in a track) so its connection goes back to the pool. Closed with close(),
+    not `with`: a `with` on a StreamingBody hands out the raw urllib3 stream,
+    which has no iter_chunks (that served no image in 0.4.0)."""
+    try:
+        yield from body.iter_chunks(chunk_size=chunk_size)
+    finally:
+        body.close()
 
 
 def _sanitize_segment(name: str) -> str:
