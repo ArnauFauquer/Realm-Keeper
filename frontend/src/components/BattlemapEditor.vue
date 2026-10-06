@@ -45,9 +45,7 @@
           @moving="onMoving"
           @move="onMove"
         >
-          <template #empty>
-            <span class="mdi mdi-image-plus"></span>
-            <p>This map has no image yet.</p>
+          <template #empty-actions>
             <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
               <span class="mdi mdi-folder-multiple-image"></span> Choose map image
             </button>

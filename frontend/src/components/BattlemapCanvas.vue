@@ -1,11 +1,10 @@
 <template>
   <div class="battlemap-canvas">
-    <div v-if="!imageUrl" class="empty-map">
-      <slot name="empty">
-        <span class="mdi mdi-image-plus"></span>
-        <p>This map has no image yet.</p>
-      </slot>
-    </div>
+    <!-- What to do about it is the owner's (the `empty-actions` slot). -->
+    <CanvasEmptyState v-if="!imageUrl">
+      This map has no image yet.
+      <template #actions><slot name="empty-actions" /></template>
+    </CanvasEmptyState>
 
     <div v-else class="canvas-viewport">
       <svg
@@ -243,23 +242,6 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   height: 100%;
   position: relative;
   background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
-}
-
-.empty-map {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  padding: var(--space-8);
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.empty-map :deep(.mdi) {
-  font-size: 3rem;
-  color: var(--text-muted);
 }
 
 .canvas-viewport {

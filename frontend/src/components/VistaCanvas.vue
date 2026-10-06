@@ -1,12 +1,13 @@
 <template>
   <div class="vista-canvas" :class="{ editable }">
-    <div v-if="!vista.background_url" class="empty-stage">
-      <span class="mdi mdi-image-plus"></span>
-      <p>This vista has no background yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibrary('background')">
-        <span class="mdi mdi-folder-multiple-image"></span> Choose background
-      </button>
-    </div>
+    <CanvasEmptyState v-if="!vista.background_url">
+      This vista has no background yet.
+      <template v-if="editable" #actions>
+        <button class="rk-btn rk-btn--primary" @click="openLibrary('background')">
+          <span class="mdi mdi-folder-multiple-image"></span> Choose background
+        </button>
+      </template>
+    </CanvasEmptyState>
 
     <div
       v-else
@@ -698,27 +699,6 @@ function resetAsset(asset) {
   overflow: hidden;
 }
 
-.empty-stage {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  text-align: center;
-  padding: var(--space-8);
-}
-
-.empty-stage .mdi {
-  font-size: 3rem;
-  color: var(--text-muted);
-}
-
-.empty-stage .rk-btn {
-  margin-top: var(--space-2);
-}
-
 .stage-viewport {
   position: relative;
   width: 100%;
@@ -931,21 +911,6 @@ function resetAsset(asset) {
   z-index: 600;
 }
 
-.tool-btn {
-  width: 40px;
-  height: 40px;
-}
-
-.tool-btn .mdi {
-  font-size: 1.3rem;
-}
-
-.tool-btn.active,
-.tool-btn.active:hover {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
 .asset-hint {
   position: absolute;
   pointer-events: none;
@@ -979,13 +944,6 @@ function resetAsset(asset) {
   z-index: 600;
 }
 
-.selection-panel-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-}
-
 /* Compact variant of .rk-input for the floating panel. */
 .selection-name-input {
   flex: 1;
@@ -994,11 +952,6 @@ function resetAsset(asset) {
   font-size: var(--text-sm);
   user-select: text;
   -webkit-user-select: text;
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--status-error-bg);
-  color: var(--status-error);
 }
 
 .panel-row {
@@ -1062,3 +1015,6 @@ function resetAsset(asset) {
   color: var(--accent-contrast);
 }
 </style>
+
+<!-- The rules every canvas's toolbar and selection panel share. -->
+<style scoped src="../styles/canvas.css"></style>

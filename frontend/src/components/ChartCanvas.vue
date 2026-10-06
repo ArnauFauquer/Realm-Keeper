@@ -1,12 +1,13 @@
 <template>
   <div class="chart-canvas" :class="{ editable }">
-    <div v-if="!chart.image_url" class="empty-map">
-      <span class="mdi mdi-image-plus"></span>
-      <p>This chart has no map image yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
-        <span class="mdi mdi-folder-multiple-image"></span> Choose map image
-      </button>
-    </div>
+    <CanvasEmptyState v-if="!chart.image_url">
+      This chart has no map image yet.
+      <template v-if="editable" #actions>
+        <button class="rk-btn rk-btn--primary" @click="openLibrary('map')">
+          <span class="mdi mdi-folder-multiple-image"></span> Choose map image
+        </button>
+      </template>
+    </CanvasEmptyState>
 
     <div v-else class="canvas-viewport" ref="viewportRef">
       <svg
@@ -690,27 +691,6 @@ function setPathDirection(id, direction) {
   background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
 }
 
-.empty-map {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  text-align: center;
-  padding: var(--space-8);
-}
-
-.empty-map .mdi {
-  font-size: 3rem;
-  color: var(--text-muted);
-}
-
-.empty-map .rk-btn {
-  margin-top: var(--space-2);
-}
-
 .canvas-viewport {
   position: relative;
   width: 100%;
@@ -905,21 +885,6 @@ function setPathDirection(id, direction) {
   padding: var(--space-1);
 }
 
-.tool-btn {
-  width: 40px;
-  height: 40px;
-}
-
-.tool-btn .mdi {
-  font-size: 1.3rem;
-}
-
-.tool-btn.active,
-.tool-btn.active:hover {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
 .path-hint {
   position: absolute;
   bottom: 1rem;
@@ -958,13 +923,6 @@ function setPathDirection(id, direction) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-.selection-panel-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
 }
 
 .selection-title {
@@ -1037,11 +995,6 @@ function setPathDirection(id, direction) {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.7rem;
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--status-error-bg);
-  color: var(--status-error);
 }
 
 .pin-color-row {
@@ -1129,3 +1082,6 @@ function setPathDirection(id, direction) {
   color: var(--accent-contrast);
 }
 </style>
+
+<!-- The rules every canvas's toolbar and selection panel share. -->
+<style scoped src="../styles/canvas.css"></style>

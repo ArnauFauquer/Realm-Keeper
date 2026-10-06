@@ -96,7 +96,7 @@ describe('BattlemapCanvas', () => {
   it('has a place for what to do about a map with no image', () => {
     const wrapper = mount(BattlemapCanvas, {
       props: { imageUrl: null, grid: GRID },
-      slots: { empty: '<button class="choose">Choose</button>' }
+      slots: { 'empty-actions': '<button class="choose">Choose</button>' }
     })
     expect(wrapper.find('svg').exists()).toBe(false)
     expect(wrapper.find('.choose').exists()).toBe(true)
