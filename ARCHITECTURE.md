@@ -380,6 +380,12 @@ src/
   `useMapViewport` (zoom, pan, screen ↔ map coordinates) was extracted from
   `ChartCanvas` and is used by `BattlemapCanvas` too; `battlemapGeometry.js` is
   pure functions (cells ↔ pixels, snapping, measuring) with its own tests.
+  Every canvas drags with `usePointerDrag` (primary button and one pointer
+  only, captured, a threshold in screen pixels, `pointercancel` puts things
+  back, the click after a drag swallowed), sizes its image with `useImageSize`
+  (and says so when it can't be loaded, `CanvasEmptyState`), and picks images
+  with `useLibraryPicker`. The live editors (tracker, battlemap) share
+  `useLiveDocument`, `LiveBadge` and `LiveDocumentState`.
 - **Sheets in notes.** A `` `character:<id>` `` or `` `adversary:<id>` `` link
   becomes a placeholder like a chart's, and `NoteView`'s `mountDocEmbeds` mounts
   a `SheetEmbed` on it (a `DocumentEmbed` for a chart or vista) — also in the
