@@ -36,7 +36,7 @@ describe('sheet templates', () => {
     const { sheet, warnings } = sheetFromDoc({ id: 'new', name: 'New', sheet: body }, type)
     expect(warnings).toEqual([])
     expect(sheetProblems(body)).toEqual([])
-    expect(Object.keys(sheet.resources)).toContain('HP')
+    expect(Object.keys(sheet.resources).length).toBeGreaterThan(0)
     expect(Object.keys(sheet.resources).length).toBeLessThanOrEqual(MAX_COUNTERS)
     for (const section of body.sections) {
       for (const counter of section.counters) {

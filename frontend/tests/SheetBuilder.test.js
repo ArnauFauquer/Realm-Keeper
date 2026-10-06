@@ -91,7 +91,7 @@ describe('SheetBuilder', () => {
     await flushPromises()
     await button(wrapper, 'Start from a template').trigger('click')
     const systems = wrapper.findAll('[role="menuitem"]').map((b) => b.find('.template-menu-name').text())
-    expect(systems).toEqual(['Generic', 'D&D 5e', 'Daggerheart', 'Pathfinder 2e', 'Call of Cthulhu 7e'])
+    expect(systems).toEqual(['Generic', 'D&D 5e', 'Daggerheart', 'Pathfinder 2e', 'Call of Cthulhu 7e', 'Cyberpunk RED', 'Shadowdark', 'Blades in the Dark'])
     await button(wrapper, 'Daggerheart').trigger('click')
     expect(wrapper.findAll('input[aria-label="Counter name"]').map((i) => i.element.value)).toEqual(['HP', 'Stress'])
     expect(wrapper.text()).toContain('Motives & tactics')

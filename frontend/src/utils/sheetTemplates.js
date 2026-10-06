@@ -881,6 +881,434 @@ const callOfCthulhu7e = {
   }
 }
 
+// ── Cyberpunk RED ───────────────────────────────────────────────────────
+
+const CP_STATS = [
+  ['INT', 6],
+  ['REF', 7],
+  ['DEX', 6],
+  ['TECH', 5],
+  ['COOL', 6],
+  ['WILL', 5],
+  ['LUCK', 6],
+  ['MOVE', 6],
+  ['BODY', 6],
+  ['EMP', 5]
+]
+const cp = Object.fromEntries(CP_STATS)
+const d10 = (n) => (n ? `1d10${mod(n)}` : '1d10')
+const CP_HP = 10 + 5 * Math.ceil((cp.BODY + cp.WILL) / 2)
+// A skill's base is its STAT plus its level: what is added to the d10.
+const CP_SKILLS = [
+  ['Athletics', 'DEX', 2],
+  ['Brawling', 'DEX', 4],
+  ['Concentration', 'WILL', 2],
+  ['Conversation', 'EMP', 2],
+  ['Drive Land Vehicle', 'REF', 2],
+  ['Education', 'INT', 2],
+  ['Evasion', 'DEX', 4],
+  ['First Aid', 'TECH', 2],
+  ['Handgun', 'REF', 6],
+  ['Human Perception', 'EMP', 2],
+  ['Interrogation', 'COOL', 2],
+  ['Language (Streetslang)', 'INT', 2],
+  ['Local Expert (Your Home)', 'INT', 2],
+  ['Melee Weapon', 'DEX', 4],
+  ['Perception', 'INT', 4],
+  ['Persuasion', 'COOL', 2],
+  ['Resist Torture/Drugs', 'WILL', 2],
+  ['Shoulder Arms', 'REF', 4],
+  ['Stealth', 'DEX', 4]
+]
+const cpSkill = Object.fromEntries(CP_SKILLS.map(([name, stat, level]) => [name, cp[stat] + level]))
+
+const cyberpunkRed = {
+  character: {
+    subtitle: 'Solo · Streetrat',
+    sections: [
+      {
+        wide: true,
+        counters: [
+          { name: 'HP', max: CP_HP, color: HP, style: 'bar' },
+          { name: 'Humanity', max: cp.EMP * 10, color: SANITY, style: 'bar' },
+          { name: 'Luck', max: cp.LUCK, color: HOPE },
+          { name: 'Head SP', max: 11, style: 'number' },
+          { name: 'Body SP', max: 11, style: 'number' }
+        ],
+        stats: [
+          {
+            columns: 4,
+            stats: [
+              { label: 'Initiative', value: mod(cp.REF), roll: d10(cp.REF) },
+              { label: 'Seriously Wounded', value: Math.ceil(CP_HP / 2) },
+              { label: 'Death Save', value: cp.BODY, roll: '1d10' },
+              { label: 'Role Ability', value: 'Combat Awareness 4' }
+            ]
+          },
+          {
+            title: 'STATs',
+            columns: 5,
+            stats: CP_STATS.map(([label, value]) => ({ label, value, roll: d10(value) }))
+          }
+        ]
+      },
+      {
+        title: 'Skills',
+        tab: 'Skills',
+        columns: 2,
+        items: CP_SKILLS.map(([name, stat]) => ({ name: `${name} (${stat})`, roll: d10(cpSkill[name]) }))
+      },
+      {
+        title: 'Weapons',
+        tab: 'Combat',
+        items: [
+          {
+            name: 'Heavy Pistol',
+            roll: d10(cpSkill.Handgun),
+            tags: ['Handgun', 'ROF 2'],
+            text: 'Damage `3d6`. Magazine 8.'
+          },
+          {
+            name: 'Light Melee Weapon',
+            roll: d10(cpSkill['Melee Weapon']),
+            tags: ['Melee', 'ROF 2'],
+            text: 'Damage `1d6`. Ignores half of the target\'s armor.'
+          },
+          { name: 'Brawling', roll: d10(cpSkill.Brawling), tags: ['Melee', 'ROF 2'], text: 'Damage `2d6`.' }
+        ]
+      },
+      {
+        title: 'Armor',
+        tab: 'Combat',
+        items: [{ name: 'Light Armorjack', tags: ['Head', 'Body'], cost: 'SP 11', text: 'Each penetrating hit ablates 1 SP.' }]
+      },
+      {
+        title: 'Cyberware',
+        tab: 'Cyberware',
+        items: [
+          { name: 'Neural Link', tags: ['Neuralware'], cost: 'HL 7', text: 'Needed for most other neuralware.' },
+          { name: 'Cyberware', tags: ['Foundation'], cost: 'HL 0', text: 'What it does. Humanity lost goes off the counter above.' }
+        ]
+      },
+      {
+        title: 'Lifepath & gear',
+        tab: 'Gear',
+        stats: [
+          {
+            columns: 3,
+            stats: [
+              { label: 'Eurobucks', value: '500eb' },
+              { label: 'Lifestyle', value: 'Kibble' },
+              { label: 'Housing', value: 'Cargo Container' }
+            ]
+          }
+        ],
+        items: [
+          { name: 'Agent', text: 'Phone, messages, the Data Pool.' },
+          { name: 'Cultural origin, personality, motivation', text: 'From the Lifepath.' },
+          { name: 'Friends, enemies, tragic love affairs' }
+        ]
+      }
+    ],
+    text: 'A 10 on the die rolls again and adds; a 1 rolls again and subtracts.'
+  },
+  adversary: {
+    subtitle: 'Mook · Boosterganger',
+    sections: [
+      {
+        wide: true,
+        counters: [
+          { name: 'HP', max: 30, color: HP, style: 'bar' },
+          { name: 'Head SP', max: 4, style: 'number' },
+          { name: 'Body SP', max: 4, style: 'number' }
+        ],
+        stats: [
+          {
+            columns: 5,
+            stats: [
+              { label: 'INT', value: 4 },
+              { label: 'REF', value: 6, roll: '1d10+6' },
+              { label: 'DEX', value: 6 },
+              { label: 'TECH', value: 3 },
+              { label: 'COOL', value: 5 },
+              { label: 'WILL', value: 4 },
+              { label: 'MOVE', value: 5 },
+              { label: 'BODY', value: 6 },
+              { label: 'EMP', value: 3 },
+              { label: 'Seriously Wounded', value: 15 }
+            ]
+          },
+          {
+            stats: [{ label: 'Skills', value: 'Athletics 10, Brawling 10, Evasion 10, Handgun 12, Perception 8, Stealth 10' }]
+          }
+        ]
+      },
+      {
+        title: 'Weapons',
+        items: [
+          { name: 'Heavy Pistol', roll: '1d10+12', tags: ['ROF 2'], text: 'Damage `3d6`.' },
+          { name: 'Brawling', roll: '1d10+10', tags: ['ROF 2'], text: 'Damage `2d6`.' }
+        ]
+      },
+      {
+        title: 'Cyberware & gear',
+        items: [{ name: 'Cyberware', text: 'What it has, and what it does in a fight.' }]
+      }
+    ]
+  }
+}
+
+// ── Shadowdark ──────────────────────────────────────────────────────────
+
+const SD_ABILITIES = [
+  ['STR', 14],
+  ['DEX', 12],
+  ['CON', 13],
+  ['INT', 8],
+  ['WIS', 10],
+  ['CHA', 9]
+]
+const sd = Object.fromEntries(SD_ABILITIES.map(([key, score]) => [key, dndMod(score)]))
+
+const shadowdark = {
+  character: {
+    subtitle: 'Level 1 · Fighter, Human, Lawful',
+    sections: [
+      {
+        wide: true,
+        counters: [
+          { name: 'HP', max: 7, color: HP },
+          { name: 'Luck Token', max: 1, start: 0, color: HOPE }
+        ],
+        stats: [
+          {
+            columns: 4,
+            stats: [
+              { label: 'AC', value: 14 },
+              { label: 'Level', value: 1 },
+              { label: 'XP', value: '0 / 10' },
+              { label: 'Title', value: 'Squire' }
+            ]
+          },
+          {
+            columns: 6,
+            stats: SD_ABILITIES.map(([key, score]) => ({ label: key, value: `${score} (${mod(sd[key])})`, roll: d20(sd[key]) }))
+          }
+        ]
+      },
+      {
+        title: 'Attacks',
+        items: [
+          { name: 'Longsword', roll: d20(sd.STR), tags: ['Melee', 'Close'], text: 'Damage `1d8`.' },
+          { name: 'Shortbow', roll: d20(sd.DEX), tags: ['Ranged', 'Far'], text: 'Damage `1d4`. Uses arrows.' }
+        ]
+      },
+      {
+        title: 'Talents',
+        tab: 'Talents',
+        items: [
+          { name: 'Ancestry talent', tags: ['Human'], text: 'What it does.' },
+          { name: 'Class talent', tags: ['Fighter'], text: 'Rolled or chosen at level 1.' },
+          { name: 'Class feature', text: 'What it does.' }
+        ]
+      },
+      {
+        title: 'Spells',
+        tab: 'Spells',
+        stats: [{ stats: [{ label: 'Spellcasting check', value: mod(sd.INT), roll: d20(sd.INT) }] }],
+        items: [{ name: 'Spell', tags: ['Tier 1'], cost: 'DC 11', text: 'Range, duration and effect.' }]
+      },
+      {
+        title: 'Gear',
+        tab: 'Gear',
+        stats: [
+          {
+            columns: 4,
+            stats: [
+              { label: 'Gear slots', value: `5 / ${Math.max(10, SD_ABILITIES[0][1])}` },
+              { label: 'GP', value: 5 },
+              { label: 'SP', value: 0 },
+              { label: 'CP', value: 0 }
+            ]
+          }
+        ],
+        items: [
+          { name: 'Chainmail', cost: '2 slots', text: 'AC 13 + DEX modifier. Disadvantage on stealth and swimming.' },
+          { name: 'Torch', cost: '1 slot', text: 'Burns for one hour of real time.' },
+          { name: 'Rations (3)', cost: '1 slot' },
+          { name: 'Rope, 60 ft', cost: '1 slot' }
+        ]
+      }
+    ],
+    text: 'Background, deity and how this one ended up in the dark.'
+  },
+  adversary: {
+    subtitle: 'Level 2 · Chaotic',
+    sections: [
+      {
+        wide: true,
+        counters: [{ name: 'HP', max: 9, color: HP }],
+        stats: [
+          {
+            columns: 3,
+            stats: [
+              { label: 'AC', value: 13 },
+              { label: 'Move', value: 'Near' },
+              { label: 'Attack', value: '1 club +2 (1d6)' }
+            ]
+          },
+          {
+            columns: 6,
+            stats: [
+              { label: 'S', value: '+1', roll: '1d20+1' },
+              { label: 'D', value: '+1', roll: '1d20+1' },
+              { label: 'C', value: '+1', roll: '1d20+1' },
+              { label: 'I', value: '-1', roll: '1d20-1' },
+              { label: 'W', value: '+0', roll: '1d20' },
+              { label: 'Ch', value: '-1', roll: '1d20-1' }
+            ]
+          }
+        ]
+      },
+      {
+        title: 'Attacks',
+        items: [{ name: 'Club', roll: '1d20+2', tags: ['Close'], text: 'Damage `1d6`.' }]
+      },
+      {
+        title: 'Specials',
+        items: [{ name: 'Ability', text: 'What makes it dangerous.' }]
+      }
+    ]
+  }
+}
+
+// ── Blades in the Dark ──────────────────────────────────────────────────
+
+// An action roll is as many d6 as its dots, the highest one counting; with
+// no dots, two and the lowest one.
+const dicePool = (dots) => (dots > 1 ? `${dots}d6kh1` : dots === 1 ? '1d6' : '2d6kl1')
+const BITD_ATTRIBUTES = [
+  ['Insight', [['Hunt', 1], ['Study', 0], ['Survey', 0], ['Tinker', 0]]],
+  ['Prowess', [['Finesse', 0], ['Prowl', 1], ['Skirmish', 2], ['Wrangle', 1]]],
+  ['Resolve', [['Attune', 0], ['Command', 1], ['Consort', 0], ['Sway', 1]]]
+]
+// An attribute's rating, what a resistance roll rolls: its actions with a dot.
+const rating = (actions) => actions.filter(([, dots]) => dots > 0).length
+
+const bladesInTheDark = {
+  character: {
+    subtitle: 'Cutter · Heritage, Background, Vice',
+    sections: [
+      {
+        wide: true,
+        counters: [
+          { name: 'Stress', max: 9, start: 0, color: STRESS },
+          { name: 'Trauma', max: 4, start: 0, color: HP },
+          { name: 'Healing', max: 4, start: 0 },
+          { name: 'Armor', max: 1 },
+          { name: 'Heavy Armor', max: 1 },
+          { name: 'Special Armor', max: 1 }
+        ],
+        stats: [
+          {
+            title: 'Harm',
+            columns: 3,
+            stats: [
+              { label: 'Lesser (less effect)', value: 'None' },
+              { label: 'Moderate (-1d)', value: 'None' },
+              { label: 'Severe (need help)', value: 'None' }
+            ]
+          }
+        ]
+      },
+      {
+        title: 'Actions',
+        wide: true,
+        counters: [
+          { name: 'Playbook XP', max: 8, start: 0, color: HOPE },
+          ...BITD_ATTRIBUTES.map(([attribute]) => ({ name: `${attribute} XP`, max: 6, start: 0, color: MAGIC }))
+        ],
+        stats: [
+          ...BITD_ATTRIBUTES.map(([attribute, actions]) => ({
+            title: attribute,
+            columns: 4,
+            stats: actions.map(([label, dots]) => ({ label, value: dots, roll: dicePool(dots) }))
+          })),
+          {
+            title: 'Resistance',
+            columns: 3,
+            stats: BITD_ATTRIBUTES.map(([attribute, actions]) => ({
+              label: attribute,
+              value: rating(actions),
+              roll: dicePool(rating(actions))
+            }))
+          }
+        ]
+      },
+      {
+        title: 'Special abilities',
+        tab: 'Abilities',
+        items: [
+          { name: 'Special ability', text: 'What it lets you do.' },
+          { name: 'Friend or rival', tags: ['Friend'], text: 'Who they are, and what they owe you.' }
+        ]
+      },
+      {
+        title: 'Load',
+        tab: 'Load',
+        counters: [
+          { name: 'Coin', max: 4, start: 0, color: HOPE },
+          { name: 'Stash', max: 40, start: 0, color: HOPE }
+        ],
+        stats: [{ stats: [{ label: 'Load', value: 'Normal (5)' }] }],
+        items: [
+          { name: 'A Blade or Two', cost: '1' },
+          { name: 'Pistol', cost: '1' },
+          { name: 'Armor', cost: '2' },
+          { name: 'Burglary Gear', cost: '1' },
+          { name: 'Playbook item', cost: '1', text: 'What it is.' }
+        ]
+      }
+    ],
+    text: 'Look, alias, vice and purveyor.'
+  },
+  adversary: {
+    subtitle: 'Tier II · Gang',
+    sections: [
+      {
+        wide: true,
+        counters: [
+          { name: 'Clock: their plan', max: 8, start: 0, color: HP },
+          { name: 'Clock: hunting the crew', max: 6, start: 0, color: STRESS }
+        ],
+        stats: [
+          {
+            columns: 4,
+            stats: [
+              { label: 'Tier', value: 'II' },
+              { label: 'Hold', value: 'Strong' },
+              { label: 'Scale', value: 'Small gang (3-6)' },
+              { label: 'Quality', value: 2, roll: dicePool(2) }
+            ]
+          }
+        ]
+      },
+      {
+        title: 'Notable',
+        items: [
+          { name: 'Leader', text: 'Who they are, and what they want.' },
+          { name: 'Turf', text: 'Where they are found.' },
+          { name: 'Assets', text: 'What they can bring to bear.' }
+        ]
+      },
+      {
+        title: 'Quirks & situation',
+        items: [{ name: 'Situation', text: 'What they are up to right now.' }]
+      }
+    ]
+  }
+}
+
 /** The systems a new sheet can start from, in the order they are offered. */
 export const SHEET_SYSTEMS = [
   {
@@ -917,6 +1345,27 @@ export const SHEET_SYSTEMS = [
     icon: 'mdi-octagram-outline',
     hint: { character: 'Characteristics, Sanity, Luck, skills in %', adversary: 'Characteristics, Sanity loss, attacks' },
     templates: callOfCthulhu7e
+  },
+  {
+    id: 'cpred',
+    name: 'Cyberpunk RED',
+    icon: 'mdi-chip',
+    hint: { character: 'STATs, skills, Humanity, cyberware', adversary: 'Mook: STATs, armor SP, weapons' },
+    templates: cyberpunkRed
+  },
+  {
+    id: 'shadowdark',
+    name: 'Shadowdark',
+    icon: 'mdi-torch',
+    hint: { character: 'Abilities, talents, Luck, gear slots', adversary: 'Short stat block: AC, HP, attacks' },
+    templates: shadowdark
+  },
+  {
+    id: 'bitd',
+    name: 'Blades in the Dark',
+    icon: 'mdi-knife',
+    hint: { character: 'Action dots, Stress, Trauma, harm, load', adversary: 'Faction: tier, hold, clocks' },
+    templates: bladesInTheDark
   }
 ]
 
