@@ -20,7 +20,7 @@
            same shape as a fullscreen /screen display, and cover-sizing a
            background directly onto the viewport would crop it differently
            in each place, throwing off every x/y percent coordinate). -->
-      <div class="stage-frame" :style="frameStyle">
+      <div ref="frameRef" class="stage-frame" :style="frameStyle">
         <div
           class="stage-background"
           :class="{ ambient: !editable, panning: editable && mode === 'select' }"
@@ -241,6 +241,7 @@ const SCALE_WHEEL_SENSITIVITY = 0.05
 const STAGE_ASPECT = 16 / 9
 
 const viewportRef = ref(null)
+const frameRef = ref(null)
 const mode = ref('select')
 const selectedId = ref(null)
 const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
@@ -254,9 +255,13 @@ const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
 const DRAG_THRESHOLD_PX = 3
 let resizeObserver = null
 
+// The viewport's layout size, not getBoundingClientRect(): that one includes
+// transforms, so measured while the modal is still scaling in (rk-rise, from
+// 0.985) it came out ~1.5% small, and stayed so, since a ResizeObserver isn't
+// told when a transform ends.
 function updateFrameRect() {
   if (!viewportRef.value) return
-  const { width: vw, height: vh } = viewportRef.value.getBoundingClientRect()
+  const { clientWidth: vw, clientHeight: vh } = viewportRef.value
   if (!vw || !vh) return
   let width = vw
   let height = vw / STAGE_ASPECT
@@ -480,16 +485,15 @@ function onLibrarySelect(item) {
   }
 }
 
+// Where a pointer is on the stage, from the stage's rectangle as drawn right
+// now (transforms included, like the pointer's own coordinates), so the two
+// always agree.
 function clientToPercent(evt) {
-  if (!viewportRef.value) return null
-  const rect = viewportRef.value.getBoundingClientRect()
-  const frame = frameRect.value
-  if (!frame.width || !frame.height) return null
-  const x = evt.clientX - rect.left - frame.left
-  const y = evt.clientY - rect.top - frame.top
+  const rect = frameRef.value?.getBoundingClientRect()
+  if (!rect?.width || !rect.height) return null
   return {
-    x: Math.min(100, Math.max(0, (x / frame.width) * 100)),
-    y: Math.min(100, Math.max(0, (y / frame.height) * 100))
+    x: Math.min(100, Math.max(0, ((evt.clientX - rect.left) / rect.width) * 100)),
+    y: Math.min(100, Math.max(0, ((evt.clientY - rect.top) / rect.height) * 100))
   }
 }
 
