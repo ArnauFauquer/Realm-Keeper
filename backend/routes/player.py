@@ -1,3 +1,9 @@
+"""The audio player's albums and tracks (services/storage_service.py).
+
+Every handler is a plain `def`: FastAPI runs those in its threadpool, so an
+upload of a whole track or a copy of a whole album to S3 never holds up the
+event loop, and with it every live socket and screen."""
+from contextlib import contextmanager
 from typing import Dict
 
 from botocore.exceptions import BotoCoreError, ClientError
@@ -14,103 +20,77 @@ logger = get_logger(__name__)
 router = APIRouter(prefix="/api/player", tags=["player"])
 
 
-@router.get("/albums")
-async def get_albums():
+@contextmanager
+def storage_errors():
+    """A bad name is the caller's mistake (400); a store that fails is a 502."""
     try:
-        return {"albums": storage_service.list_albums()}
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-
-
-@router.post("/albums")
-async def create_album(data: Dict[str, str]):
-    try:
-        storage_service.create_album(data.get("name", ""))
+        yield
     except StorageError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except (ClientError, BotoCoreError) as e:
         raise storage_unavailable(logger, e)
+
+
+@router.get("/albums")
+def get_albums():
+    with storage_errors():
+        return {"albums": storage_service.list_albums()}
+
+
+@router.post("/albums")
+def create_album(data: Dict[str, str]):
+    with storage_errors():
+        storage_service.create_album(data.get("name", ""))
     return {"status": "success"}
 
 
 @router.delete("/albums/{album}")
-async def delete_album(album: str):
-    try:
+def delete_album(album: str):
+    with storage_errors():
         storage_service.delete_album(album)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
 @router.put("/albums/{album}")
-async def rename_album(album: str, data: Dict[str, str]):
-    try:
+def rename_album(album: str, data: Dict[str, str]):
+    with storage_errors():
         storage_service.rename_album(album, data.get("name", ""))
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
 @router.get("/albums/{album}/tracks")
-async def get_tracks(album: str):
-    try:
+def get_tracks(album: str):
+    with storage_errors():
         return {"tracks": storage_service.list_tracks(album)}
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
 
 
 @router.post("/albums/{album}/tracks")
-async def upload_track(album: str, file: UploadFile = File(...)):
-    try:
-        result = storage_service.upload_track(album, file.filename, file.file, file.content_type)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-    return result
+def upload_track(album: str, file: UploadFile = File(...)):
+    with storage_errors():
+        return storage_service.upload_track(album, file.filename, file.file, file.content_type)
 
 
 @router.post("/tracks/move")
-async def move_track(data: Dict[str, str]):
-    try:
-        result = storage_service.move_track(data.get("key", ""), data.get("album", ""))
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-    return result
+def move_track(data: Dict[str, str]):
+    with storage_errors():
+        return storage_service.move_track(data.get("key", ""), data.get("album", ""))
 
 
 @router.post("/tracks/rename")
-async def rename_track(data: Dict[str, str]):
-    try:
-        result = storage_service.rename_track(data.get("key", ""), data.get("name", ""))
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
-    return result
+def rename_track(data: Dict[str, str]):
+    with storage_errors():
+        return storage_service.rename_track(data.get("key", ""), data.get("name", ""))
 
 
 @router.delete("/tracks/{key:path}")
-async def delete_track(key: str):
-    try:
+def delete_track(key: str):
+    with storage_errors():
         storage_service.delete_track(key)
-    except StorageError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except (ClientError, BotoCoreError) as e:
-        raise storage_unavailable(logger, e)
     return {"status": "success"}
 
 
 @router.get("/stream/{key:path}")
-async def stream_track(key: str, request: Request):
+def stream_track(key: str, request: Request):
     range_header = request.headers.get("range")
     try:
         obj = storage_service.get_track_stream(key, range_header)
@@ -130,8 +110,10 @@ async def stream_track(key: str, request: Request):
         status_code = 206
 
     def iterfile():
-        for chunk in obj["Body"].iter_chunks(chunk_size=64 * 1024):
-            yield chunk
+        # Closed however the playback ends (a seek or a skip hangs up halfway),
+        # so the connection goes back to the pool.
+        with obj["Body"] as body:
+            yield from body.iter_chunks(chunk_size=64 * 1024)
 
     return StreamingResponse(
         iterfile(),

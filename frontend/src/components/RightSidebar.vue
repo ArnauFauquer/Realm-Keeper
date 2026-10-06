@@ -21,8 +21,8 @@
     <div class="sidebar-section toc-section">
       <h3 class="rk-overline">On this page</h3>
       <nav class="toc-nav" aria-label="Table of contents">
-        <ul v-if="headers.length">
-          <li v-for="header in headers" :key="header.id" :class="[`toc-level-${header.level}`, { active: header.id === activeId }]">
+        <ul v-if="headings.length">
+          <li v-for="header in headings" :key="header.id" :class="[`toc-level-${header.level}`, { active: header.id === activeId }]">
             <a :href="`#${header.id}`" @click.prevent="scrollTo(header.id)">{{ header.text }}</a>
           </li>
         </ul>
@@ -34,12 +34,11 @@
 
 <script>
 import * as d3 from 'd3'
-import { getCached } from '@/api/http'
-import { apiUrl } from '@/config/env'
-import { slugifyHeading, stripInlineLinkSyntax } from '@/utils/slugify'
 import { getNodeColor } from '../config/nodeColors'
 import { drawStarfield, getLinkEndpointId, computeDegrees, createDragHandlers } from '@/composables/useConstellationGraph'
 import { useGraphModal } from '@/composables/useGraphModal'
+import { fetchGraph, useGraphData } from '@/composables/useGraphData'
+import { noteRoute } from '@/utils/paths'
 
 export default {
   name: 'RightSidebar',
@@ -47,53 +46,39 @@ export default {
     note: {
       type: Object,
       required: true
+    },
+    // The note's headings as rendered (utils/renderNote.js): the same ids
+    // the page has, so every entry finds its heading.
+    headings: {
+      type: Array,
+      default: () => []
     }
+  },
+  setup() {
+    const { version: graphVersion } = useGraphData()
+    return { graphVersion }
   },
   data() {
     return {
-      nodes: [],
-      links: [],
       loading: false,
       error: null,
-      simulation: null,
-      svg: null,
-      g: null,
-      zoom: null,
-      activeId: null,
-      headingObserver: null,
-      headingTimer: null
+      activeId: null
     }
   },
-  computed: {
-    headers() {
-      if (!this.note || !this.note.content) return []
-
-      const lines = this.note.content.split('\n')
-      const headers = []
-      let headerCount = {}
-      let inCodeBlock = false
-
-      lines.forEach(line => {
-        // Simple code block detection to ignore headers inside code blocks
-        if (line.trim().startsWith('```')) {
-          inCodeBlock = !inCodeBlock
-          return
-        }
-
-        if (inCodeBlock) return
-
-        const match = line.match(/^(#{1,6})\s+(.*)/)
-        if (match) {
-          const level = match[1].length
-          const rawText = match[2].trim()
-          const text = stripInlineLinkSyntax(rawText)
-          const id = slugifyHeading(rawText, headerCount)
-          headers.push({ level, text, id })
-        }
-      })
-
-      return headers
-    }
+  beforeCreate() {
+    // Deliberately not in data(): d3 owns these, and the simulation writes
+    // node positions on every tick that Vue would otherwise proxy. Set
+    // before the immediate note.id watcher runs (it starts a fetch).
+    this.nodes = []
+    this.links = []
+    this.simulation = null
+    this.svg = null
+    this.g = null
+    this.zoom = null
+    this.fitTimer = null
+    this.headingObserver = null
+    this.headingTimer = null
+    this.fetchToken = 0
   },
   watch: {
     'note.id': {
@@ -104,7 +89,11 @@ export default {
         }
       }
     },
-    headers() {
+    // A note was saved: its links may have changed.
+    graphVersion() {
+      if (this.note?.id) this.fetchGraphData()
+    },
+    headings() {
       this.observeHeadings()
     }
   },
@@ -112,9 +101,7 @@ export default {
     this.observeHeadings()
   },
   beforeUnmount() {
-    if (this.simulation) {
-      this.simulation.stop()
-    }
+    this.stopGraph()
     if (this.headingObserver) this.headingObserver.disconnect()
     clearTimeout(this.headingTimer)
   },
@@ -126,9 +113,9 @@ export default {
       if (this.headingObserver) this.headingObserver.disconnect()
       clearTimeout(this.headingTimer)
       this.activeId = null
-      if (!this.headers.length || typeof IntersectionObserver === 'undefined') return
+      if (!this.headings.length || typeof IntersectionObserver === 'undefined') return
       this.headingTimer = setTimeout(() => {
-        const els = this.headers.map(h => document.getElementById(h.id)).filter(Boolean)
+        const els = this.headings.map(h => document.getElementById(h.id)).filter(Boolean)
         if (!els.length) return
         this.headingObserver = new IntersectionObserver((entries) => {
           const visible = entries.filter(e => e.isIntersecting)
@@ -151,26 +138,28 @@ export default {
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' })
         this.activeId = id
-        // Update URL hash without jumping
-        history.pushState(null, null, `#${id}`)
+        // The hash is updated through the router (replacing, so Back still
+        // leaves the note): writing history directly would drop its state.
+        this.$router.replace({ hash: `#${id}` }).catch(() => {})
       }
     },
+    stopGraph() {
+      if (this.simulation) this.simulation.stop()
+      this.simulation = null
+      clearTimeout(this.fitTimer)
+    },
     async fetchGraphData() {
+      const token = ++this.fetchToken
       this.loading = true
       this.error = null
-      
-      try {
-        const data = await getCached(`${apiUrl}/api/graph/all`, {
-          useCache: true,
-          cacheTtl: 600 // 10 minutos
-        })
 
-        if (!data || !data.nodes || !data.links) {
-          throw new Error("Invalid graph data format returned from API")
-        }
-        
+      try {
+        const data = await fetchGraph()
+        // Another note (or a newer graph) was asked for meanwhile.
+        if (token !== this.fetchToken) return
+
         const currentId = this.note.id
-        
+
         // Find nodes connected to current node
         const connectedIds = new Set()
         connectedIds.add(currentId)
@@ -210,6 +199,7 @@ export default {
           this.initGraph()
         })
       } catch (err) {
+        if (token !== this.fetchToken) return
         this.error = "Could not load constellation"
         this.loading = false
       }
@@ -218,6 +208,8 @@ export default {
       const container = this.$refs.svg
       if (!container) return
 
+      // Redrawn for another note: the previous simulation must not keep running.
+      this.stopGraph()
       d3.select(container).selectAll('*').remove()
 
       const width = container.clientWidth || 300
@@ -279,7 +271,7 @@ export default {
         .style('cursor', 'pointer')
         .on('click', (event, d) => {
           if (d.id !== this.note.id) {
-            this.$router.push(`/note/${encodeURIComponent(d.id)}`)
+            this.$router.push(noteRoute(d.id))
           }
         })
         .call(d3.drag()
@@ -360,7 +352,7 @@ export default {
       })
 
       // Auto-fit after simulation settles
-      setTimeout(() => {
+      this.fitTimer = setTimeout(() => {
         if (!this.svg) return
         const bounds = this.g.node().getBBox()
         if (bounds.width === 0) return

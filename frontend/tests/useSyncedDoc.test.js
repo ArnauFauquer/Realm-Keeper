@@ -55,13 +55,19 @@ function use(kind, id, fetchDoc) {
 const snapshot = (overrides = {}) => ({ id: 'fight', rev: 1, count: 0, combatants: [{ id: 'a', n: 1 }], ...overrides })
 const event = (rev, extra = {}) => ({ type: 'doc', doc: 'encounter:fight', rev, ...extra })
 
+// A document no one holds is kept a moment (RELEASE_GRACE_MS) before it is
+// let go of: the clock is fake, and each test ends by letting that moment pass.
+const GRACE = 3000
+
 beforeEach(() => {
   FakeSocket.instances = []
   vi.stubGlobal('WebSocket', FakeSocket)
+  vi.useFakeTimers()
 })
 
 afterEach(() => {
   mounted.splice(0).forEach((app) => app.unmount())
+  vi.advanceTimersByTime(GRACE)
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -109,8 +115,63 @@ describe('useSyncedDoc', () => {
     await flush()
     FakeSocket.instances[0].say(event(4, { set: { count: 3 } })) // 2 and 3 never came
     await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(1) // they may still be on their way
+    await vi.advanceTimersByTimeAsync(300)
     expect(fetchDoc).toHaveBeenCalledTimes(2)
     expect(doc.value).toMatchObject({ rev: 5, count: 4 })
+  })
+
+  it('puts in order a change that overtook the one before it, without reloading', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const { doc, commit } = use('encounter', 'fight', fetchDoc)
+    await flush()
+    // The command's own reply (rev 3) comes back before the socket brings rev 2.
+    await commit(Promise.resolve(event(3, { set: { count: 3 } })))
+    expect(doc.value.rev).toBe(1)
+    FakeSocket.instances[0].say(event(2, { set: { count: 2 } }))
+    expect(doc.value).toMatchObject({ rev: 3, count: 3 })
+    FakeSocket.instances[0].say(event(3, { set: { count: 3 } })) // the same, on the socket
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchDoc).toHaveBeenCalledTimes(1)
+    expect(doc.value).toMatchObject({ rev: 3, count: 3 })
+  })
+
+  it('loads again when the socket opens while the first copy is still on its way', async () => {
+    const finishes = []
+    const fetchDoc = vi.fn(() => new Promise((resolve) => finishes.push(resolve)))
+    const { doc, status } = use('encounter', 'fight', fetchDoc)
+    FakeSocket.instances[0].open() // a change made before it opened may be missing from that copy
+    finishes[0](snapshot())
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    expect(status.value).toBe('loading')
+    finishes[1](snapshot({ rev: 2, count: 1 }))
+    await flush()
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not load twice when the socket is already open as it starts', async () => {
+    use('encounter', 'other', vi.fn().mockResolvedValue({ id: 'other', rev: 1 }))
+    await flush()
+    FakeSocket.instances[0].open()
+    await flush()
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(1)
+  })
+
+  it('fetches once more when a reset comes while a copy is on its way', async () => {
+    const finishes = []
+    const fetchDoc = vi.fn(() => new Promise((resolve) => finishes.push(resolve)))
+    const { doc } = use('encounter', 'fight', fetchDoc)
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:fight', reset: true })
+    finishes[0](snapshot())
+    await flush()
+    finishes[1](snapshot({ rev: 7, count: 7 }))
+    await flush()
+    expect(doc.value).toMatchObject({ rev: 7, count: 7 })
   })
 
   it('keeps the changes that arrive while it is still loading', async () => {
@@ -173,11 +234,30 @@ describe('useSyncedDoc', () => {
     one.unmount()
     expect(syncStatus.value).toBe('open')
     two.unmount()
+    expect(syncStatus.value).toBe('open') // a moment, in case it is asked for again
+    vi.advanceTimersByTime(3000)
     expect(syncStatus.value).toBe('idle')
   })
 
+  it('keeps a document a moment after the last one lets go, so mounting again costs nothing', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const first = use('encounter', 'fight', fetchDoc)
+    await flush()
+    FakeSocket.instances[0].open()
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    first.unmount() // a note's preview, typed into: its embeds mount again at once
+    vi.advanceTimersByTime(1000)
+    FakeSocket.instances[0].say(event(2, { set: { count: 4 } })) // still listened to meanwhile
+    const again = use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(again.doc.value).toMatchObject({ rev: 2, count: 4 })
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(syncStatus.value).toBe('open')
+  })
+
   it('reconnects with a growing pause, and gives up when not signed in', async () => {
-    vi.useFakeTimers()
     use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
     await flush()
     FakeSocket.instances[0].drop()
@@ -250,6 +330,7 @@ describe('useSyncedDocFollowing', () => {
     id.value = null
     await flush()
     expect(doc.value).toBeNull()
+    vi.advanceTimersByTime(3000)
     expect(syncStatus.value).toBe('idle')
   })
 
@@ -259,6 +340,7 @@ describe('useSyncedDocFollowing', () => {
     FakeSocket.instances[0].open()
     expect(syncStatus.value).toBe('open')
     view.unmount()
+    vi.advanceTimersByTime(3000)
     expect(syncStatus.value).toBe('idle')
   })
 })

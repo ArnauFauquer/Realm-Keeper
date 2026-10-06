@@ -28,7 +28,7 @@
       <template #counter="{ resource: r }">
         <ResourceCounter
           :name="r.name"
-          :current="state.resources?.[r.name]?.current ?? r.start ?? r.max"
+          :current="state.resources?.[r.name]?.current ?? counterStart(r)"
           :max="state.resources?.[r.name]?.max ?? r.max"
           :min="state.resources?.[r.name]?.min ?? r.min"
           :display="r.style"
@@ -47,7 +47,9 @@ import SheetEditor from './SheetEditor.vue'
 import ResourceCounter from './ResourceCounter.vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
+import { counterStart } from '@/utils/sheet'
 import { sameSheet } from '@/utils/sheetModel'
+import { errorMessage } from '@/api/http'
 
 // One character: its sheet, built beside the sheet it draws, counters live.
 // A character is a live document (its counters are played as it is edited),
@@ -82,7 +84,7 @@ async function save() {
     await characters.patch(id, { sheet: draft.value })
     following = true
   } catch (err) {
-    saveError.value = err.response?.data?.detail || err.message
+    saveError.value = errorMessage(err)
   } finally {
     saving.value = false
   }
@@ -92,7 +94,7 @@ async function adjust(resource, by) {
   try {
     await characters.adjust(id, resource, by)
   } catch (err) {
-    saveError.value = err.response?.data?.detail || err.message
+    saveError.value = errorMessage(err)
   }
 }
 

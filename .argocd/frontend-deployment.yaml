@@ -62,9 +62,6 @@ spec:
             - containerPort: 8080
               name: http
               protocol: TCP
-          env:
-            - name: VITE_API_URL
-              value: "https://realmkeeper.faukinator.com"
           livenessProbe:
             httpGet:
               path: /
@@ -93,5 +90,5 @@ spec:
               podAffinityTerm:
                 labelSelector:
                   matchLabels:
-                    app: frontend
+                    app: realm-keeper-frontend
                 topologyKey: kubernetes.io/hostname

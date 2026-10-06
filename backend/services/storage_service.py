@@ -9,7 +9,9 @@ How the bucket is laid out: one top-level prefix per kind of thing.
 
 A track's key, as the player and the notes see it, is "<album>/<track>"; the
 `player/` in front of it is where it is stored, nobody else's business."""
-from typing import BinaryIO, Optional
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from typing import BinaryIO, Iterable, Optional
 
 import boto3
 from botocore.client import Config
@@ -44,15 +46,51 @@ class StorageError(Exception):
     pass
 
 
+_shared_client = None
+_shared_client_lock = threading.Lock()
+# Copies of a folder being moved, at once.
+COPY_WORKERS = 8
+
+
 def _client():
-    return boto3.client(
-        "s3",
-        endpoint_url=settings.S3_ENDPOINT_URL,
-        aws_access_key_id=settings.S3_ACCESS_KEY,
-        aws_secret_access_key=settings.S3_SECRET_KEY,
-        region_name=settings.S3_REGION,
-        config=Config(signature_version="s3v4"),
-    )
+    """The one S3 client, made the first time it is needed. A client is safe
+    to share between threads and keeps its connections open; making one per
+    call cost a few milliseconds of CPU and a new TLS connection each time,
+    and making them from several threads at once (boto3's default session
+    isn't thread-safe) could fail."""
+    global _shared_client
+    if _shared_client is None:
+        with _shared_client_lock:
+            if _shared_client is None:
+                _shared_client = boto3.session.Session().client(
+                    "s3",
+                    endpoint_url=settings.S3_ENDPOINT_URL,
+                    aws_access_key_id=settings.S3_ACCESS_KEY,
+                    aws_secret_access_key=settings.S3_SECRET_KEY,
+                    region_name=settings.S3_REGION,
+                    config=Config(signature_version="s3v4", max_pool_connections=2 * COPY_WORKERS),
+                )
+    return _shared_client
+
+
+def delete_keys(client, keys: Iterable[str]) -> None:
+    """Deletes `keys`, a thousand per request. S3 answers a batch with the
+    keys it could not delete instead of failing: those are raised."""
+    keys = list(keys)
+    for i in range(0, len(keys), 1000):
+        response = client.delete_objects(
+            Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": key} for key in keys[i:i + 1000]]},
+        )
+        errors = (response or {}).get("Errors") or []
+        if errors:
+            first = errors[0]
+            raise StorageError(f"Could not delete {len(errors)} files ({first.get('Key')}: {first.get('Message') or first.get('Code')})")
+
+
+def is_missing(e: Exception) -> bool:
+    """Whether a botocore ClientError says the object isn't there."""
+    code = getattr(e, "response", {}).get("Error", {}).get("Code")
+    return code in ("NoSuchKey", "404", "NotFound")
 
 
 def _sanitize_segment(name: str) -> str:
@@ -139,11 +177,8 @@ def delete_album(name: str) -> None:
     paginator = client.get_paginator("list_objects_v2")
     keys = []
     for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        keys.extend({"Key": obj["Key"]} for obj in page.get("Contents", []))
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": batch})
+        keys.extend(obj["Key"] for obj in page.get("Contents", []))
+    delete_keys(client, keys)
 
 
 def list_tracks(album: str) -> list[dict]:
@@ -194,7 +229,7 @@ def rename_track(key: str, new_name: str) -> dict:
     object's folder instead of its filename."""
     album, filename = _split_key(key)
     new_name = _sanitize_segment(new_name)
-    ext = new_name[new_name.rfind("."):].lower() if "." in new_name else ""
+    ext = _extension(new_name)
     if ext not in ALLOWED_AUDIO_EXTENSIONS:
         raise StorageError(f"Unsupported audio file type: {ext or new_name}")
 
@@ -218,16 +253,19 @@ def _move_prefix(old_prefix: str, new_prefix: str, not_found_label: str, exists_
     if not keys:
         raise StorageError(not_found_label)
 
-    for key in keys:
+    def copy(key: str) -> None:
         client.copy_object(
             Bucket=settings.S3_BUCKET_NAME,
             CopySource={"Bucket": settings.S3_BUCKET_NAME, "Key": key},
             Key=new_prefix + key[len(old_prefix):],
         )
-    for i in range(0, len(keys), 1000):
-        batch = keys[i:i + 1000]
-        if batch:
-            client.delete_objects(Bucket=settings.S3_BUCKET_NAME, Delete={"Objects": [{"Key": k} for k in batch]})
+
+    # Several at once: a folder of a few hundred images moved one copy after
+    # another could outlast the request. Every copy is done (or one raised)
+    # before anything is deleted, so a failure never loses a file.
+    with ThreadPoolExecutor(max_workers=COPY_WORKERS) as pool:
+        list(pool.map(copy, keys))
+    delete_keys(client, keys)
 
 
 def _move_object(old_key: str, new_key: str) -> None:

@@ -5,7 +5,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import * as fake from './helpers/fakeSyncedDoc'
 
 const { commands, fetchAll, post, encounter } = vi.hoisted(() => ({
-  commands: { patch: vi.fn(), patchItem: vi.fn(), addItems: vi.fn(), removeItem: vi.fn() },
+  commands: { patch: vi.fn(), patchItem: vi.fn(), addItems: vi.fn(), removeItem: vi.fn(), editList: vi.fn() },
   fetchAll: vi.fn(),
   post: vi.fn(),
   encounter: { value: null }
@@ -25,7 +25,7 @@ vi.mock('@/composables/useCharacters', async () => {
 })
 vi.mock('@/composables/syncSocket', () => ({ syncStatus: ref('open') }))
 vi.mock('@/api/docs', () => ({ battlemapsApi: { commands }, encountersApi: { fetchAll, fetch: vi.fn() } }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 // The canvas has its own tests; here it only has to pass things on.
 vi.mock('@/components/BattlemapCanvas.vue', () => ({
@@ -179,11 +179,11 @@ describe('BattlemapEditor', () => {
     const fury = inspector.findAll('.check.indent input')[1]
     fury.element.checked = true
     await fury.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't2', { bars: ['HP', 'Fury'] })
+    expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { add: ['Fury'] })
     const hp = inspector.findAll('.check.indent input')[0]
     hp.element.checked = false
     await hp.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't2', { bars: [] })
+    expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { remove: ['HP'] })
 
     const link = inspector.find('select')
     link.element.value = 'c2'

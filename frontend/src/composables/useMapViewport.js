@@ -1,6 +1,6 @@
-import { ref, watch, nextTick } from 'vue'
+import { watch, nextTick } from 'vue'
 import * as d3 from 'd3'
-import { resolveUrl } from '@/utils/resolveUrl'
+import { useImageSize } from '@/composables/useImageSize'
 
 /**
  * What a map drawn as SVG over an image needs, shared by the chart and the
@@ -12,25 +12,11 @@ import { resolveUrl } from '@/utils/resolveUrl'
  * functions, so they can read props: `imageUrl()`, `zoomable()`, `canPan()`
  * (whether a drag may pan: only when it isn't doing something else) and
  * `resetKey()`, whose change puts the view back to its start (another map).
+ * `imageStatus` is useImageSize's: 'error' when the image can't be loaded.
  */
 export function useMapViewport({ svgRef, groupRef, imageUrl, zoomable = () => true, canPan = () => true, resetKey = () => null }) {
-  const naturalWidth = ref(0)
-  const naturalHeight = ref(0)
+  const { width: naturalWidth, height: naturalHeight, status: imageStatus } = useImageSize(imageUrl)
   let zoomBehavior = null
-
-  watch(imageUrl, (url) => {
-    if (!url) {
-      naturalWidth.value = 0
-      naturalHeight.value = 0
-      return
-    }
-    const img = new Image()
-    img.onload = () => {
-      naturalWidth.value = img.naturalWidth
-      naturalHeight.value = img.naturalHeight
-    }
-    img.src = resolveUrl(url)
-  }, { immediate: true })
 
   function setupZoom() {
     if (!zoomable() || !svgRef.value || !groupRef.value) return
@@ -63,5 +49,5 @@ export function useMapViewport({ svgRef, groupRef, imageUrl, zoomable = () => tr
     return { x, y }
   }
 
-  return { naturalWidth, naturalHeight, pointer }
+  return { naturalWidth, naturalHeight, imageStatus, pointer }
 }

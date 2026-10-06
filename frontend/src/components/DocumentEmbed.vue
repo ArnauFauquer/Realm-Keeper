@@ -44,16 +44,18 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import ChartCanvas from './ChartCanvas.vue'
 import VistaCanvas from './VistaCanvas.vue'
 import { docApi } from '@/api/docs'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
-import { resolveUrl } from '@/utils/resolveUrl'
+import { errorMessage } from '@/api/http'
+import { screenApi } from '@/api/screen'
 import { DOC_TYPES, embedIcon } from '@/utils/docTypes'
+import { noteRoute } from '@/utils/paths'
 import { useDocModal } from '@/composables/useDocModal'
+import { useFlash } from '@/composables/useFlash'
+import { useImageSize } from '@/composables/useImageSize'
 
 const props = defineProps({
   type: { type: String, required: true }, // 'chart' | 'vista'
@@ -85,15 +87,17 @@ const config = computed(() => ({
   icon: embedIcon(props.type),
   fetch: docApi(props.type).fetch,
   modal: () => useDocModal(props.type),
-  screen: (id) => post(`${apiUrl}/api/screen/${props.type}`, { [`${props.type}_id`]: id })
+  screen: screenApi[props.type]
 }))
 const doc = ref(null)
 const loading = ref(true)
 const error = ref(null)
-const sent = ref(false)
+const { on: sent, flash: flashSent } = useFlash()
 const locked = ref(false)
-const imageRatio = ref(null)
-let sentTimeout = null
+// A chart's SVG is fit ("meet") to its map image, so match the frame to the
+// image's proportions to avoid letterbox bars around it.
+const chartImage = useImageSize(() => (props.type === 'chart' ? doc.value?.image_url : null))
+const imageRatio = computed(() => (chartImage.status.value === 'ready' ? `${chartImage.width.value} / ${chartImage.height.value}` : null))
 
 const hasImage = computed(() => !!doc.value?.[config.value.imageKey])
 const canvasProps = computed(() => config.value.canvasProps(doc.value))
@@ -110,24 +114,12 @@ async function load() {
   loading.value = true
   try {
     doc.value = await config.value.fetch(props.id)
-    loadImageRatio()
   } catch (err) {
     if (err.response?.status === 401) locked.value = true
-    else error.value = err.response?.status === 404 ? 'not found' : (err.response?.data?.detail || err.message)
+    else error.value = err.response?.status === 404 ? 'not found' : errorMessage(err)
   } finally {
     loading.value = false
   }
-}
-
-// A chart's SVG is fit ("meet") to its map image, so match the frame to the
-// image's proportions to avoid letterbox bars around it.
-function loadImageRatio() {
-  imageRatio.value = null
-  const url = props.type === 'chart' && doc.value?.image_url
-  if (!url) return
-  const img = new Image()
-  img.onload = () => { imageRatio.value = `${img.naturalWidth} / ${img.naturalHeight}` }
-  img.src = resolveUrl(url)
 }
 
 watch(() => [props.type, props.id, props.canInteract], load, { immediate: true })
@@ -138,21 +130,17 @@ function openInModal() {
 }
 
 function openNote(notePath) {
-  router.push(`/note/${notePath.split('/').map(encodeURIComponent).join('/')}`)
+  router.push(noteRoute(notePath))
 }
 
 async function sendToScreen() {
   try {
     await config.value.screen(props.id)
-    sent.value = true
-    clearTimeout(sentTimeout)
-    sentTimeout = setTimeout(() => { sent.value = false }, 2000)
+    flashSent()
   } catch (err) {
     console.error(`Failed to send ${props.type} to screen:`, err)
   }
 }
-
-onBeforeUnmount(() => clearTimeout(sentTimeout))
 </script>
 
 <style scoped>

@@ -36,7 +36,11 @@ services:
     container_name: realm-keeper-backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      # This machine only, like MinIO: from elsewhere the app is reached
+      # through the frontend's nginx. The backend trusts X-Forwarded-*
+      # headers (--forwarded-allow-ips), which anyone reaching it directly
+      # could forge.
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:

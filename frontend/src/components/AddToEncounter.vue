@@ -38,7 +38,8 @@
 import { ref } from 'vue'
 import { encountersApi } from '@/api/docs'
 import { useDocModal } from '@/composables/useDocModal'
-import { combatantsFromSheet } from '@/utils/encounter'
+import { MAX_COPIES, combatantsFromSheet, copiesCount } from '@/utils/encounter'
+import { errorMessage } from '@/api/http'
 
 // A sheet's button for putting it into an encounter: an adversary as one or
 // more independent copies, a character as itself (once).
@@ -47,7 +48,7 @@ const props = defineProps({
   sheet: { type: Object, required: true }
 })
 
-const MAX_COUNT = 20
+const MAX_COUNT = MAX_COPIES
 const encountersModal = useDocModal('encounter')
 
 const open = ref(false)
@@ -70,7 +71,7 @@ async function toggle() {
     encounters.value = await encountersApi.fetchAll()
     chosen.value = chosen.value || encounters.value[0]?.id || ''
   } catch (err) {
-    loadError.value = err.response?.data?.detail || err.message
+    loadError.value = errorMessage(err)
   } finally {
     loading.value = false
   }
@@ -85,7 +86,7 @@ async function add() {
     const entry = { ...props.sheet, ref: props.sheet.id }
     // The encounter as it is now: copies are numbered after the ones already in it.
     const current = await encountersApi.fetch(chosen.value)
-    const amount = Math.max(1, Math.min(MAX_COUNT, Math.floor(Number(count.value)) || 1))
+    const amount = copiesCount(count.value)
     if (entry.type === 'character' && current.combatants.some((c) => c.type === 'character' && c.sheet === entry.ref)) {
       throw new Error(`${entry.name} is already in this encounter`)
     }
@@ -94,7 +95,7 @@ async function add() {
     message.value = entry.type === 'character' ? `${entry.name} added.` : `${amount > 1 ? `${amount} copies` : 'One copy'} added.`
   } catch (err) {
     failed.value = true
-    message.value = err.response?.data?.detail || err.message
+    message.value = errorMessage(err)
   } finally {
     adding.value = false
   }

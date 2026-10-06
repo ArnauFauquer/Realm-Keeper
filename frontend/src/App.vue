@@ -1,6 +1,8 @@
 <template>
   <div id="app">
-    <NebulaBackground />
+    <!-- Not behind the fullscreen screen view: nobody sees it there, and the
+         TV machine also runs the 3D dice. -->
+    <NebulaBackground v-if="!$route.meta.fullscreen" />
 
     <div v-if="!checked && !$route.meta.public" class="auth-loading">
       <div class="rk-spinner rk-spinner--lg" role="status" aria-label="Checking session"></div>
@@ -23,6 +25,16 @@
     </template>
 
     <DiceOverlay />
+
+    <!-- A failed sign-in comes back to a public page (every route is), where
+         the login gate never shows: say what happened there instead. -->
+    <div v-if="authError && !showLoginGate && !$route.meta.fullscreen" class="auth-error rk-alert" role="alert">
+      <span class="mdi mdi-alert-circle-outline"></span>
+      <span class="auth-error-text">{{ authError }}</span>
+      <button type="button" class="rk-icon-btn rk-icon-btn--sm auth-error-close" aria-label="Dismiss" @click="authError = ''">
+        <span class="mdi mdi-close"></span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -129,6 +141,30 @@ export default {
   color: var(--text-secondary);
   font-size: var(--text-md);
   line-height: var(--leading-relaxed);
+}
+
+.auth-error {
+  position: fixed;
+  top: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  width: min(calc(100vw - 2 * var(--space-4)), 440px);
+  align-items: center;
+  /* The alert's red tint over the chrome surface: it floats over the note. */
+  background: linear-gradient(var(--status-error-bg), var(--status-error-bg)), var(--surface-chrome);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.auth-error-close {
+  color: inherit;
 }
 
 @media (max-width: 768px) {

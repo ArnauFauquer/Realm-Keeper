@@ -12,16 +12,17 @@ spec:
   selector:
     matchLabels:
       app: realm-keeper-backend
-  # The vault is a per-pod emptyDir clone of REPO_URL (every write is
-  # committed and pushed right away, so the git remote is the source of
-  # truth), which leaves nothing for two pods to fight over: the new pod
-  # clones and turns ready before the old one is stopped. While both run,
-  # concurrent pushes are reconciled by commit_and_push's pull --rebase retry.
+  # One pod at a time, never two: the live documents (encounters, maps,
+  # characters) and what the screens show are held in the process's memory.
+  # With a rolling update both pods sat behind the Service for a while — a
+  # GM's "send to screen" could reach one pod while the TVs listened to the
+  # other, and edits made on the new pod were reset by the old one's final
+  # save. Recreate stops the old pod first (it saves what it holds on the
+  # way out), then starts the new one, which loads that. The price is the
+  # new pod's clone time without a backend; HA is not a goal (see
+  # ARCHITECTURE.md, Deployment constraints).
   strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+    type: Recreate
   template:
     metadata:
       labels:

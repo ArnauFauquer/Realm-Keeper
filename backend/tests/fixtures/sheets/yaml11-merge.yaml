@@ -1,0 +1,9 @@
+# Merge keys (<<), in PyYAML's order: the mapping's own keys win, and of a
+# list of merged mappings the first one wins.
+name: Merged
+subtitle: own
+<<: { subtitle: merged, text: from the merge }
+sections:
+  - <<: [{ title: first, tab: one }, { title: second, columns: 2 }]
+    wide: no
+  - <<: { <<: { title: deep }, collapsed: yes }

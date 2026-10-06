@@ -64,6 +64,21 @@ def test_a_sheet_that_is_far_too_long_is_not_parsed():
         parse_sheet_source("name: A\ntext: " + "x" * 200_000)
 
 
+def test_the_length_limit_counts_characters():
+    # 60,000 emoji are 120,000 UTF-16 units in the browser, but 60,000 here;
+    # frontend/tests/sheet.test.js checks the browser counts them the same way.
+    sheet, _ = parse_sheet_source("name: A\ntext: " + "\U0001F600" * 60_000 + "\n")
+    assert len(sheet.text) == 60_000
+
+
+@pytest.mark.parametrize("value", ["2023-02-29", "!!bool maybe", "!!int abc", "!!timestamp nope"])
+def test_a_scalar_the_loader_cannot_build_is_invalid_yaml(value):
+    # PyYAML's constructors raise ValueError, KeyError... rather than YAMLError
+    # for these: still the sheet's mistake, so a SheetParseError, not a 500.
+    with pytest.raises(SheetParseError, match="Invalid YAML"):
+        parse_sheet_source(f"name: A\nsubtitle: {value}\n")
+
+
 def test_anchors_that_nothing_refers_to_are_harmless():
     sheet, _ = parse_sheet_source("name: A\nsections:\n  - counters:\n      HP: &hp 6\n")
     assert sheet.resources["HP"].max == 6

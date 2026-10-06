@@ -1,12 +1,13 @@
 <template>
   <div class="chart-canvas" :class="{ editable }">
-    <div v-if="!chart.image_url" class="empty-map">
-      <span class="mdi mdi-image-plus"></span>
-      <p>This chart has no map image yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForMap">
-        <span class="mdi mdi-folder-multiple-image"></span> Choose map image
-      </button>
-    </div>
+    <CanvasEmptyState v-if="!chart.image_url">
+      This chart has no map image yet.
+      <template v-if="editable" #actions>
+        <button class="rk-btn rk-btn--primary" @click="openLibrary('map')">
+          <span class="mdi mdi-folder-multiple-image"></span> Choose map image
+        </button>
+      </template>
+    </CanvasEmptyState>
 
     <div v-else class="canvas-viewport" ref="viewportRef">
       <svg
@@ -17,10 +18,6 @@
         preserveAspectRatio="xMidYMid meet"
         :class="`mode-${mode}`"
         @click="onCanvasClick"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
-        @pointerleave="onPointerUp"
       >
         <defs>
           <marker
@@ -42,7 +39,7 @@
           <!-- Paths -->
           <g v-for="path in chart.paths" :key="path.id" class="chart-path-group">
             <path
-              :d="pathData(path)"
+              :d="pathData.get(path.id)"
               class="chart-path"
               :class="{ selected: selectedId === path.id }"
               :stroke="selectedId === path.id ? null : (path.color || DEFAULT_PATH_COLOR)"
@@ -52,7 +49,7 @@
             />
             <path
               v-if="editable"
-              :d="pathData(path)"
+              :d="pathData.get(path.id)"
               class="chart-path-hit"
               :stroke-width="pathHitWidth"
               @click.stop="selectElement('path', path.id)"
@@ -63,7 +60,7 @@
                 :key="i"
                 class="path-handle"
                 :cx="toPx(pt.x)" :cy="toPy(pt.y)" :r="handleRadius"
-                @pointerdown.stop="startDrag('pathPoint', path.id, i)"
+                @pointerdown.stop="startDrag($event, 'pathPoint', path.id, i)"
                 @mousedown.stop.prevent
                 @touchstart.stop
               />
@@ -94,7 +91,7 @@
               :y="toPy(note.y) - annotationHeightFor(note) / 2"
               :width="annotationWidthFor(note)"
               :height="annotationHeightFor(note)"
-              @pointerdown.stop="editable && startDrag('annotation', note.id)"
+              @pointerdown.stop="editable && startDrag($event, 'annotation', note.id)"
               @click.stop="editable && selectElement('annotation', note.id)"
               @mousedown.stop.prevent
               @touchstart.stop
@@ -134,7 +131,7 @@
             class="chart-pin"
             :class="{ selected: selectedId === pin.id }"
             :transform="`translate(${toPx(pin.x)}, ${toPy(pin.y)})`"
-            @pointerdown.stop="editable && startDrag('pin', pin.id)"
+            @pointerdown.stop="editable && startDrag($event, 'pin', pin.id)"
             @click.stop="onPinClick(pin)"
             @dblclick.stop="onPinDblClick(pin)"
             @mousedown.stop.prevent
@@ -177,6 +174,15 @@
         </g>
       </svg>
 
+      <CanvasEmptyState v-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
+        The map image could not be loaded. It may have been deleted from the Observatory.
+        <template v-if="editable" #actions>
+          <button class="rk-btn rk-btn--primary" @click="openLibrary('map')">
+            <span class="mdi mdi-folder-multiple-image"></span> Choose map image
+          </button>
+        </template>
+      </CanvasEmptyState>
+
       <!-- Hover tooltip -->
       <div v-if="hoveredPin" class="pin-tooltip">
         <img v-if="hoveredPin.icon_url" :src="resolveUrl(hoveredPin.icon_url)" class="pin-tooltip-icon" />
@@ -198,13 +204,24 @@
         <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'annotation' }" title="Add annotation" aria-label="Add annotation" :aria-pressed="mode === 'annotation'" @click="setMode('annotation')">
           <span class="mdi mdi-note-plus-outline"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" title="Replace map image" aria-label="Replace map image" @click="openLibraryForMap">
+        <button class="tool-btn rk-icon-btn" title="Replace map image" aria-label="Replace map image" @click="openLibrary('map')">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
 
-      <div v-if="editable && mode === 'path' && drawingPoints.length" class="path-hint">
-        Click to add points · Enter to finish · Esc to cancel
+      <!-- Buttons as well as Enter and Esc: a tablet has no keyboard. -->
+      <div v-if="editable && mode === 'path'" class="path-hint" role="toolbar" aria-label="Drawing a path">
+        <span class="path-hint-text">{{ drawingPoints.length ? 'Add more points, then finish' : 'Click to add points' }}</span>
+        <button type="button" class="rk-btn rk-btn--sm rk-btn--ghost" title="Cancel (Esc)" @click="cancelPath">Cancel</button>
+        <button
+          type="button"
+          class="rk-btn rk-btn--sm rk-btn--primary"
+          title="Finish (Enter)"
+          :disabled="drawingPoints.length < 2"
+          @click="finishPath"
+        >
+          <span class="mdi mdi-check"></span> Finish
+        </button>
       </div>
 
       <!-- Selection panel -->
@@ -275,7 +292,7 @@
           <span class="mdi mdi-map-marker"></span>
         </div>
 
-        <button class="upload-btn rk-btn rk-btn--sm" @click="openLibraryForPinIcon(selectedPin)">
+        <button class="upload-btn rk-btn rk-btn--sm" @click="openLibrary(selectedPin)">
           <span class="mdi mdi-folder-multiple-image"></span> {{ selectedPin.icon_url ? 'Change icon' : 'Choose icon' }}
         </button>
       </div>
@@ -311,10 +328,10 @@
     </div>
 
     <ObservatoryModal
-      :is-open="libraryModalOpen"
+      :is-open="libraryOpen"
       picker-mode
       :start-path="folderOf(chart.id)"
-      @close="libraryModalOpen = false"
+      @close="closeLibrary"
       @select="onLibrarySelect"
     />
   </div>
@@ -325,8 +342,13 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import * as d3 from 'd3'
 import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
+import CanvasEmptyState from './CanvasEmptyState.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
+import { usePointerDrag } from '@/composables/usePointerDrag'
+import { uuid } from '@/utils/ids'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
+import { CHART_COLORS } from '@/utils/palette'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -337,19 +359,15 @@ const props = defineProps({
   zoomable: { type: Boolean, default: true }
 })
 
-// Cycled through in order as paths are created, so each new path reads as
-// distinct from the one before it. DEFAULT_PATH_COLOR covers paths saved
-// before this field existed.
-const PATH_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
-const DEFAULT_PATH_COLOR = PATH_COLORS[0]
-const nextPathColor = computed(() => PATH_COLORS[props.chart.paths.length % PATH_COLORS.length])
-
-// Same palette pins cycle through as they're placed, so consecutive pins
-// read as distinct. DEFAULT_PIN_COLOR covers pins saved before this field
-// existed (it matches their old hard-coded fill).
-const PIN_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
-const DEFAULT_PIN_COLOR = PIN_COLORS[0]
-const nextPinColor = computed(() => PIN_COLORS[props.chart.pins.length % PIN_COLORS.length])
+// Paths and pins cycle through one palette in order as they are created, so
+// each new one reads as distinct from the one before it. The first colour
+// covers paths and pins saved before they had one (it matches their old
+// hard-coded fill).
+const PIN_COLORS = CHART_COLORS
+const DEFAULT_PATH_COLOR = CHART_COLORS[0]
+const DEFAULT_PIN_COLOR = CHART_COLORS[0]
+const nextPathColor = computed(() => CHART_COLORS[props.chart.paths.length % CHART_COLORS.length])
+const nextPinColor = computed(() => CHART_COLORS[props.chart.pins.length % CHART_COLORS.length])
 const PIN_SCALE_MIN = 0.5
 const PIN_SCALE_MAX = 3
 
@@ -378,9 +396,15 @@ function setPinScale(pin, scale) {
 
 const emit = defineEmits(['change', 'set-map-image', 'open-note'])
 
-const libraryModalOpen = ref(false)
-// Pin whose icon the open library picker will set; null means it picks the map image.
-let libraryTargetPin = null
+// The picker chooses the map image ('map') or a pin's icon (the pin).
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'map') {
+    emit('set-map-image', item.image_url)
+  } else {
+    target.icon_url = item.image_url
+    emitChange()
+  }
+})
 
 const svgRef = ref(null)
 const zoomGroupRef = ref(null)
@@ -393,13 +417,13 @@ const editingAnnotationId = ref(null)
 const pinNoteQuery = ref('')
 const pinPickerOpen = ref(false)
 
-let dragState = null
-let dragMoved = false
+// How far, in screen pixels, a press may wander and still be a click.
+const DRAG_THRESHOLD_PX = 3
 
 const resolvedImageUrl = computed(() => resolveUrl(props.chart.image_url))
 
 // The image's size, zoom and pan, and pointer -> map point, shared with the battlemap.
-const { naturalWidth, naturalHeight, pointer: clientToViewBoxPoint } = useMapViewport({
+const { naturalWidth, naturalHeight, imageStatus, pointer: clientToViewBoxPoint } = useMapViewport({
   svgRef,
   groupRef: zoomGroupRef,
   imageUrl: () => props.chart.image_url,
@@ -437,11 +461,12 @@ function annotationFontSizeFor(note) { return annotationWidthFor(note) * 0.11 }
 function toPx(xPercent) { return (xPercent / 100) * naturalWidth.value }
 function toPy(yPercent) { return (yPercent / 100) * naturalHeight.value }
 
-function pathData(path) {
-  const pts = path.points.map(p => [toPx(p.x), toPy(p.y)])
-  const gen = d3.line().curve(d3.curveCatmullRom.alpha(0.5))
-  return gen(pts)
-}
+// Each path's curve, worked out once per change rather than twice per path
+// on every render (the line and its wider hit area draw the same curve).
+const curve = d3.line().curve(d3.curveCatmullRom.alpha(0.5))
+const pathData = computed(() => new Map(
+  props.chart.paths.map(path => [path.id, curve(path.points.map(p => [toPx(p.x), toPy(p.y)]))])
+))
 
 function clientToPercent(evt) {
   if (!naturalWidth.value) return null
@@ -451,10 +476,6 @@ function clientToPercent(evt) {
     x: Math.min(100, Math.max(0, (point.x / naturalWidth.value) * 100)),
     y: Math.min(100, Math.max(0, (point.y / naturalHeight.value) * 100))
   }
-}
-
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function emitChange() {
@@ -478,8 +499,8 @@ function selectElement(kind, id) {
   selectedId.value = id
 }
 
+// (The click that ends a drag never gets here: usePointerDrag swallows it.)
 function onPinClick(pin) {
-  if (dragMoved) return
   if (props.editable) {
     selectElement('pin', pin.id)
   } else if (pin.note_path) {
@@ -490,7 +511,7 @@ function onPinClick(pin) {
 // While editing, a single click selects the pin, so a double click is the way
 // through to its note. Viewers already get there with the single click.
 function onPinDblClick(pin) {
-  if (dragMoved || !props.editable || !pin.note_path) return
+  if (!props.editable || !pin.note_path) return
   emit('open-note', pin.note_path)
 }
 
@@ -543,80 +564,85 @@ function onCanvasClick(evt) {
   }
 }
 
+function finishPath() {
+  if (drawingPoints.value.length < 2) return
+  props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })
+  emitChange()
+  drawingPoints.value = []
+  mode.value = 'select'
+}
+
+function cancelPath() {
+  drawingPoints.value = []
+  mode.value = 'select'
+}
+
 function onKeydown(evt) {
   if (mode.value !== 'path') return
-  if (evt.key === 'Enter' && drawingPoints.value.length >= 2) {
-    props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })
-    emitChange()
-    drawingPoints.value = []
-    mode.value = 'select'
-  } else if (evt.key === 'Escape') {
-    drawingPoints.value = []
-    mode.value = 'select'
-  }
+  if (evt.key === 'Enter') finishPath()
+  else if (evt.key === 'Escape') cancelPath()
 }
 window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
-function startDrag(kind, id, pointIndex = null) {
-  dragState = { kind, id, pointIndex }
-  dragMoved = false
+// What a drag moves, found again by id: the chart may have been replaced
+// under it (a save), and the drag goes on with the new copy.
+function dragTarget(state) {
+  if (state.kind === 'pin') return props.chart.pins.find(p => p.id === state.id)
+  if (state.kind === 'pathPoint') return props.chart.paths.find(p => p.id === state.id)?.points[state.pointIndex]
+  return props.chart.annotations.find(a => a.id === state.id)
+}
+
+// Pins, path points and annotations follow the pointer (only the button that
+// started it, and only that pointer); pointercancel puts them back where they were.
+const drag = usePointerDrag({
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(evt, _event, state) {
+    const target = dragTarget(state)
+    if (!target) return
+    if (state.kind === 'annotationResize') {
+      const p = clientToViewBoxPoint(evt)
+      if (!p) return
+      const dist = Math.hypot(p.x - state.centerX, p.y - state.centerY) || 1
+      const scale = state.startScale * (dist / state.startDist)
+      target.scale = Math.min(ANNOTATION_SCALE_MAX, Math.max(ANNOTATION_SCALE_MIN, scale))
+      return
+    }
+    const pos = clientToPercent(evt)
+    if (!pos) return
+    target.x = pos.x
+    target.y = pos.y
+  },
+  onEnd(_state, { moved }) {
+    if (moved) emitChange()
+  },
+  onCancel(state) {
+    const target = dragTarget(state)
+    if (target) Object.assign(target, state.from)
+  }
+})
+
+function startDrag(evt, kind, id, pointIndex = null) {
   selectedId.value = id
+  const state = { kind, id, pointIndex }
+  const target = dragTarget(state)
+  if (target) drag.start(evt, { ...state, from: { x: target.x, y: target.y } })
 }
 
 function startAnnotationResize(note, evt) {
   const center = { x: toPx(note.x), y: toPy(note.y) }
   const p = clientToViewBoxPoint(evt)
   if (!p) return
-  dragState = {
+  selectedId.value = note.id
+  drag.start(evt, {
     kind: 'annotationResize',
     id: note.id,
     centerX: center.x,
     centerY: center.y,
     startDist: Math.hypot(p.x - center.x, p.y - center.y) || 1,
-    startScale: note.scale || 1
-  }
-  dragMoved = false
-  selectedId.value = note.id
-}
-
-function onPointerMove(evt) {
-  if (!dragState) return
-
-  if (dragState.kind === 'annotationResize') {
-    const p = clientToViewBoxPoint(evt)
-    if (!p) return
-    dragMoved = true
-    const note = props.chart.annotations.find(a => a.id === dragState.id)
-    if (note) {
-      const dist = Math.hypot(p.x - dragState.centerX, p.y - dragState.centerY) || 1
-      const scale = dragState.startScale * (dist / dragState.startDist)
-      note.scale = Math.min(ANNOTATION_SCALE_MAX, Math.max(ANNOTATION_SCALE_MIN, scale))
-    }
-    return
-  }
-
-  const pos = clientToPercent(evt)
-  if (!pos) return
-  dragMoved = true
-
-  if (dragState.kind === 'pin') {
-    const pin = props.chart.pins.find(p => p.id === dragState.id)
-    if (pin) { pin.x = pos.x; pin.y = pos.y }
-  } else if (dragState.kind === 'annotation') {
-    const note = props.chart.annotations.find(a => a.id === dragState.id)
-    if (note) { note.x = pos.x; note.y = pos.y }
-  } else if (dragState.kind === 'pathPoint') {
-    const path = props.chart.paths.find(p => p.id === dragState.id)
-    if (path) { path.points[dragState.pointIndex] = pos }
-  }
-}
-
-function onPointerUp() {
-  if (dragState) {
-    dragState = null
-    if (dragMoved) emitChange()
-  }
+    startScale: note.scale || 1,
+    from: { scale: note.scale || 1 }
+  })
 }
 
 const selectedPin = computed(() => props.chart.pins.find(p => p.id === selectedId.value) || null)
@@ -651,26 +677,6 @@ function setPathDirection(id, direction) {
   if (path) { path.direction = direction; emitChange() }
 }
 
-function openLibraryForMap() {
-  libraryTargetPin = null
-  libraryModalOpen.value = true
-}
-
-function openLibraryForPinIcon(pin) {
-  libraryTargetPin = pin
-  libraryModalOpen.value = true
-}
-
-function onLibrarySelect(item) {
-  libraryModalOpen.value = false
-  if (libraryTargetPin) {
-    libraryTargetPin.icon_url = item.image_url
-    libraryTargetPin = null
-    emitChange()
-  } else {
-    emit('set-map-image', item.image_url)
-  }
-}
 
 </script>
 
@@ -683,27 +689,6 @@ function onLibrarySelect(item) {
   height: 100%;
   position: relative;
   background: radial-gradient(ellipse at 30% 40%, rgba(20, 15, 60, 0.9) 0%, rgba(5, 6, 20, 1) 60%, rgba(2, 3, 12, 1) 100%);
-}
-
-.empty-map {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  text-align: center;
-  padding: var(--space-8);
-}
-
-.empty-map .mdi {
-  font-size: 3rem;
-  color: var(--text-muted);
-}
-
-.empty-map .rk-btn {
-  margin-top: var(--space-2);
 }
 
 .canvas-viewport {
@@ -900,32 +885,27 @@ function onLibrarySelect(item) {
   padding: var(--space-1);
 }
 
-.tool-btn {
-  width: 40px;
-  height: 40px;
-}
-
-.tool-btn .mdi {
-  font-size: 1.3rem;
-}
-
-.tool-btn.active,
-.tool-btn.active:hover {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
 .path-hint {
   position: absolute;
   bottom: 1rem;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: calc(100% - 2 * var(--space-4));
   background: var(--surface-chrome);
   border: 1px solid var(--border-medium);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-4);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+.path-hint-text {
+  margin-right: var(--space-2);
+  white-space: nowrap;
 }
 
 .selection-panel {
@@ -943,13 +923,6 @@ function onLibrarySelect(item) {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-}
-
-.selection-panel-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
 }
 
 .selection-title {
@@ -1022,11 +995,6 @@ function onLibrarySelect(item) {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.7rem;
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--status-error-bg);
-  color: var(--status-error);
 }
 
 .pin-color-row {
@@ -1114,3 +1082,6 @@ function onLibrarySelect(item) {
   color: var(--accent-contrast);
 }
 </style>
+
+<!-- The rules every canvas's toolbar and selection panel share. -->
+<style scoped src="../styles/canvas.css"></style>

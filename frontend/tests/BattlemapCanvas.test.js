@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -23,12 +23,25 @@ const TOKENS = [
   { id: 'quiet', name: 'Bugboar 2', x: 1, y: 1 }
 ]
 
-const mountCanvas = (props = {}) => mount(BattlemapCanvas, {
-  props: { imageUrl: '/api/observatory/images/1a2b3c4d-cave.png', grid: GRID, tokens: TOKENS, editable: true, ...props }
+// In the document: a drag is followed on the window (composables/usePointerDrag.js).
+let mounted = []
+const mountCanvas = (props = {}) => {
+  const wrapper = mount(BattlemapCanvas, {
+    attachTo: document.body,
+    props: { imageUrl: '/api/observatory/images/1a2b3c4d-cave.png', grid: GRID, tokens: TOKENS, editable: true, ...props }
+  })
+  mounted.push(wrapper)
+  return wrapper
+}
+afterEach(() => {
+  mounted.forEach((wrapper) => wrapper.unmount())
+  mounted = []
 })
 
-const pointer = (type, x, y) => new PointerEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true })
+const pointer = (type, x, y, init = {}) => new PointerEvent(type, { clientX: x, clientY: y, button: 0, bubbles: true, ...init })
 const down = (wrapper, selector, x, y) => wrapper.find(selector).element.dispatchEvent(pointer('pointerdown', x, y))
+// Moves are drawn once a frame.
+const frame = () => new Promise((resolve) => requestAnimationFrame(resolve))
 
 describe('BattlemapCanvas', () => {
   it('draws the map, its grid and a token for each of them, at their size and place', () => {
@@ -56,6 +69,14 @@ describe('BattlemapCanvas', () => {
     expect(orc.find('.token-label').text()).toBe('Orc')
   })
 
+  it("turns a token's art by its rotation, not its name", () => {
+    const tokens = [{ ...TOKENS[0], rotation: 90 }, TOKENS[2]]
+    const [orc, quiet] = mountCanvas({ tokens }).findAll('.token')
+    expect(orc.find('image').attributes('transform')).toBe('rotate(90)')
+    expect(orc.find('.token-label').attributes('transform')).toBeUndefined()
+    expect(quiet.find('.token-initials').attributes('transform')).toBeUndefined()
+  })
+
   it('shows the counters a token carries as bars, by how full they are', () => {
     const wrapper = mountCanvas()
     const [orc, dragon] = wrapper.findAll('.token')
@@ -75,7 +96,7 @@ describe('BattlemapCanvas', () => {
   it('has a place for what to do about a map with no image', () => {
     const wrapper = mount(BattlemapCanvas, {
       props: { imageUrl: null, grid: GRID },
-      slots: { empty: '<button class="choose">Choose</button>' }
+      slots: { 'empty-actions': '<button class="choose">Choose</button>' }
     })
     expect(wrapper.find('svg').exists()).toBe(false)
     expect(wrapper.find('.choose').exists()).toBe(true)
@@ -116,6 +137,7 @@ describe('BattlemapCanvas', () => {
       const wrapper = mountCanvas()
       down(wrapper, '.token:nth-of-type(1)', 175, 245)
       wrapper.find('svg').element.dispatchEvent(pointer('pointermove', 400, 300))
+      await frame()
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(385, 315)')
       expect(wrapper.findAll('.token')[0].classes()).toContain('dragging')
@@ -131,6 +153,49 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.emitted('moving')).toBeUndefined()
     })
 
+    it('counts the wobble in pixels of the screen, so a tap on a big map shown small still only selects', () => {
+      // The threshold is read off the events' screen coordinates, never the
+      // map's (usePointerDrag.test.js has a map drawn ten times smaller).
+      const wrapper = mountCanvas()
+      down(wrapper, '.token:nth-of-type(1)', 175, 245)
+      window.dispatchEvent(pointer('pointermove', 178, 245))
+      window.dispatchEvent(pointer('pointerup', 178, 245))
+      expect(wrapper.emitted('moving')).toBeUndefined()
+      expect(wrapper.emitted('move')).toBeUndefined()
+    })
+
+    it('only drags with the primary button', () => {
+      const wrapper = mountCanvas()
+      wrapper.find('.token:nth-of-type(1)').element.dispatchEvent(pointer('pointerdown', 175, 245, { button: 2 }))
+      window.dispatchEvent(pointer('pointermove', 400, 300))
+      window.dispatchEvent(pointer('pointerup', 400, 300))
+      expect(wrapper.emitted('select')[0]).toEqual(['orc'])
+      expect(wrapper.emitted('move')).toBeUndefined()
+    })
+
+    it('does not let a second finger take the drag over', () => {
+      const wrapper = mountCanvas()
+      down(wrapper, '.token:nth-of-type(1)', 175, 245)
+      window.dispatchEvent(pointer('pointermove', 400, 300, { pointerId: 7 }))
+      window.dispatchEvent(pointer('pointerup', 400, 300, { pointerId: 7 }))
+      expect(wrapper.emitted('move')).toBeUndefined()
+      window.dispatchEvent(pointer('pointermove', 400, 300))
+      window.dispatchEvent(pointer('pointerup', 400, 300))
+      expect(wrapper.emitted('move')).toEqual([['orc', { x: 5, y: 4 }]])
+    })
+
+    it('puts the token back where it was when the browser cancels the gesture', async () => {
+      const wrapper = mountCanvas()
+      down(wrapper, '.token:nth-of-type(1)', 175, 245)
+      window.dispatchEvent(pointer('pointermove', 400, 300))
+      await frame()
+      window.dispatchEvent(pointer('pointercancel', 400, 300))
+      await wrapper.vm.$nextTick()
+      // Everyone saw it move, so everyone is told it is back.
+      expect(wrapper.emitted('move')).toEqual([['orc', { x: 2, y: 3 }]])
+      expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(175, 245)')
+    })
+
     it('clears the selection on the bare map', () => {
       const wrapper = mountCanvas({ selectedId: 'orc' })
       wrapper.find('svg').element.dispatchEvent(pointer('pointerdown', 900, 900))
@@ -144,6 +209,7 @@ describe('BattlemapCanvas', () => {
       const svg = wrapper.find('svg').element
       svg.dispatchEvent(pointer('pointerdown', 40, 40)) // cell (0,0)
       svg.dispatchEvent(pointer('pointermove', 40 + 70 * 3, 40 + 70 * 2)) // cell (3,2)
+      await frame()
       await wrapper.vm.$nextTick()
       expect(wrapper.find('.ruler-label').text()).toBe('15 ft') // 3 cells by grid, 5 ft each
       svg.dispatchEvent(pointer('pointerup', 250, 180))

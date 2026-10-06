@@ -82,7 +82,7 @@
         :class="{ 'drag-over': dragOverTarget === folderPath(folder) }"
         :draggable="canEdit && movable && renamingFolder !== folder"
         @click="renamingFolder !== folder && $emit('enter-folder', folder)"
-        @dragstart="startDrag({ type: 'folder', name: folder })"
+        @dragstart="onDragStart($event, { type: 'folder', name: folder })"
         @dragend="endDrag"
         @dragover.prevent="dragOver(folderPath(folder))"
         @dragleave="dragLeave(folderPath(folder))"
@@ -120,7 +120,7 @@
         class="gallery-card"
         :draggable="canEdit && movable && renamingItem !== itemKey(item)"
         @click="renamingItem !== itemKey(item) && $emit('open-item', item)"
-        @dragstart="startDrag({ type: 'item', item })"
+        @dragstart="onDragStart($event, { type: 'item', item })"
         @dragend="endDrag"
       >
         <div v-if="canEdit" class="gallery-card-actions">
@@ -171,6 +171,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useDragMove } from '@/composables/useDragMove'
 import { useCopyToClipboard } from '@/composables/useCopyToClipboard'
+import { joinPath } from '@/utils/paths'
 
 const props = defineProps({
   folders: { type: Array, default: () => [] },
@@ -231,8 +232,17 @@ const breadcrumb = computed(() => {
   return trail
 })
 
-function folderPath(folder) {
-  return props.currentPath ? `${props.currentPath}/${folder}` : folder
+const folderPath = (folder) => joinPath(props.currentPath, folder)
+
+// Firefox only starts a drag that carries some data. What is moved is in
+// draggedItem; this is its name, under a type of the app's own, so a drop
+// outside the gallery (a text field) takes nothing.
+const DRAG_TYPE = 'application/x-realm-keeper-move'
+
+function onDragStart(event, dragged) {
+  event.dataTransfer?.setData(DRAG_TYPE, dragged.type === 'folder' ? folderPath(dragged.name) : props.itemKey(dragged.item))
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+  startDrag(dragged)
 }
 
 const filesOver = ref(false)

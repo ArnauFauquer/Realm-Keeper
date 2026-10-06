@@ -2,6 +2,10 @@ from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, StrictFloat, StrictInt, model_validator
 
+# What an encounter's copy of a counter (and a character's saved value per
+# counter) may be: a sheet with more, or longer, couldn't be played.
+from models.encounter import MAX_COUNTER_COLOR_LENGTH, MAX_COUNTERS
+
 SheetType = Literal["character", "adversary"]
 
 
@@ -81,8 +85,6 @@ class SheetSpec(BaseModel):
 # (services/sheet_parser.py spec_from_body, utils/sheet.js sheetFromDoc).
 
 MAX_COLUMNS = 12
-# A character keeps a saved value per counter (models/characters.py).
-MAX_COUNTERS = 24
 ShortText = Annotated[str, Field(max_length=200)]
 LongText = Annotated[str, Field(max_length=20_000)]
 Columns = Annotated[int, Field(ge=1, le=MAX_COLUMNS)]
@@ -94,7 +96,7 @@ class SheetCounter(BaseModel):
     max: int
     min: int = 0
     start: Optional[int] = None
-    color: Optional[Annotated[str, Field(max_length=40)]] = None
+    color: Optional[Annotated[str, Field(max_length=MAX_COUNTER_COLOR_LENGTH)]] = None
     style: Optional[Literal["pips", "bar", "number"]] = None
 
     @model_validator(mode="after")

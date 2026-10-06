@@ -71,7 +71,7 @@
           <slot v-for="r in section.counterList" :key="r.name" name="counter" :resource="r">
             <ResourceCounter
               :name="r.name"
-              :current="r.start ?? r.max"
+              :current="counterStart(r)"
               :max="r.max"
               :min="r.min"
               :display="r.style"
@@ -160,6 +160,8 @@ import { createMarkdown } from '@/utils/markdown'
 import { sanitizeHtml } from '@/utils/sanitizeHtml'
 import { parseDiceFormula } from '@/utils/diceNotation'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { counterStart } from '@/utils/sheet'
+import { OBSERVATORY_IMAGE_PREFIX } from '@/utils/docTypes'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 
 // A sheet, drawn: `sheet` is the normalized shape from utils/sheet.js (or the
@@ -226,7 +228,7 @@ const isRow = (item) => !item.text && !!item.name && !!item.roll
 const imageSrc = computed(() => {
   const image = props.sheet.image
   if (!image) return null
-  return image.startsWith('/api/observatory/') && !props.canInteract ? null : resolveUrl(image)
+  return image.startsWith(OBSERVATORY_IMAGE_PREFIX) && !props.canInteract ? null : resolveUrl(image)
 })
 
 const isRollable = (formula) => !!formula && !!parseDiceFormula(formula)
@@ -235,8 +237,16 @@ const statText = (stat) => stat.value ?? stat.roll
 // smaller than the numbers around it.
 const isLongText = (stat) => String(statText(stat) ?? '').length > 8
 
-// Texts are block markdown, so a table or a list works in an item too.
-const block = (text) => sanitizeHtml(md.render(text))
+// Texts are block markdown, so a table or a list works in an item too. Each
+// is rendered once per sheet, not on every render: a live counter drawn in
+// the `counter` slot re-renders this view at every change, and rendering and
+// sanitizing every item each time made playing a counter slow.
+const render = (text) => sanitizeHtml(md.render(text))
+const renderedTexts = computed(() => {
+  const texts = [props.sheet.text, ...props.sheet.sections.flatMap((section) => section.items.map((item) => item.text))]
+  return new Map(texts.filter(Boolean).map((text) => [text, render(text)]))
+})
+const block = (text) => renderedTexts.value.get(text) ?? render(text)
 const columnsStyle = (columns) => (columns ? { '--sheet-columns': columns } : null)
 
 function rollFormula(formula, label) {

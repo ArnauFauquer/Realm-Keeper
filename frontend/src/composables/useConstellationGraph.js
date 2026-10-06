@@ -6,7 +6,21 @@
  * enough between the two that it stays local to each component.
  */
 
-export function drawStarfield(canvas, width, height, { density, sizeRanges, opacityRange, hueRange = [210, 260] }) {
+/**
+ * A static starfield, drawn once onto `canvas` (sized to width x height).
+ * One star in `density` px², small/medium/large picked with the odds in
+ * `sizeOdds` (the share of small, then of small + medium). The screen's
+ * backdrop uses it too, with its own numbers.
+ */
+export function drawStarfield(canvas, width, height, {
+  density,
+  sizeRanges,
+  opacityRange,
+  hueRange = [210, 260],
+  sizeOdds = [0.7, 0.9],
+  saturation = 60,
+  lightness = 90
+}) {
   if (!canvas) return
   canvas.width = width
   canvas.height = height
@@ -18,16 +32,16 @@ export function drawStarfield(canvas, width, height, { density, sizeRanges, opac
     const x = rand(0, width)
     const y = rand(0, height)
     const r = Math.random()
-    const size = r < 0.7
+    const size = r < sizeOdds[0]
       ? rand(...sizeRanges[0])
-      : r < 0.9
+      : r < sizeOdds[1]
         ? rand(...sizeRanges[1])
         : rand(...sizeRanges[2])
     const opacity = rand(...opacityRange)
     const hue = rand(...hueRange)
     ctx.beginPath()
     ctx.arc(x, y, size, 0, Math.PI * 2)
-    ctx.fillStyle = `hsla(${hue}, 60%, 90%, ${opacity})`
+    ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${opacity})`
     ctx.fill()
   }
 }

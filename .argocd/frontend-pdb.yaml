@@ -8,7 +8,9 @@ metadata:
     app.kubernetes.io/component: web
     app.kubernetes.io/part-of: realm-keeper
 spec:
-  minAvailable: 1
+  # One replica: "minAvailable: 1" would forbid ever evicting it, and
+  # block `kubectl drain` of its node for good.
+  maxUnavailable: 1
   selector:
     matchLabels:
       app: realm-keeper-frontend

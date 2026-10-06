@@ -152,7 +152,11 @@ class LocalDocBackend(DocBackend):
         if not old.is_dir():
             raise DocBackendError("Not found")
         if new.exists():
-            raise DocBackendError("Something already exists there")
+            # As in S3, where a folder is only the files in it: empty
+            # directories left behind (by a delete) are no obstacle.
+            if new.is_file() or any(p.is_file() for p in new.rglob("*")):
+                raise DocBackendError("Something already exists there")
+            shutil.rmtree(new)
         new.parent.mkdir(parents=True, exist_ok=True)
         old.rename(new)
 
@@ -163,10 +167,11 @@ class S3DocBackend(DocBackend):
         try:
             body = storage_service._client().get_object(Bucket=settings.S3_BUCKET_NAME, Key=key)["Body"]
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+            if storage_service.is_missing(e):
                 return None
             raise
-        return body.read().decode("utf-8")
+        with body:
+            return body.read().decode("utf-8")
 
     def put(self, key: str, text: str) -> None:
         _check_key(key)
@@ -185,17 +190,23 @@ class S3DocBackend(DocBackend):
         try:
             obj = storage_service._client().get_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404"):
+            if storage_service.is_missing(e):
                 return None
             raise
-        return obj["Body"].iter_chunks(chunk_size=64 * 1024), obj["ContentLength"]
+
+        def chunks() -> Iterator[bytes]:
+            # Closed however the reading ends (a client that hangs up halfway
+            # included), so its connection goes back to the pool.
+            with obj["Body"] as body:
+                yield from body.iter_chunks(chunk_size=64 * 1024)
+        return chunks(), obj["ContentLength"]
 
     def exists(self, key: str) -> bool:
         _check_key(key)
         try:
             storage_service._client().head_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
         except ClientError as e:
-            if e.response.get("Error", {}).get("Code") in ("NoSuchKey", "404", "NotFound"):
+            if storage_service.is_missing(e):
                 return False
             raise
         return True
@@ -222,13 +233,10 @@ class S3DocBackend(DocBackend):
         return sorted(keys)
 
     def delete_prefix(self, prefix: str) -> None:
-        keys = self.list_keys(prefix)
-        client = storage_service._client()
-        for i in range(0, len(keys), 1000):
-            client.delete_objects(
-                Bucket=settings.S3_BUCKET_NAME,
-                Delete={"Objects": [{"Key": key} for key in keys[i:i + 1000]]},
-            )
+        try:
+            storage_service.delete_keys(storage_service._client(), self.list_keys(prefix))
+        except StorageError as e:
+            raise DocBackendError(str(e))
 
     def move_prefix(self, old_prefix: str, new_prefix: str) -> None:
         _check_key(old_prefix)

@@ -132,15 +132,41 @@ def world(tmp_path, monkeypatch):
     return DocHub(collections)
 
 
+def test_a_screen_that_stopped_answering_holds_nobody_up():
+    manager = screen.ConnectionManager()
+    manager.screens.send_timeout = 0.2
+
+    class Asleep:
+        async def send_json(self, message):
+            await asyncio.sleep(30)   # a TV switched off at the wall
+
+    class Awake:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, message):
+            self.sent.append(message)
+
+    awake = Awake()
+    for websocket in (Asleep(), Asleep(), Asleep(), awake):
+        manager.screens.add(websocket)
+    started = time.monotonic()
+    asyncio.run(manager.broadcast({"type": "clear_screen"}, {"type": "display_media", "url": None}))
+    assert time.monotonic() - started < 0.6   # once, not once per screen and message
+    assert [m["type"] for m in awake.sent] == ["clear_screen", "display_media"]
+    assert manager.active_connections == [awake]
+
+
 class FakeManager:
     def __init__(self):
         self.current_state = None
         self.sent = []
 
-    async def broadcast(self, message):
-        self.sent.append(message)
-        if message["type"] not in screen.LIVE_UPDATE_TYPES:
-            self.current_state = message
+    async def broadcast(self, *messages):
+        for message in messages:
+            self.sent.append(message)
+            if message["type"] not in screen.LIVE_UPDATE_TYPES:
+                self.current_state = message
 
 
 def add_token(hub, **token):
@@ -404,9 +430,26 @@ def test_a_character_moved_is_followed_by_its_encounters_and_tokens(gm):
         {"id": "o", "name": "Vex (an adversary that happens to share the id)", "sheet": "vex"},
     ]})
     cave = gm.post("/api/battlemaps", json={"name": "Vex cave"}).json()["id"]
-    gm.post(f"/api/battlemaps/{cave}/tokens", json={"items": [{"id": "t", "name": "Vex", "sheet": "vex", "combatant": "v"}]})
+    gm.patch(f"/api/battlemaps/{cave}", json={"encounter": fight})
+    gm.post(f"/api/battlemaps/{cave}/tokens", json={"items": [
+        {"id": "t", "name": "Vex", "sheet": "vex", "combatant": "v"},
+        {"id": "u", "name": "The adversary", "sheet": "vex", "combatant": "o"},
+    ]})
 
     assert gm.post("/api/characters/move", json={"id": "vex", "folder_path": "party"}).json()["id"] == "party/vex"
     assert [c["sheet"] for c in gm.get(f"/api/encounters/{fight}").json()["combatants"]] == ["party/vex", "vex"]
-    assert gm.get(f"/api/battlemaps/{cave}").json()["tokens"][0]["sheet"] == "party/vex"
+    # A token is of its combatant's type: the adversary's token stays.
+    assert [t["sheet"] for t in gm.get(f"/api/battlemaps/{cave}").json()["tokens"]] == ["party/vex", "vex"]
+
+
+def test_a_moved_encounter_is_followed_by_the_maps_that_use_it(gm):
+    fight = gm.post("/api/encounters", json={"name": "Moving fight"}).json()["id"]
+    cave = gm.post("/api/battlemaps", json={"name": "Moving cave"}).json()["id"]
+    other = gm.post("/api/battlemaps", json={"name": "Unrelated cave"}).json()["id"]
+    gm.patch(f"/api/battlemaps/{cave}", json={"encounter": fight})
+
+    moved = gm.post("/api/encounters/move", json={"id": fight, "folder_path": "act-2"}).json()["id"]
+    assert moved == f"act-2/{fight}"
+    assert gm.get(f"/api/battlemaps/{cave}").json()["encounter"] == moved
+    assert gm.get(f"/api/battlemaps/{other}").json()["encounter"] is None
     assert gm.get("/api/characters/party/vex").json()["resources"]["HP"]["current"] == 4

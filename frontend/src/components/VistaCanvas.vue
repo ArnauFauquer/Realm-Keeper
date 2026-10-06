@@ -1,12 +1,13 @@
 <template>
   <div class="vista-canvas" :class="{ editable }">
-    <div v-if="!vista.background_url" class="empty-stage">
-      <span class="mdi mdi-image-plus"></span>
-      <p>This vista has no background yet.</p>
-      <button v-if="editable" class="rk-btn rk-btn--primary" @click="openLibraryForBackground">
-        <span class="mdi mdi-folder-multiple-image"></span> Choose background
-      </button>
-    </div>
+    <CanvasEmptyState v-if="!vista.background_url">
+      This vista has no background yet.
+      <template v-if="editable" #actions>
+        <button class="rk-btn rk-btn--primary" @click="openLibrary('background')">
+          <span class="mdi mdi-folder-multiple-image"></span> Choose background
+        </button>
+      </template>
+    </CanvasEmptyState>
 
     <div
       v-else
@@ -14,23 +15,22 @@
       ref="viewportRef"
       :class="{ 'mode-asset': editable && mode === 'asset' }"
       @click="onStageClick"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerUp"
-      @pointercancel="onPointerUp"
-      @pointerleave="onPointerUp"
     >
       <!-- Fixed-aspect stage, letterboxed within the viewport so a scene lines
            up identically wherever it's shown (the editor modal is rarely the
            same shape as a fullscreen /screen display, and cover-sizing a
            background directly onto the viewport would crop it differently
            in each place, throwing off every x/y percent coordinate). -->
-      <div class="stage-frame" :style="frameStyle">
+      <div ref="frameRef" class="stage-frame" :style="frameStyle">
         <div
           class="stage-background"
           :class="{ ambient: !editable, panning: editable && mode === 'select' }"
           :style="backgroundStyle"
           @pointerdown="startBackgroundPan"
         ></div>
+        <CanvasEmptyState v-if="backgroundStatus === 'error'" class="stage-error" icon="mdi-image-broken-variant" error>
+          The background could not be loaded. It may have been deleted from the Observatory.
+        </CanvasEmptyState>
 
         <!-- Assets, painter's-algorithm ordered: farther (smaller y) behind, nearer (larger y) in front -->
         <div
@@ -64,7 +64,7 @@
                 class="rotate-handle"
                 title="Drag to rotate"
                 @pointerdown.stop="startRotate($event, asset)"
-                @click.stop="justDragged = false"
+                @click.stop
                 @mousedown.stop.prevent
                 @touchstart.stop
               >
@@ -75,7 +75,7 @@
                 title="Drag or scroll to resize"
                 @pointerdown.stop="startScale($event, asset)"
                 @wheel.stop.prevent="onScaleWheel($event, asset)"
-                @click.stop="justDragged = false"
+                @click.stop
                 @mousedown.stop.prevent
                 @touchstart.stop
               ></div>
@@ -95,8 +95,8 @@
             :class="{ raised: selectedAsset.elevation }"
             :style="elevationHandleStyle"
             title="Drag vertically to raise/lower without resizing (double-click to reset)"
-            @pointerdown.stop="startDrag('elevation', selectedAsset.id)"
-            @click.stop="justDragged = false"
+            @pointerdown.stop="startDrag($event, 'elevation', selectedAsset.id)"
+            @click.stop
             @dblclick.stop="resetElevation(selectedAsset)"
             @mousedown.stop.prevent
             @touchstart.stop
@@ -109,8 +109,8 @@
           class="vanishing-point"
           :style="vanishingPointStyle"
           title="Vanishing point. Drag to calibrate perspective for this background"
-          @pointerdown.stop="startDrag('vanishingPoint', null)"
-          @click.stop="justDragged = false"
+          @pointerdown.stop="startDrag($event, 'vanishingPoint', null)"
+          @click.stop
           @mousedown.stop.prevent
           @touchstart.stop
         >
@@ -123,10 +123,10 @@
         <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'select' }" title="Select / move" aria-label="Select / move" :aria-pressed="mode === 'select'" @click="setMode('select')">
           <span class="mdi mdi-cursor-default"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'asset' }" title="Place asset" aria-label="Place asset" :aria-pressed="mode === 'asset'" @click="openLibraryForNewAsset">
+        <button class="tool-btn rk-icon-btn" :class="{ active: mode === 'asset' }" title="Place asset" aria-label="Place asset" :aria-pressed="mode === 'asset'" @click="openLibrary('new')">
           <span class="mdi mdi-account-plus-outline"></span>
         </button>
-        <button class="tool-btn rk-icon-btn" title="Replace background" aria-label="Replace background" @click="openLibraryForBackground">
+        <button class="tool-btn rk-icon-btn" title="Replace background" aria-label="Replace background" @click="openLibrary('background')">
           <span class="mdi mdi-image-edit-outline"></span>
         </button>
       </div>
@@ -152,7 +152,7 @@
         </div>
 
         <div class="panel-row">
-          <button class="rk-btn rk-btn--sm" @click="openLibraryForAsset(selectedAsset)">
+          <button class="rk-btn rk-btn--sm" @click="openLibrary(selectedAsset)">
             <span class="mdi mdi-folder-multiple-image"></span> {{ selectedAsset.image_url ? 'Change image' : 'Choose image' }}
           </button>
           <button class="rk-btn rk-btn--sm" title="Reset scale, rotation, flip and color adjustments" @click="resetAsset(selectedAsset)">
@@ -191,10 +191,10 @@
     </div>
 
     <ObservatoryModal
-      :is-open="libraryModalOpen"
+      :is-open="libraryOpen"
       picker-mode
       :start-path="folderOf(vista.id)"
-      @close="libraryModalOpen = false"
+      @close="closeLibrary"
       @select="onLibrarySelect"
     />
   </div>
@@ -205,6 +205,11 @@ import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
+import { usePointerDrag } from '@/composables/usePointerDrag'
+import { uuid } from '@/utils/ids'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
+import { useImageSize } from '@/composables/useImageSize'
+import CanvasEmptyState from './CanvasEmptyState.vue'
 
 const props = defineProps({
   vista: { type: Object, required: true },
@@ -213,10 +218,7 @@ const props = defineProps({
 
 const emit = defineEmits(['change', 'set-background'])
 
-const libraryModalOpen = ref(false)
 const pendingLibraryItem = ref(null)
-let libraryTargetAsset = null
-let libraryForBackground = false
 
 // A distant asset never shrinks below this fraction of its base size — keeps
 // far-away characters visible instead of vanishing to a single pixel.
@@ -239,25 +241,27 @@ const SCALE_WHEEL_SENSITIVITY = 0.05
 const STAGE_ASPECT = 16 / 9
 
 const viewportRef = ref(null)
+const frameRef = ref(null)
 const mode = ref('select')
 const selectedId = ref(null)
 const frameRect = ref({ left: 0, top: 0, width: 0, height: 0 })
 
-let dragState = null
-let dragMoved = false
-// True for the one click event that immediately follows a real drag (asset
-// move, rotate, scale, or vanishing point). That click's target often lands
-// just outside the dragged element — e.g. an asset is anchored at its foot
-// point, so dropping it right on that point can hit the background by a
-// pixel — which would otherwise bubble to onStageClick and deselect
-// whatever was just placed. Consumed (and reset) by whichever click handler
-// runs next, so it never leaks into an unrelated later click.
-let justDragged = false
+// How far, in screen pixels, a press may wander and still be a click. The
+// click that follows a real drag (asset move, rotate, scale, vanishing point)
+// is swallowed by usePointerDrag: it often lands just outside the dragged
+// element (an asset is anchored at its foot, so dropping it right on that
+// point can hit the background by a pixel), and would otherwise reach
+// onStageClick and deselect whatever was just placed.
+const DRAG_THRESHOLD_PX = 3
 let resizeObserver = null
 
+// The viewport's layout size, not getBoundingClientRect(): that one includes
+// transforms, so measured while the modal is still scaling in (rk-rise, from
+// 0.985) it came out ~1.5% small, and stayed so, since a ResizeObserver isn't
+// told when a transform ends.
 function updateFrameRect() {
   if (!viewportRef.value) return
-  const { width: vw, height: vh } = viewportRef.value.getBoundingClientRect()
+  const { clientWidth: vw, clientHeight: vh } = viewportRef.value
   if (!vw || !vh) return
   let width = vw
   let height = vw / STAGE_ASPECT
@@ -301,23 +305,11 @@ const frameStyle = computed(() => ({
 // verticalPanRangePx below) — a plain img/href sizing trick like the chart
 // canvas uses won't do here since this background is a CSS background-image,
 // not an <img>, so nothing else already knows its intrinsic dimensions.
-const bgNaturalWidth = ref(0)
-const bgNaturalHeight = ref(0)
-
-function loadBackgroundNaturalSize(url) {
-  if (!url) {
-    bgNaturalWidth.value = 0
-    bgNaturalHeight.value = 0
-    return
-  }
-  const img = new Image()
-  img.onload = () => {
-    bgNaturalWidth.value = img.naturalWidth
-    bgNaturalHeight.value = img.naturalHeight
-  }
-  img.src = resolveUrl(url)
-}
-watch(() => props.vista.background_url, loadBackgroundNaturalSize, { immediate: true })
+// Its status says when it couldn't be loaded, so the stage says so too.
+const background = useImageSize(() => props.vista.background_url)
+const bgNaturalWidth = background.width
+const bgNaturalHeight = background.height
+const backgroundStatus = background.status
 
 // Quoted: an image URL saved before the Observatory may hold a space ("Hijos Del Fango/…"),
 // and an unquoted CSS url() with a space is invalid, dropping the background.
@@ -440,10 +432,6 @@ const saturationPct = computed({
   set: (v) => { if (selectedAsset.value) selectedAsset.value.saturation = v / 100 }
 })
 
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
 function emitChange() {
   emit('change', {
     vanishing_point: props.vista.vanishing_point,
@@ -458,57 +446,37 @@ function setMode(m) {
   if (m !== 'asset') pendingLibraryItem.value = null
 }
 
-function openLibraryForNewAsset() {
-  libraryTargetAsset = null
-  libraryForBackground = false
-  libraryModalOpen.value = true
-}
-
-function openLibraryForAsset(asset) {
-  libraryTargetAsset = asset
-  libraryForBackground = false
-  libraryModalOpen.value = true
-}
-
-function openLibraryForBackground() {
-  libraryTargetAsset = null
-  libraryForBackground = true
-  libraryModalOpen.value = true
-}
-
-function onLibrarySelect(item) {
-  libraryModalOpen.value = false
-  if (libraryForBackground) {
-    libraryForBackground = false
+// The picker chooses the background ('background'), the image of an asset
+// (the asset), or one to place as a new asset ('new': it is placed where the
+// stage is clicked next).
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'background') {
     emit('set-background', item.image_url)
-  } else if (libraryTargetAsset) {
-    libraryTargetAsset.image_url = item.image_url
-    if (!libraryTargetAsset.name) libraryTargetAsset.name = item.name
-    libraryTargetAsset = null
-    emitChange()
-  } else {
+  } else if (target === 'new') {
     pendingLibraryItem.value = item
     mode.value = 'asset'
     selectedId.value = null
+  } else {
+    target.image_url = item.image_url
+    if (!target.name) target.name = item.name
+    emitChange()
   }
-}
+})
 
+// Where a pointer is on the stage, from the stage's rectangle as drawn right
+// now (transforms included, like the pointer's own coordinates), so the two
+// always agree.
 function clientToPercent(evt) {
-  if (!viewportRef.value) return null
-  const rect = viewportRef.value.getBoundingClientRect()
-  const frame = frameRect.value
-  if (!frame.width || !frame.height) return null
-  const x = evt.clientX - rect.left - frame.left
-  const y = evt.clientY - rect.top - frame.top
+  const rect = frameRef.value?.getBoundingClientRect()
+  if (!rect?.width || !rect.height) return null
   return {
-    x: Math.min(100, Math.max(0, (x / frame.width) * 100)),
-    y: Math.min(100, Math.max(0, (y / frame.height) * 100))
+    x: Math.min(100, Math.max(0, ((evt.clientX - rect.left) / rect.width) * 100)),
+    y: Math.min(100, Math.max(0, ((evt.clientY - rect.top) / rect.height) * 100))
   }
 }
 
 function onStageClick(evt) {
   if (!props.editable) return
-  if (justDragged) { justDragged = false; return }
   if (mode.value !== 'asset') {
     selectedId.value = null
     return
@@ -550,11 +518,10 @@ function onAssetPointerDown(evt, asset) {
   // selected by cycling but never dragged.
   const ids = assetIdsAt(evt.clientX, evt.clientY)
   pressedOnSelected = !!selectedId.value && ids.includes(selectedId.value)
-  startDrag('asset', pressedOnSelected ? selectedId.value : asset.id)
+  startDrag(evt, 'asset', pressedOnSelected ? selectedId.value : asset.id)
 }
 
 function onAssetClick(evt, asset) {
-  if (justDragged) { justDragged = false; return }
   if (!props.editable) return
   if (pressedOnSelected) {
     // Click again on the selection → step one layer deeper, wrapping back
@@ -569,35 +536,66 @@ function onAssetClick(evt, asset) {
   selectedId.value = asset.id
 }
 
-function startDrag(kind, id) {
-  dragState = { kind, id }
-  dragMoved = false
+// What a drag changes, and which of its fields: put back as they were if the
+// browser cancels the gesture.
+const DRAG_FIELDS = {
+  asset: ['x', 'y'],
+  elevation: ['elevation'],
+  rotate: ['rotation'],
+  scale: ['width_pct'],
+  vanishingPoint: ['x', 'y'],
+  backgroundPan: ['background_offset_y']
+}
+
+function dragTarget(state) {
+  if (state.kind === 'vanishingPoint') return props.vista.vanishing_point
+  if (state.kind === 'backgroundPan') return props.vista
+  return props.vista.assets.find(a => a.id === state.id)
+}
+
+// Only the button and the pointer that started a drag move things; the moves
+// are followed on the window, so passing over the toolbar or the panel (or
+// out of the canvas) doesn't drop what is being dragged.
+const drag = usePointerDrag({
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove: (evt, _event, state) => dragTo(evt, state),
+  onEnd(_state, { moved }) {
+    if (moved) emitChange()
+  },
+  onCancel(state) {
+    const target = dragTarget(state)
+    if (target) Object.assign(target, state.from)
+  }
+})
+
+function beginDrag(evt, state) {
+  const target = dragTarget(state)
+  if (!target) return
+  const from = Object.fromEntries(DRAG_FIELDS[state.kind].map((field) => [field, target[field]]))
+  drag.start(evt, { ...state, from })
+}
+
+function startDrag(evt, kind, id) {
   if (kind === 'asset') selectedId.value = id
+  beginDrag(evt, { kind, id })
 }
 
 function startBackgroundPan(evt) {
   if (!props.editable || mode.value !== 'select') return
-  dragState = {
-    kind: 'backgroundPan',
-    startY: evt.clientY,
-    startOffset: props.vista.background_offset_y ?? 50
-  }
-  dragMoved = false
+  beginDrag(evt, { kind: 'backgroundPan', startY: evt.clientY, startOffset: props.vista.background_offset_y ?? 50 })
 }
 
 function startRotate(evt, asset) {
   const el = evt.currentTarget.closest('.vista-asset')
   if (!el) return
   const rect = el.getBoundingClientRect()
-  dragState = { kind: 'rotate', id: asset.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 }
-  dragMoved = false
   selectedId.value = asset.id
+  beginDrag(evt, { kind: 'rotate', id: asset.id, cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 })
 }
 
 function startScale(evt, asset) {
-  dragState = { kind: 'scale', id: asset.id, startX: evt.clientX, startWidthPct: asset.width_pct }
-  dragMoved = false
   selectedId.value = asset.id
+  beginDrag(evt, { kind: 'scale', id: asset.id, startX: evt.clientX, startWidthPct: asset.width_pct })
 }
 
 function onScaleWheel(evt, asset) {
@@ -605,11 +603,8 @@ function onScaleWheel(evt, asset) {
   emitChange()
 }
 
-function onPointerMove(evt) {
-  if (!dragState) return
-
+function dragTo(evt, dragState) {
   if (dragState.kind === 'backgroundPan') {
-    dragMoved = true
     const range = verticalPanRangePx()
     if (range > 0) {
       const dy = evt.clientY - dragState.startY
@@ -622,7 +617,6 @@ function onPointerMove(evt) {
   }
 
   if (dragState.kind === 'rotate') {
-    dragMoved = true
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset) {
       const angle = Math.atan2(evt.clientY - dragState.cy, evt.clientX - dragState.cx) * (180 / Math.PI) + 90
@@ -632,7 +626,6 @@ function onPointerMove(evt) {
   }
 
   if (dragState.kind === 'scale') {
-    dragMoved = true
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset && frameRect.value.width) {
       // The box is horizontally centered on its anchor (translate(-50%, ...)),
@@ -647,7 +640,6 @@ function onPointerMove(evt) {
 
   const pos = clientToPercent(evt)
   if (!pos) return
-  dragMoved = true
 
   if (dragState.kind === 'asset') {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
@@ -663,13 +655,6 @@ function onPointerMove(evt) {
   }
 }
 
-function onPointerUp() {
-  if (dragState) {
-    justDragged = dragMoved
-    dragState = null
-    if (dragMoved) emitChange()
-  }
-}
 
 function deleteAsset(id) {
   props.vista.assets = props.vista.assets.filter(a => a.id !== id)
@@ -714,27 +699,6 @@ function resetAsset(asset) {
   overflow: hidden;
 }
 
-.empty-stage {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  text-align: center;
-  padding: var(--space-8);
-}
-
-.empty-stage .mdi {
-  font-size: 3rem;
-  color: var(--text-muted);
-}
-
-.empty-stage .rk-btn {
-  margin-top: var(--space-2);
-}
-
 .stage-viewport {
   position: relative;
   width: 100%;
@@ -769,6 +733,13 @@ function resetAsset(asset) {
   background-size: cover;
   background-position-x: center;
   background-repeat: no-repeat;
+}
+
+/* Under the assets, which still show where they stand. */
+.stage-error {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 
 .stage-background.panning {
@@ -940,21 +911,6 @@ function resetAsset(asset) {
   z-index: 600;
 }
 
-.tool-btn {
-  width: 40px;
-  height: 40px;
-}
-
-.tool-btn .mdi {
-  font-size: 1.3rem;
-}
-
-.tool-btn.active,
-.tool-btn.active:hover {
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
-}
-
 .asset-hint {
   position: absolute;
   pointer-events: none;
@@ -988,13 +944,6 @@ function resetAsset(asset) {
   z-index: 600;
 }
 
-.selection-panel-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  color: var(--text-secondary);
-}
-
 /* Compact variant of .rk-input for the floating panel. */
 .selection-name-input {
   flex: 1;
@@ -1003,11 +952,6 @@ function resetAsset(asset) {
   font-size: var(--text-sm);
   user-select: text;
   -webkit-user-select: text;
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--status-error-bg);
-  color: var(--status-error);
 }
 
 .panel-row {
@@ -1071,3 +1015,6 @@ function resetAsset(asset) {
   color: var(--accent-contrast);
 }
 </style>
+
+<!-- The rules every canvas's toolbar and selection panel share. -->
+<style scoped src="../styles/canvas.css"></style>

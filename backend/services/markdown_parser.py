@@ -1,5 +1,4 @@
 import re
-import markdown
 import frontmatter
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
@@ -19,7 +18,6 @@ class ParsedNote:
 
 class MarkdownParser:
     def __init__(self, vault_path: Path = None):
-        self.md = markdown.Markdown(extensions=['extra', 'codehilite', 'tables'])
         self.wikilink_pattern = re.compile(r'\[\[([^\]|]+)(\|([^\]]+))?\]\]')
         self.tag_pattern = re.compile(r'#([\w\-\/]+)')
         self.vault_path = vault_path
@@ -50,40 +48,43 @@ class MarkdownParser:
         resolved relative paths. This enables fast O(1) wiki-link resolution without disk I/O.
         Index is invalidated on git syncs to prevent stale references.
         """
-        if self._note_index is not None or not self.vault_path:
-            return
-            
-        self._note_index = {}
-        self._note_index_lower = {}
-        
+        index = self._note_index
+        if index is not None or not self.vault_path:
+            return index
+
+        # Built aside and published whole: notes are read from several
+        # threads, and one must never see the index half built, nor lose it
+        # to an invalidation halfway through a lookup.
+        exact, lower = {}, {}
         for md_file in self.iter_note_files():
             filename = md_file.stem
             relative_path = md_file.relative_to(self.vault_path).with_suffix('')
             resolved_path = str(relative_path).replace('\\', '/')
-            
-            self._note_index[filename] = resolved_path
-            self._note_index[resolved_path] = resolved_path
-            
-            self._note_index_lower[filename.lower()] = resolved_path
-            self._note_index_lower[resolved_path.lower()] = resolved_path
-            
+
+            exact[filename] = resolved_path
+            exact[resolved_path] = resolved_path
+
+            lower[filename.lower()] = resolved_path
+            lower[resolved_path.lower()] = resolved_path
+        self._note_index = (exact, lower)
+        return self._note_index
+
     def invalidate_index(self):
         self._note_index = None
-        self._note_index_lower = None
-            
+
     def _resolve_wikilink(self, link: str) -> str:
         if not self.vault_path:
             return link
-            
-        self._build_note_index()
-        
-        if link in self._note_index:
-            return self._note_index[link]
-            
+
+        exact, lower = self._build_note_index()
+
+        if link in exact:
+            return exact[link]
+
         link_lower = link.lower()
-        if link_lower in self._note_index_lower:
-            return self._note_index_lower[link_lower]
-            
+        if link_lower in lower:
+            return lower[link_lower]
+
         return link
         
     def parse(self, file_path: Path) -> ParsedNote:

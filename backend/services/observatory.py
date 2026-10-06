@@ -31,7 +31,7 @@ from typing import Any, BinaryIO, Dict, Iterator, List, Optional, Tuple
 from urllib.parse import quote
 
 from services.doc_backend import DocBackend, DocBackendError
-from services.doc_collection import FOLDER_MARKER, DocCollection, DocNotFound
+from services.doc_collection import FOLDER_MARKER, MAX_DOC_BYTES, DocCollection, DocNotFound
 from services.doc_paths import sanitize_folder_name, sanitize_folder_path
 from services.storage_service import ALLOWED_IMAGE_EXTENSIONS, IMAGE_CONTENT_TYPES, IMAGE_URL_PREFIX, OBSERVATORY_PREFIX
 
@@ -141,20 +141,23 @@ class Observatory:
         items.sort(key=lambda item: ((item.get("name") or "").lower(), item["kind"]))
         return {"folders": sorted(folders, key=str.lower), "items": items}
 
-    def list_kind(self, kind: str) -> Dict[str, Any]:
+    def list_kind(self, kind: str, keys: Optional[List[str]] = None) -> Dict[str, Any]:
         """Everything of one kind ("chart"... or "image") wherever it is in the
         tree, by name: what a shortcut to a kind shows. Each item says its
-        `folder`."""
+        `folder`. `keys`: the whole tree's, if already listed."""
+        if kind not in self.collections and kind != IMAGE_KIND:
+            raise ValueError(f"Unknown kind: {kind}")
+        if keys is None:
+            keys = self.backend.list_keys(self.root)
         if kind == IMAGE_KIND:
-            items = [self._image_item(key) for key in self.backend.list_keys(self.root)
+            items = [self._image_item(key) for key in keys
                      if is_image_name(key) and image_uid(key.rsplit("/", 1)[-1])]
-        elif kind in self.collections:
+        else:
+            collection = self.collections[kind]
             items = [
                 {**meta.model_dump(mode="json"), "kind": kind, "folder": meta.id.rpartition("/")[0]}
-                for meta in self.collections[kind].list_all()
+                for meta in collection.read_metadata(collection.ids(keys))
             ]
-        else:
-            raise ValueError(f"Unknown kind: {kind}")
         items.sort(key=lambda item: ((item.get("name") or "").lower(), item["folder"].lower()))
         return {"folders": [], "items": items}
 
@@ -165,8 +168,9 @@ class Observatory:
         if not words:
             return []
         found = []
+        keys = self.backend.list_keys(self.root)   # once, for every kind
         for kind in (*self.collections, IMAGE_KIND):
-            for item in self.list_kind(kind)["items"]:
+            for item in self.list_kind(kind, keys)["items"]:
                 name = _folded(item.get("name") or "")
                 haystack = " ".join([name, _folded(item.get("id") or ""), _folded(item.get("subtitle") or ""),
                                      *(_folded(tag) for tag in item.get("tags") or [])])
@@ -215,16 +219,20 @@ class Observatory:
         if new_path == path:
             return {}
         inside = self.ids_under(path)
+        moves = {
+            kind: {doc_id: f"{new_path}{doc_id[len(path):]}" for doc_id in ids}
+            for kind, ids in inside.items() if ids
+        }
+        for kind, kind_moves in moves.items():
+            for new_id in kind_moves.values():
+                self.collections[kind].check_id(new_id)   # e.g. a map into a "tokens" folder
         try:
             self.backend.move_prefix(f"{self.root}{path}/", f"{self.root}{new_path}/")
         except DocBackendError as e:
             raise ValueError(f"Cannot move '{path}' to '{new_path}': {e}")
         finally:
             self._forget_index()
-        return {
-            kind: {doc_id: f"{new_path}{doc_id[len(path):]}" for doc_id in ids}
-            for kind, ids in inside.items() if ids
-        }
+        return moves
 
     def delete_folder(self, path: str) -> Dict[str, List[str]]:
         """Deletes a folder with everything in it. Returns the ids of the
@@ -421,6 +429,13 @@ class Observatory:
                 report["items"].append(self._import_document(folder, filename, kind, opener))
         except (ValueError, KeyError, UnicodeDecodeError) as e:
             report["skipped"].append({"path": shown_as or filename, "reason": str(e)})
+        except Exception as e:
+            # Whatever else one file does (a damaged or encrypted zip entry,
+            # JSON nested too deep, the store refusing it) leaves that file
+            # out, not the rest of the import: what is already in stays in,
+            # and the report says what wasn't.
+            logger.warning(f"Could not import {shown_as or filename}: {e!r}")
+            report["skipped"].append({"path": shown_as or filename, "reason": f"could not be read or stored ({type(e).__name__})"})
 
     def _import_image(self, folder: str, filename: str, opener) -> Dict[str, Any]:
         # An exported image keeps its uid where it is free, so the documents
@@ -439,7 +454,12 @@ class Observatory:
     def _import_document(self, folder: str, filename: str, kind: str, opener) -> Dict[str, Any]:
         collection = self.collections[kind]
         with opener() as data:
-            document = json.loads(data.read().decode("utf-8"))
+            # Read no further than a document may be: a zip's limit is on its
+            # total, and one huge entry would otherwise be read into memory whole.
+            text = data.read(MAX_DOC_BYTES + 1)
+        if len(text) > MAX_DOC_BYTES:
+            raise ValueError("The document is too large")
+        document = json.loads(text.decode("utf-8"))
         if not isinstance(document, dict):
             raise ValueError(f"not a {kind}")
         added = collection.add(folder, filename[:-len(collection.doctype.suffix)], document)

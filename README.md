@@ -69,15 +69,15 @@ named by you.
   like an encounter's; the sheet itself is saved with the editor's **Save**.
   An **adversary** is a template: each copy in an encounter will have its own
   values. It is edited whole and saved with a button, like a chart.
-- Create one from the sidebar's **Characters** or **Adversaries** tool
-  (**New character**, **New adversary**) and build it in the **sheet
+- Create one from the Observatory (**New ▾ → Character** or **Adversary**, or
+  the sidebar's shortcut to that kind) and build it in the **sheet
   builder**, beside a live preview; an empty sheet offers **Start from a
   template**. No format to learn: everything is a form.
 - To show one in a note, write its link, `` `character:<id>` `` or
   `` `adversary:<id>` `` (see the table above): the note editor's **Sheet**
-  button finds one and inserts it, and the gallery's copy button gives it too.
+  button finds one and inserts it, and the editor's copy button gives it too.
   A character's counters there are live and can be played from the note. Under
-  the sheet, **Edit** opens it in its gallery and **Add to encounter**
+  the sheet, **Edit** opens it in its editor and **Add to encounter**
   puts it into one without leaving the note. A sheet named like its note's
   title or one of its headings doesn't repeat the name in its header (screen
   readers still get it).
@@ -215,7 +215,8 @@ deleted from the UI.
   to an allow-list of emails. Sessions are signed cookies, no user database.
 - A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
   only what is on it right now: the chart or vista last sent and the images it
-  draws, nothing else.
+  draws, the image sent with "display media", or the images of the battlemap
+  shown (without its hidden tokens) — nothing else.
 - Set `ENABLE_AUTH=false` to run it open as a single local user.
 
 ## How data is stored
@@ -349,6 +350,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `FRONTEND_URL`          | `http://localhost:5173`  | Where to redirect after login                                     |
 | `CORS_ALLOWED_ORIGINS`  | `http://localhost:5173`  | Comma-separated allowed origins                                   |
 | `LOG_LEVEL`             | `INFO`                   | Backend log level                                                 |
+| `LOG_DIR`               | `/app/logs`              | Where `app.log` and `error.log` are written (rotated at 10 MB, 3 kept) |
 | `VITE_DEFAULT_PAGE`     | `index`                  | Note opened on the home page (frontend build arg)                 |
 | `VITE_API_URL`          | empty                    | Backend URL; leave empty when nginx proxies `/api` and `/ws`      |
 
@@ -412,12 +414,12 @@ Realm-Keeper/
 ├── frontend/           Vue 3 + Vite app, served by nginx in production
 │   └── src/
 │       ├── views/      Home, NoteView, ScreenView
-│       ├── components/ Sidebar, document modal (charts, vistas, characters, adversaries, encounters, battlemaps), sheets, graph, assets, player, dice
+│       ├── components/ Sidebar, the Observatory, document modal (charts, vistas, characters, adversaries, encounters, battlemaps), sheets, graph, player, dice
 │       ├── composables/
 │       ├── dice/       three.js + cannon-es dice simulation
 │       └── api/
 ├── .argocd/            Kubernetes manifests
-├── .github/workflows/  CI: version bump, image build and push
+├── .github/workflows/  CI: tests on every pull request; version bump, image build and push
 └── docker-compose.yml  Local stack with MinIO
 ```
 

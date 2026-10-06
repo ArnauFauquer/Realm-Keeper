@@ -67,6 +67,37 @@ def patch_item(doc: Dict[str, Any], doctype: DocType, collection: str, entity_id
     deep_merge(entity, patch)
 
 
+def _same(entry: Any, value: Any) -> bool:
+    """An entry of a list is the one meant by `value` when it is that value, or
+    an entity (a condition) with that id, or one with the same id as it."""
+    if entry == value:
+        return True
+    entry_id = entry.get("id") if isinstance(entry, dict) else None
+    value_id = value.get("id") if isinstance(value, dict) else value
+    return entry_id is not None and entry_id == value_id
+
+
+def edit_list(
+    doc: Dict[str, Any], doctype: DocType, collection: str, entity_id: str, field: str,
+    add: List[Any], remove: List[Any],
+) -> None:
+    """Adds entries to, or takes them out of, a list field of an entity (a
+    combatant's conditions, a token's bars). A relative change, like
+    adjust_resource: two people adding a condition at once both add one,
+    where writing the whole list would keep only the last. What is already
+    there isn't added twice, and what isn't there is simply not removed."""
+    entity = _find(_entities(doc, doctype, collection), entity_id)
+    if field == "id":
+        raise ValueError("An id can't be changed")
+    entries = entity.setdefault(field, [])
+    if not isinstance(entries, list):
+        raise ValueError(f"'{field}' isn't a list")
+    entries[:] = [e for e in entries if not any(_same(e, value) for value in remove)]
+    for value in add:
+        if not any(_same(e, value) for e in entries):
+            entries.append(copy.deepcopy(value))
+
+
 def remove_item(doc: Dict[str, Any], doctype: DocType, collection: str, entity_id: str) -> None:
     entities = _entities(doc, doctype, collection)
     _find(entities, entity_id)

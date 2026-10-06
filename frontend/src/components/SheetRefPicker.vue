@@ -39,6 +39,7 @@ import { computed, nextTick, ref } from 'vue'
 import { fetchSheets } from '@/api/sheets'
 import { DOC_TYPES } from '@/utils/docTypes'
 import { docRefMarkdown } from '@/utils/inlineRefs'
+import { errorMessage } from '@/api/http'
 
 // The note editor's "Sheet" button: pick a character or an adversary, and the
 // link that shows it (`character:<id>`, `adversary:<id>`) is inserted.
@@ -67,7 +68,7 @@ async function toggle() {
   try {
     sheets.value = await fetchSheets()
   } catch (err) {
-    error.value = err.response?.data?.detail || err.message
+    error.value = errorMessage(err)
   } finally {
     loading.value = false
   }

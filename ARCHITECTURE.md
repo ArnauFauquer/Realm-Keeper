@@ -90,8 +90,20 @@ this layout.
   so `color: #ff0000` in a code block or a mermaid `style` line doesn't become a tag
   and a `#private` inside a block doesn't hide the note.
 - **Git sync** (`main.py`, `git_sync_utils`): clone on startup, pull every
-  `GIT_SYNC_INTERVAL` seconds, and commit + push every note edited in the app
-  (under one lock). This is the only code that talks to Git.
+  `GIT_SYNC_INTERVAL` seconds, and commit + push every note edited in the app.
+  Everything that writes the vault or runs git (a save, links followed after a
+  move, the periodic pull) holds one re-entrant lock (`MarkdownService.git_lock`),
+  the file write included. A pull rebases our own unpushed commits (after a
+  failed push) and aborts a rebase that conflicts, so the vault is never left
+  mid-rebase; a git that times out is killed, its `index.lock` removed, and
+  reported. This is the only code that talks to Git.
+- **Saving a note** sends the `sha` of the content the editor loaded
+  (`GET /api/note-raw` returns it): if the note has changed since (another
+  GM, an Obsidian edit that a pull brought in), the save is a 409 and nothing
+  is written; `""` means "create, it must not exist". Saving unchanged
+  content is a no-op. The note routes (like the player's) are plain `def`s,
+  run in FastAPI's threadpool: git and S3 never block the event loop that the
+  live sockets share.
 
 ### Sheets
 
@@ -130,7 +142,10 @@ is never behind what is being played.
 The frontend draws documents the same way (`utils/sheet.js` `sheetFromDoc`);
 both are checked against shared fixtures in
 `backend/tests/fixtures/sheet-bodies/`, so a change in one needs the same change
-in the other.
+in the other. A sheet is held to what an encounter can hold (at most 24
+counters, a counter's `color` and `style` at most 40 and 20 characters, the
+limits of `models/encounter.py`), so one that is stored can always be added to
+a fight, and a counter starts within its range on both sides (`counterStart`).
 
 **Editing.** `SheetEditor` is the sheet builder (`SheetBuilder`, forms) beside
 a live preview. `utils/sheetModel.js` `modelFromBody` makes an editable copy of
@@ -184,7 +199,15 @@ A document is one file, `<folders>/<slug>.<kind>.json`; its id is
 document is stored is authoritative over the `id` written in it. Folders belong
 to no kind: moving or deleting one (`routes/observatory.py`) lets go of the live
 documents inside first, as a single document's move does, then runs each kind's
-`on_moved` for the ids that changed.
+`on_moved` for the ids that changed. A document can't be inside a folder named
+like one of its kind's lists (a map in `…/tokens/…`, an encounter in
+`…/combatants/…`): its routes would read the path as one of its entities
+(`DocCollection.check_id`, also checked when a folder moves).
+
+**Saving a saved document** (chart, vista, adversary) sends `base_updated_at`,
+the `updated_at` of the copy the editor loaded: if the stored one has moved on
+(another tab, another GM), the save is a 409 (`DocConflict`) and nothing is
+written; the editor says so, and Save again overwrites on purpose.
 
 **Export and import.** `GET /api/observatory/export?path=` is a zip of a folder
 (the whole tree by default), named from that folder, after the live documents
@@ -193,8 +216,10 @@ documents (`<name>.<kind>.json`, validated as a save would be) and zips of them,
 whose own subfolders go inside it. Nothing there is replaced: a document whose
 slug is taken gets the next free one, and an image keeps its uid only where it
 is free (so the documents that came with it still find it), otherwise it gets a
-new one. What is left out comes back with why. A zip over 20,000 files or 4 GiB
-is refused before anything is read from it.
+new one. What is left out comes back with why — anything one file does (a
+damaged zip entry, a document over 1 MB, the store refusing it) leaves only that
+file out. A zip over 20,000 files or 4 GiB is refused before anything is read
+from it.
 
 Two rules are enforced for every kind, in one place (`DocType`):
 
@@ -255,14 +280,20 @@ it change. `services/sync_hub.py` (`DocHub`) is built for that.
 - **Commands are typed REST calls**, not a generic patch protocol:
   `POST/PATCH/DELETE /<id>/<collection>[/<entity>]`, `…/order`, and
   `…/<entity>/adjust {resource, by}` — a *relative* change clamped to the
-  counter's `min`/`max`, so two people hitting the same counter both count.
-  Clients never write a whole live document.
+  counter's `min`/`max`, so two people hitting the same counter both count —
+  and `…/<entity>/list {field, add, remove}`, entries in or out of an entity's
+  list (a combatant's conditions, a token's bars) for the same reason: two
+  people adding a condition at once both add one, where writing the whole list
+  would keep only the last. Clients never write a whole live document.
 - **The socket only talks one way.** `/ws/sync` (login required) carries events
   server → client; nobody sends anything on it. An event is
   `{type: "doc", doc: "encounter:fight", rev, set, upsert, remove, order}`: whole
   fields, entities (by `id`) added or replaced, removed, and re-ordered. The
   same diff code is mirrored by `utils/applyEvent.js`, and both are tested
-  against shared cases.
+  against shared cases. It is sent to every client at once, each with a 2 s
+  limit (`services/socket_group.py`, shared with the screens' `/ws/screen`): one
+  that can't be written to is dropped and closed, so a client that was only slow
+  reconnects and catches up, and nobody waits for a phone gone to sleep.
 - **Persistence is behind the same door.** After `FLUSH_DELAY` (2 s) of quiet,
   and never later than `FLUSH_MAX_WAIT` (15 s) under constant edits, a changed
   document is written to its backend; it is written again on shutdown. A failed
@@ -272,18 +303,26 @@ it change. `services/sync_hub.py` (`DocHub`) is built for that.
   last saw (another process wrote it), the stored one wins: the room reloads it
   and tells clients to reload (`{doc, reset: true}`), rather than guess how two
   histories fit.
-- Moving, renaming or deleting a document first flushes and forgets its room and
-  tells clients (`{type: "gone"}`).
+- Moving or deleting documents (one, or a folder of them) happens inside
+  `async with hub.released(kind, ids)`: each room is saved and closed under its
+  lock, and clients are told (`{type: "gone"}`); until the block is over nobody
+  can load those ids again (a command or a read waits, then finds the document
+  where it is by then), and whatever loaded one meanwhile is dropped unsaved.
+  If the last save fails, the move or delete doesn't happen. Without this a
+  command landing during the last save brought a deleted document back.
 
 On the client, `useSyncedDoc` loads a snapshot (with its `rev`), applies events
 whose `rev` is exactly one more than its own, ignores ones it already has,
-refetches on a gap or a reconnect, and shares one copy per document between all
-the components that ask for it. A command's HTTP reply is the same event, applied
-at once.
+holds one that comes early for 300 ms waiting for the ones before it (a command's
+reply can overtake the socket), refetches on a gap that doesn't fill or a
+reconnect (once more if asked while a fetch is on its way), and shares one copy
+per document between all the components that ask for it, kept 3 s after the last
+lets go (a note's preview remounts its embeds on every keystroke). A command's
+HTTP reply is the same event, applied at once.
 
 ### Characters
 
-A character is a live document, `characters/<folders>/<slug>/character.json`:
+A character is a live document, `observatory/<folders>/<slug>.character.json`:
 its name, description, sheet (`sheet`) and the current value of each of its
 counters (`resources`), shared by every note that shows it and every encounter
 and map it appears in. Its gallery card's `image`, `subtitle` and `tags` are
@@ -296,7 +335,7 @@ A counter already there keeps its current value, clamped to its new range; a new
 one starts where the sheet says; one the sheet no longer has is dropped, so
 renaming a counter starts it again. The client never reconciles anything.
 
-It is made from the **Characters** gallery like any kind ("New character"), lives
+It is made from the Observatory like any kind (**New ▾ → Character**), lives
 in folders, and is edited in `CharacterEditor`: the sheet (`SheetEditor`) with its own
 Save button (`PATCH {sheet}`, since the document is live), while
 `POST /api/characters/<id>/adjust` changes one of its counters, from a note, an
@@ -385,12 +424,34 @@ src/
   (`useLiveScreen`) and the copyable `chart:<id>` reference. `ChartsModal`,
   `VistasModal`, `AdversariesModal`, `CharactersModal`, `EncountersModal` and
   `BattlemapsModal` are each only their editor.
+- **A note on the page.** `NoteView` is only the page: `useNoteLoader` fetches
+  the note (a request token drops an answer for a note the view already left),
+  `utils/renderNote.js` turns its markdown into safe HTML plus its headings
+  (callouts, heading ids, mermaid blocks, scrollable tables; the table of
+  contents in `RightSidebar` takes those headings), and `MarkdownBody` makes
+  that HTML live: note links routed in the app, embeds mounted
+  (`useDocEmbeds`), mermaid drawn (`useMermaid`, imported only for a note that
+  has a diagram), and for a signed-in user dice, roll tables, songs, sound
+  effects (`useInlineActions`) and images' Screen button, through one click
+  listener. It sets all of that up again whenever the HTML or the user
+  changes. `NoteEditor` (`useNoteDraft`) is the editor, with the same
+  `MarkdownBody` as its preview; a save sends the sha it loaded (`base_sha`),
+  and a 409 keeps the draft and offers "Reload their version" or "Overwrite".
+  A save calls `notifyNotesChanged()` (`useNotes.js`), on which the sidebar,
+  the tags, the graph (`useGraphData`) and the folder notes refresh. Every note
+  URL is built by `utils/paths.js` (`noteRoute`, `noteApi`, `noteIdFromHref`).
 - **Charts, vistas and battlemaps share their map mechanics.**
   `useMapViewport` (zoom, pan, screen ↔ map coordinates) was extracted from
   `ChartCanvas` and is used by `BattlemapCanvas` too; `battlemapGeometry.js` is
   pure functions (cells ↔ pixels, snapping, measuring) with its own tests.
+  Every canvas drags with `usePointerDrag` (primary button and one pointer
+  only, captured, a threshold in screen pixels, `pointercancel` puts things
+  back, the click after a drag swallowed), sizes its image with `useImageSize`
+  (and says so when it can't be loaded, `CanvasEmptyState`), and picks images
+  with `useLibraryPicker`. The live editors (tracker, battlemap) share
+  `useLiveDocument`, `LiveBadge` and `LiveDocumentState`.
 - **Sheets in notes.** A `` `character:<id>` `` or `` `adversary:<id>` `` link
-  becomes a placeholder like a chart's, and `NoteView`'s `mountDocEmbeds` mounts
+  becomes a placeholder like a chart's, and `MarkdownBody` (`useDocEmbeds`) mounts
   a `SheetEmbed` on it (a `DocumentEmbed` for a chart or vista) — also in the
   editor's preview. `SheetEmbed` loads the document and renders `SheetView`; a
   character's counters there are the same live ones the encounters show, and
@@ -410,12 +471,17 @@ src/
 2. A `DocType` in `services/doc_registry.py`, and its collection (and, if it is
    live, an entry in the hub). Say which fields hold images and which are locked.
 3. A route module: `router = make_doc_router(TYPE, collection, hub)`, included
-   in `main.py`; add its prefix to `config/cache.py` if a stale copy would hurt.
-   If a note can show it, add `following("<kind>")` to `ON_MOVED` in
-   `routes/doc_follow.py` and pass `on_moved=ON_MOVED["<kind>"]` so its links
-   follow a move.
-4. An entry in `utils/docTypes.js`, a client in `api/docs.js`, and a thin
-   `*Modal.vue` around `DocumentModal` with the editor in its slot.
+   in `main.py` (it is `no-store` like every `/api/` route not listed public in
+   `config/cache.py`). If a note can show it, add `following("<kind>")` to
+   `ON_MOVED` in `routes/doc_follow.py` and pass `on_moved=ON_MOVED["<kind>"]` so
+   its links follow a move; if other documents name it by id, give `following`
+   the hook that repoints them (as `follow_moved_encounters` does for maps).
+4. An entry in `utils/docTypes.js` (its client in `api/docs.js` is made from
+   its `resource`), and a thin `*Modal.vue` around `DocumentModal` with the
+   editor in its slot, mounted in `NotesSidebar.vue` beside the others and
+   added to its `OBSERVATORY_SHORTCUTS`. If it is `embeddable` and not a sheet,
+   an entry in `DocumentEmbed.vue`'s `TYPES`; if it can go on the screen
+   (`screen`), its message in `utils/screenScene.js` and `ScreenView.vue`.
 5. Its collection in the `Observatory`'s map (`doc_registry.py`) and its prefix
    in `scripts/migrate_to_observatory.py`'s `DOC_PREFIXES` while that script lives.
 
@@ -434,7 +500,13 @@ hook — comes with it.
 - **State-changing requests and WebSocket handshakes are origin-checked**
   (`config/csrf.py`), including `PATCH`, which the live commands use.
 - **Documents can't name arbitrary URLs for images** (Observatory images only), and
-  a hidden token never reaches a screen: the projection is built before sending.
+  a hidden token never reaches a screen: the projection is built before sending,
+  and one made before a newer one is never sent after it.
+- **Nothing private is cached by default.** Every `/api/` response is `no-store`
+  (`config/cache.py`) except the public note reads (`public, no-cache`: kept,
+  but revalidated every time) and the images (`private`, immutable by uid).
+- **A dice roll sent to the screens is validated** (real dice and faces, at most
+  50 dice): a screen replays every die it is given.
 - **No roles yet.** Every signed-in user may do everything; `DocHub.authorize` is
   the one place a role check will go.
 - Hardened asset endpoints (path traversal, `.resolve()`-bounded paths), `Opaque`
@@ -443,15 +515,15 @@ hook — comes with it.
 
 ## Deployment constraints
 
-- **One replica.** The vault is a `ReadWriteOnce` volume, Git writes are
-  serialized in-process, and live documents are held in that process's memory.
-  Several replicas would each hold a different copy of a room.
-- **Don't deploy in the middle of a session.** During a rolling update the new
-  pod loads the last *saved* copy of a document, up to a couple of seconds behind
-  the old one; the `rev` guard keeps the newest stored copy, and the old pod
-  flushes on shutdown, but a change made in that overlap can be lost. For the
-  same reason a chart edited while an upgrade from the Git-based storage rolls
-  out would be lost.
+- **One replica, one at a time.** Git writes are serialized in-process, and
+  live documents and what the screens show are held in that process's memory.
+  Several replicas would each hold a different copy of a room, so the backend
+  deploys with `strategy: Recreate`: the old pod stops first (Uvicorn gives open
+  connections 10 s, then the lifespan saves every live document), and only then
+  does the new one start and load them. The price is the new pod's clone time
+  without a backend.
+- **Prefer not to deploy in the middle of a session**: the screens and every
+  client reconnect, and a command sent in the gap fails.
 - **Object storage is the history.** Charts and vistas used to have Git's
   history; now they have what the bucket gives. Turn on bucket versioning if your
   S3 supports it.
@@ -465,4 +537,7 @@ hook — comes with it.
 - `cd frontend && npx vitest run` — the event layer, `useSyncedDoc`, the document
   modal, the tracker, the canvases' geometry, sheets, and the parity fixtures
   shared with the backend.
-- `npm run build` is the compile check (there is no lint step).
+- `npm run build` is the compile check (there is no lint step: `eslint.config.js`
+  is there, its packages aren't).
+- `.github/workflows/tests.yml` runs all three on every pull request and push to
+  `main`.

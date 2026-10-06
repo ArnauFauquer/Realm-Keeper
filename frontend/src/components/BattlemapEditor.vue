@@ -1,17 +1,6 @@
 <template>
   <div class="editor">
-    <div v-if="status === 'loading'" class="editor-state" role="status">
-      <span class="rk-spinner rk-spinner--lg"></span>
-      <span>Loading map...</span>
-    </div>
-    <div v-else-if="status === 'gone'" class="editor-state" role="alert">
-      <span class="mdi mdi-file-question-outline"></span>
-      <span>This map was moved or deleted. Look for it in the Observatory.</span>
-    </div>
-    <div v-else-if="status === 'error'" class="editor-state editor-error" role="alert">
-      <span class="mdi mdi-alert-circle-outline"></span>
-      <span>{{ error }}</span>
-    </div>
+    <LiveDocumentState v-if="unavailable" class="editor-state" :status="status" :error="error" noun="map" />
 
     <template v-else-if="doc">
       <div class="stage">
@@ -30,7 +19,7 @@
               <span class="mdi mdi-monitor-share"></span>
             </button>
           </template>
-          <span class="live-badge" :class="`live-badge--${syncStatus}`" :title="liveTitle"><span class="mdi mdi-circle-medium"></span>{{ liveLabel }}</span>
+          <LiveBadge />
         </div>
 
         <BattlemapCanvas
@@ -45,10 +34,8 @@
           @moving="onMoving"
           @move="onMove"
         >
-          <template #empty>
-            <span class="mdi mdi-image-plus"></span>
-            <p>This map has no image yet.</p>
-            <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="libraryTarget = 'map'">
+          <template #empty-actions>
+            <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
               <span class="mdi mdi-folder-multiple-image"></span> Choose map image
             </button>
           </template>
@@ -114,7 +101,7 @@
             </div>
 
             <div class="row">
-              <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="libraryTarget = 'token'">
+              <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('token')">
                 <span class="mdi mdi-folder-multiple-image"></span> {{ selected.image_url ? 'Change image' : 'Choose image' }}
               </button>
               <button v-if="selected.image_url" type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="patchToken({ image_url: null })">Remove image</button>
@@ -145,7 +132,7 @@
         <!-- Map -->
         <div v-else class="tab-body">
           <div class="row">
-            <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="libraryTarget = 'map'">
+            <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('map')">
               <span class="mdi mdi-folder-multiple-image"></span> {{ doc.image_url ? 'Change map image' : 'Choose map image' }}
             </button>
           </div>
@@ -207,10 +194,10 @@
       </aside>
 
       <ObservatoryModal
-        :is-open="!!libraryTarget"
+        :is-open="libraryOpen"
         picker-mode
         :start-path="folderOf(id)"
-        @close="libraryTarget = null"
+        @close="closeLibrary"
         @select="onLibrarySelect"
       />
     </template>
@@ -223,11 +210,14 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
-import { post } from '@/api/http'
-import { apiUrl } from '@/config/env'
-import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
+import { TOKEN_COLORS } from '@/utils/palette'
+import { useLibraryPicker } from '@/composables/useLibraryPicker'
+import { screenApi } from '@/api/screen'
+import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
+import { useLiveDocument } from '@/composables/useLiveDocument'
+import LiveBadge from './LiveBadge.vue'
+import LiveDocumentState from './LiveDocumentState.vue'
 import { useCharacters } from '@/composables/useCharacters'
-import { syncStatus } from '@/composables/syncSocket'
 import { barOptions, metersFor } from '@/utils/battlemapMeters'
 import { freeCells } from '@/utils/battlemapGeometry'
 
@@ -241,7 +231,8 @@ const props = defineProps({
 
 const id = props.battlemapId
 const { commands } = battlemapsApi
-const { doc, status, error, commit } = useSyncedDoc('battlemap', id, () => battlemapsApi.fetch(id))
+// Each action is a command (`send`): the event it returns is applied at once.
+const { doc, status, error, actionError, unavailable, attempt, send } = useLiveDocument('battlemap', id, () => battlemapsApi.fetch(id))
 // The encounter whose combatants the tokens stand for, followed live too (a
 // token shows its combatant's counters as they change).
 const { doc: encounter } = useSyncedDocFollowing('encounter', () => doc.value?.encounter || null, (encounterId) => encountersApi.fetch(encounterId))
@@ -249,25 +240,19 @@ const { doc: encounter } = useSyncedDocFollowing('encounter', () => doc.value?.e
 const characters = useCharacters(() => (encounter.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
 const TABS = [{ value: 'tokens', label: 'Tokens' }, { value: 'map', label: 'Map' }]
-const COLORS = ['#6d4fc2', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#94a3b8']
+const COLORS = TOKEN_COLORS
 const DEFAULT_COLOR = COLORS[0]
 
 const tab = ref('tokens')
 const tool = ref('select')
 const selectedId = ref(null)
-const libraryTarget = ref(null) // 'map' | 'token'
+const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
+  if (target === 'map') send(commands.patch(id, { image_url: item.image_url }))
+  else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
+})
 const encounters = ref([])
-const actionError = ref('')
 const onScreen = ref(false)
 
-const LIVE = {
-  open: ['Live', 'Changes appear for everyone as they are made'],
-  connecting: ['Connecting…', 'Waiting for the connection: changes may be late'],
-  denied: ['Signed out', 'Sign in again to see changes live'],
-  idle: ['Connecting…', '']
-}
-const liveLabel = computed(() => LIVE[syncStatus.value][0])
-const liveTitle = computed(() => LIVE[syncStatus.value][1])
 
 // The encounters to choose from, once signed in (the session check may still
 // be on its way when the editor opens).
@@ -289,19 +274,6 @@ const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0)
 const clamp = (value, low, high) => Math.min(high, Math.max(low, num(value)))
 const positive = (value, fallback) => (num(value) > 0 ? num(value) : fallback)
 
-async function attempt(work) {
-  actionError.value = ''
-  try {
-    await work
-    return true
-  } catch (err) {
-    actionError.value = err.response?.data?.detail || err.message
-    return false
-  }
-}
-
-/** Runs a command on this map: the event it returns is applied at once. */
-const send = (command) => attempt(commit(command))
 
 const patchToken = (patch) => send(commands.patchItem(id, 'tokens', selected.value.id, patch))
 const patchGrid = (patch) => send(commands.patch(id, { grid: patch }))
@@ -339,10 +311,10 @@ function linkCombatant(combatantId) {
   patchToken({ combatant: combatantId || null, sheet: combatant?.sheet || null, bars: [], show_bars: false })
 }
 
-function toggleBar(name, on) {
-  const bars = selected.value.bars.filter((n) => n !== name)
-  patchToken({ bars: on ? [...bars, name] : bars })
-}
+// One bar in or out, never the whole list, so two people changing the bars
+// at once both count.
+const toggleBar = (name, on) =>
+  send(commands.editList(id, 'tokens', selected.value.id, 'bars', on ? { add: [name] } : { remove: [name] }))
 
 // A token being dragged is sent as it moves, at most every MOVE_INTERVAL ms,
 // so everyone sees it travel; where it is dropped is sent at once.
@@ -391,17 +363,11 @@ function onMove(tokenId, position) {
 
 onBeforeUnmount(() => clearTimeout(moveTimer))
 
-function onLibrarySelect(item) {
-  const target = libraryTarget.value
-  libraryTarget.value = null
-  if (target === 'map') send(commands.patch(id, { image_url: item.image_url }))
-  else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
-}
 
 async function toggleScreen() {
   const wasShowing = onScreen.value
   const done = await attempt(
-    wasShowing ? post(`${apiUrl}/api/screen/clear`, {}) : post(`${apiUrl}/api/screen/battlemap`, { battlemap_id: id })
+    wasShowing ? screenApi.clear() : screenApi.battlemap(id)
   )
   if (done) onScreen.value = !wasShowing
 }
@@ -416,16 +382,6 @@ async function toggleScreen() {
 
 .editor-state {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.editor-error {
-  color: var(--status-error);
 }
 
 .stage {
@@ -456,21 +412,9 @@ async function toggleScreen() {
   color: var(--text-primary);
 }
 
+/* LiveBadge's root, from here. */
 .live-badge {
-  display: inline-flex;
-  align-items: center;
   padding-right: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.live-badge--open {
-  color: var(--status-success);
-}
-
-.live-badge--connecting,
-.live-badge--denied {
-  color: var(--status-warning);
 }
 
 .panel {

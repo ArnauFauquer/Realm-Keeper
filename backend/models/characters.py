@@ -2,7 +2,7 @@ from typing import ClassVar, Dict
 
 from pydantic import Field
 
-from models.encounter import ResourceState
+from models.encounter import MAX_COUNTERS, ResourceState
 from models.sheet_doc import SheetDoc
 
 
@@ -17,4 +17,4 @@ class Character(SheetDoc):
     sheet_type: ClassVar[str] = "character"
     schema_version: int = 3
     rev: int = 0
-    resources: Dict[str, ResourceState] = Field(default_factory=dict, max_length=24)
+    resources: Dict[str, ResourceState] = Field(default_factory=dict, max_length=MAX_COUNTERS)

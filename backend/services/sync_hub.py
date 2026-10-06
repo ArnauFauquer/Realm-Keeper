@@ -15,17 +15,18 @@ and, later, automations ("when a counter reaches...") belong: every change to a
 live document passes through it.
 """
 import asyncio
+import contextlib
 import copy
-import json
 import logging
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, AsyncIterator, Callable, Dict, Iterable, List, Optional, Tuple
 
 from fastapi import WebSocket
-from pydantic import ValidationError
 
-from services.doc_collection import DocCollection, DocNotFound, _first_error
-from services.doc_type import DocType, validate_library_urls
+from services.doc_collection import DocCollection, DocNotFound
+from services.doc_paths import sanitize_id
+from services.doc_type import DocType
+from services.socket_group import SocketGroup
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,7 @@ FLUSH_DELAY = 2.0          # seconds of quiet before a changed document is writt
 FLUSH_MAX_WAIT = 15.0      # ... but never wait longer than this under constant edits
 FLUSH_RETRY_DELAY = 5.0
 IDLE_UNLOAD_SECONDS = 600  # an untouched, saved document leaves memory
-MAX_DOC_BYTES = 1_000_000
 MAX_SYNC_CONNECTIONS = 100
-SEND_TIMEOUT = 2.0
 
 # Changes of these fields aren't reported to clients: `rev` travels on the
 # event itself, and a client has no use for the time of the last save.
@@ -91,6 +90,8 @@ class Room:
         self.lock = asyncio.Lock()
         self.flush_lock = asyncio.Lock()
         self.last_used = time.monotonic()
+        # Let go of (`DocHub.forget`): nothing changes it or saves it any more.
+        self.closed = False
 
     @property
     def ref(self) -> str:
@@ -113,7 +114,10 @@ class DocHub:
         self._collections = collections
         self._rooms: Dict[Tuple[str, str], Room] = {}
         self._loading: Dict[Tuple[str, str], "asyncio.Future[Room]"] = {}
-        self._sockets: List[WebSocket] = []
+        # Documents being moved or deleted (`released`): whoever asks for one
+        # waits until that is over, then finds it where it is by then.
+        self._releasing: Dict[Tuple[str, str], asyncio.Event] = {}
+        self.sockets = SocketGroup("sync", MAX_SYNC_CONNECTIONS)
         # The event loop keeps only weak references to tasks: hold the ones
         # started by a timer until they finish.
         self._tasks: set = set()
@@ -141,30 +145,15 @@ class DocHub:
     # ── connections ─────────────────────────────────────────────────────
 
     def connect(self, websocket: WebSocket) -> bool:
-        if len(self._sockets) >= MAX_SYNC_CONNECTIONS:
-            return False
-        self._sockets.append(websocket)
-        return True
+        return self.sockets.add(websocket)
 
     def disconnect(self, websocket: WebSocket) -> None:
-        if websocket in self._sockets:
-            self._sockets.remove(websocket)
-
-    async def _send(self, websocket: WebSocket, event: Dict[str, Any]) -> None:
-        try:
-            await asyncio.wait_for(websocket.send_json(event), SEND_TIMEOUT)
-        except Exception as e:
-            # One that can't be written to is gone; dropping it keeps the
-            # rest in step and frees its place in the connection limit.
-            logger.info(f"Dropping a sync connection: {e!r}")
-            self.disconnect(websocket)
+        self.sockets.remove(websocket)
 
     async def _broadcast(self, event: Dict[str, Any]) -> None:
-        # All at once: a phone that went to sleep without closing its socket
-        # makes its send wait out SEND_TIMEOUT, and one after another each such
-        # client would hold up every change (the document's lock is held while
-        # this runs) by that long.
-        await asyncio.gather(*(self._send(websocket, event) for websocket in list(self._sockets)))
+        # To every client at once, each with a time limit (see SocketGroup):
+        # the document's lock is held while this runs.
+        await self.sockets.broadcast(event)
 
     # ── rooms ───────────────────────────────────────────────────────────
 
@@ -186,6 +175,8 @@ class DocHub:
 
     async def _room(self, kind: str, doc_id: str) -> Room:
         key = (kind, doc_id)
+        while (releasing := self._releasing.get(key)) is not None:
+            await releasing.wait()
         room = self._rooms.get(key)
         if room is not None:
             room.last_used = time.monotonic()
@@ -198,13 +189,13 @@ class DocHub:
         return await pending
 
     async def snapshot(self, kind: str, doc_id: str) -> Dict[str, Any]:
-        room = await self._room(kind, doc_id)
+        room = await self._room(kind, sanitize_id(doc_id))
         return copy.deepcopy(room.data)
 
     def held(self, kind: str, doc_id: str) -> Optional[Dict[str, Any]]:
         """The document as it is in memory, if it is (possibly newer than what
         is stored), without loading it."""
-        room = self._rooms.get((kind, doc_id))
+        room = self._rooms.get((kind, sanitize_id(doc_id)))
         return copy.deepcopy(room.data) if room is not None else None
 
     async def mutate(
@@ -214,32 +205,36 @@ class DocHub:
         """Applies `fn` (which edits the dict it is given) to the document,
         and returns the event every client received, or None if nothing
         changed. ValueError: `fn` or the validation refused the edit."""
-        room = await self._room(kind, doc_id)
-        if not self.authorize(user, room.ref, command):
-            raise PermissionError(command)
-        async with room.lock:
+        doc_id = sanitize_id(doc_id)
+        while True:
+            room = await self._room(kind, doc_id)
+            if not self.authorize(user, room.ref, command):
+                raise PermissionError(command)
+            await room.lock.acquire()
+            if not room.closed:
+                break
+            # Let go of while this waited for it (it is being moved or
+            # deleted): ask again for where it is now, once that is over.
+            room.lock.release()
+        try:
             edited = copy.deepcopy(room.data)
             fn(edited)
             edited["id"] = room.data["id"]
-            if room.doctype.prepare:
-                room.doctype.prepare(edited, room.data)
-            try:
-                validated = room.doctype.model.model_validate(edited).model_dump(mode="json")
-            except ValidationError as e:
-                raise ValueError(_first_error(e))
-            validate_library_urls(validated, room.doctype)
+            # Checked as a save of the whole document would be (DocType.prepare,
+            # the model, its images, its size).
+            validated = self._collections[kind].validated(edited, room.data)
             event = diff_docs(room.data, validated)
             if event is None:
                 return None
             validated["rev"] = room.data.get("rev", 0) + 1
-            if len(json.dumps(validated)) > MAX_DOC_BYTES:
-                raise ValueError("The document is too large")
             room.data = validated
             room.last_used = time.monotonic()
             self._schedule_flush(room)
             event = {"type": "doc", "doc": room.ref, "rev": validated["rev"], **event}
             # Sent before the lock is released, so events leave in `rev` order.
             await self._broadcast(event)
+        finally:
+            room.lock.release()
         await self._notify(event)
         return event
 
@@ -257,12 +252,14 @@ class DocHub:
             delay = min(FLUSH_DELAY, max(0.0, FLUSH_MAX_WAIT - (now - room.first_dirty_at)))
         room.flush_handle = loop.call_later(delay, lambda: self._spawn(self._flush(room)))
 
-    async def _flush(self, room: Room) -> None:
+    async def _flush(self, room: Room, raise_errors: bool = False) -> None:
+        """Writes the room if it changed. A write that fails is tried again
+        later (and raised as well, with `raise_errors`)."""
         async with room.flush_lock:
             if room.flush_handle is not None:
                 room.flush_handle.cancel()
                 room.flush_handle = None
-            if not room.dirty:
+            if not room.dirty or room.closed:
                 return
             room.dirty = False
             data = copy.deepcopy(room.data)
@@ -272,17 +269,21 @@ class DocHub:
             except Exception:
                 logger.exception(f"Could not save {room.ref}; will retry")
                 self._schedule_flush(room, FLUSH_RETRY_DELAY)
+                if raise_errors:
+                    raise
                 return
             if newer is None:
                 room.persisted_rev = data.get("rev", 0)
                 return
             # Another process saved a newer version: it wins. Take it, and have
             # every client reload rather than guess how the two fit together.
+            # (Not under the room's lock, which `forget` holds while it
+            # flushes: `mutate` has no await between reading `room.data` and
+            # replacing it, so this can't land in the middle of an edit.)
             logger.warning(f"{room.ref} was changed elsewhere; reloading it")
-            async with room.lock:
-                room.data = room.doctype.model.model_validate(newer).model_dump(mode="json")
-                room.persisted_rev = room.data.get("rev", 0)
-                room.dirty = False
+            room.data = room.doctype.model.model_validate(newer).model_dump(mode="json")
+            room.persisted_rev = room.data.get("rev", 0)
+            room.dirty = False
             await self._broadcast({"type": "doc", "doc": room.ref, "reset": True})
 
     async def flush_all(self) -> None:
@@ -291,12 +292,19 @@ class DocHub:
 
     async def forget(self, kind: str, doc_id: str, announce: bool = True) -> None:
         """Saves a document and lets go of it: the document is about to be
-        moved or deleted, so clients still showing it are told it is gone."""
+        moved or deleted, so clients still showing it are told it is gone.
+        Under the room's lock, so no command lands between the last save and
+        letting go (one that was waiting for the lock finds the room closed
+        and asks again). Raises if the save failed: then the room is kept and
+        its save retried, and whatever was about to happen to the document
+        must not."""
+        doc_id = sanitize_id(doc_id)
         room = self._rooms.get((kind, doc_id))
         if room is None:
             return
-        await self._flush(room)
-        self._rooms.pop((kind, doc_id), None)
+        async with room.lock:
+            await self._flush(room, raise_errors=True)
+            self._close(room)
         if announce:
             event = {"type": "gone", "doc": room.ref}
             await self._broadcast(event)
@@ -307,12 +315,47 @@ class DocHub:
         document was deleted or moved: a command that reached it between
         `forget` and the move would have loaded it again from the old place,
         and its pending save would put the document back there."""
-        room = self._rooms.pop((kind, doc_id), None)
+        room = self._rooms.get((kind, sanitize_id(doc_id)))
         if room is not None:
-            if room.flush_handle is not None:
-                room.flush_handle.cancel()
-                room.flush_handle = None
-            room.dirty = False
+            self._close(room)
+
+    def _close(self, room: Room) -> None:
+        room.closed = True
+        room.dirty = False
+        if room.flush_handle is not None:
+            room.flush_handle.cancel()
+            room.flush_handle = None
+        key = (room.doctype.kind, room.doc_id)
+        if self._rooms.get(key) is room:
+            del self._rooms[key]
+
+    @contextlib.asynccontextmanager
+    async def released(self, kind: str, doc_ids: Iterable[str]) -> AsyncIterator[None]:
+        """`async with hub.released(kind, ids):` around moving or deleting
+        documents. They are saved and let go of first (`forget`); until the
+        block is over nobody can load them again (a command or a read waits,
+        then finds the document where it is by then); and afterwards anything
+        that did load one in between (a load already under way) is dropped
+        unsaved (`discard`). If saving one fails, the block doesn't run."""
+        keys = list(dict.fromkeys((kind, sanitize_id(doc_id)) for doc_id in doc_ids))
+        done = asyncio.Event()
+        for key in keys:
+            self._releasing[key] = done
+        try:
+            # A save that fails raises here, before the block, and leaves
+            # that document (and the ones after it) held and still to be saved.
+            for _, doc_id in keys:
+                await self.forget(kind, doc_id)
+            try:
+                yield
+            finally:
+                for key in keys:
+                    self.discard(*key)
+        finally:
+            for key in keys:
+                if self._releasing.get(key) is done:
+                    del self._releasing[key]
+            done.set()
 
     async def unload_idle(self) -> None:
         now = time.monotonic()

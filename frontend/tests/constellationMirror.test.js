@@ -144,7 +144,7 @@ describe('GM renderer feeding the screen', () => {
     canvas.dispatchEvent(mouse(canvas, 'pointermove', 100, 100))
     expect(onChange).toHaveBeenCalled()
     onChange.mockClear()
-    simulation.on('tick')()
+    simulation.on('tick.canvas')()
     expect(onChange).toHaveBeenCalledTimes(1)
   })
 

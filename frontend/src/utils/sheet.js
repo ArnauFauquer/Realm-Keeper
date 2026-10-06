@@ -3,6 +3,7 @@
 // component draws. backend/services/sheet_parser.py spec_from_body does the
 // same; both are checked against the shared cases in
 // backend/tests/fixtures/sheet-bodies/, so a change here needs the same there.
+import { OBSERVATORY_IMAGE_PREFIX } from '@/utils/docTypes'
 
 export const SHEET_TYPES = ['character', 'adversary']
 
@@ -12,9 +13,14 @@ export const MAX_COLUMNS = 12
 /** A character keeps a saved value per counter. */
 export const MAX_COUNTERS = 24
 
-const IMAGE_URL_PREFIX = '/api/observatory/images/'
-// An Observatory image's file name: its uid, then its name ("1a2b3c4d-boar.png").
-const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^/]+\.(png|jpe?g|webp|gif|svg)$/i
+// An Observatory image's file name: its uid (lower-case hex, as the backend
+// gives and reads it), then its name with an image's extension, in any case
+// ("1a2b3c4d-boar.PNG").
+const IMAGE_FILE_NAME = /^[0-9a-f]{8}-[^/]+\.(png|jpe?g|webp|gif|svg)$/
+const isImageFileName = (name) => {
+  const dot = name.lastIndexOf('.')
+  return dot !== -1 && IMAGE_FILE_NAME.test(name.slice(0, dot) + name.slice(dot).toLowerCase())
+}
 
 function text(value) {
   if (value === null || value === undefined) return null
@@ -32,9 +38,9 @@ const quoteName = (name) =>
 export function normalizeImage(value) {
   const image = text(value)
   if (!image) return [null, null]
-  const marker = image.indexOf(IMAGE_URL_PREFIX)
+  const marker = image.indexOf(OBSERVATORY_IMAGE_PREFIX)
   if (marker !== -1) return [image.slice(marker), null]
-  if (IMAGE_FILE_NAME.test(image)) return [IMAGE_URL_PREFIX + quoteName(image), null]
+  if (isImageFileName(image)) return [OBSERVATORY_IMAGE_PREFIX + quoteName(image), null]
   if (/^https?:\/\//i.test(image)) return [image, null]
   return [null, 'image must be the URL of an Observatory image, as copied from the Observatory']
 }
@@ -101,6 +107,14 @@ export function sheetFromDoc(doc, type) {
     },
     warnings
   }
+}
+
+/** Where a counter of a sheet starts: its `start`, or its max, within its
+ * range. A sheet keeps `start` as written (`{ max: 3, start: 9 }`), and the
+ * backend starts such a counter at 3 (services/sheet_docs.py), so this does too. */
+export function counterStart(spec) {
+  const min = spec.min ?? 0
+  return Math.max(min, Math.min(spec.max, spec.start ?? spec.max))
 }
 
 /** What is wrong with a sheet, for its author: the server refuses it as long

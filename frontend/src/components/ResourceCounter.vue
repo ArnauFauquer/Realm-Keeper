@@ -14,7 +14,7 @@
     </button>
 
     <span v-if="shape === 'pips'" class="rc-pips" role="img" :aria-label="`${name}: ${current} of ${max}`">
-      <span v-for="n in max" :key="n" class="rc-pip" :class="{ filled: n <= current }"></span>
+      <span v-for="n in steps" :key="n" class="rc-pip" :class="{ filled: n <= current - min }"></span>
     </span>
     <span v-else-if="shape === 'bar'" class="rc-bar" role="img" :aria-label="`${name}: ${current} of ${max}`">
       <span class="rc-bar-fill" :style="{ width: `${fillPercent}%` }"></span>
@@ -57,11 +57,15 @@ const emit = defineEmits(['adjust'])
 
 const MAX_PIPS = 12
 
+// A pip per step from min to max: a counter from 1 to 5 has four, all empty
+// at 1, as its bar would be.
+const steps = computed(() => Math.max(0, props.max - props.min))
+
 const shape = computed(() => {
   if (props.display === 'pips' || props.display === 'bar' || props.display === 'number') {
-    return props.display === 'pips' && props.max > 24 ? 'bar' : props.display
+    return props.display === 'pips' && steps.value > 24 ? 'bar' : props.display
   }
-  return props.max <= MAX_PIPS ? 'pips' : 'bar'
+  return steps.value <= MAX_PIPS ? 'pips' : 'bar'
 })
 
 const fillPercent = computed(() => {

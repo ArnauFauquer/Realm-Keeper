@@ -1,11 +1,24 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }))
-vi.mock('@/api/http', () => ({ post }))
+vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
+// A live document as useSyncedDoc shares it: whatever id the modal follows,
+// with the copy `liveDocs` holds for it.
+const { liveDocs, followed } = vi.hoisted(() => ({ liveDocs: {}, followed: [] }))
+vi.mock('@/composables/useSyncedDoc', async () => {
+  const { computed: c, ref: r, watch: w } = await import('vue')
+  return {
+    useSyncedDocFollowing: (kind, id) => {
+      const current = r(null)
+      w(id, (wanted) => { current.value = wanted; if (wanted) followed.push(`${kind}:${wanted}`) }, { immediate: true })
+      return { doc: c(() => (current.value ? liveDocs[current.value]?.value ?? null : null)), status: c(() => 'ready') }
+    }
+  }
+})
 
 const DocumentModal = (await import('@/components/DocumentModal.vue')).default
 const { createModalState } = await import('@/composables/useModalState')
@@ -57,6 +70,8 @@ async function openOn(wrapper, id) {
 }
 
 beforeEach(() => {
+  for (const key of Object.keys(liveDocs)) delete liveDocs[key]
+  followed.length = 0
   api = fakeApi()
   modal = createModalState()
   observatory.close()
@@ -110,14 +125,30 @@ describe('DocumentModal — a document edited whole and saved', () => {
 
     const [id, body] = api.save.mock.calls[0]
     expect(id).toBe('regions/tavern')
-    expect(Object.keys(body).sort()).toEqual(['annotations', 'description', 'name', 'paths', 'pins'])
+    expect(Object.keys(body).sort()).toEqual(['annotations', 'base_updated_at', 'description', 'name', 'paths', 'pins'])
     expect(body.pins.map((p) => p.id)).toEqual(['p', 'q'])
     expect(buttonByText(wrapper, 'Saved')).toBeDefined()
   })
 
-  it('keeps the changes unsaved when saving fails', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    api.save.mockRejectedValue(new Error('storage down'))
+  it('says when the document changed elsewhere, and a second Save overwrites it', async () => {
+    api.save.mockRejectedValueOnce({ message: 'x', response: { status: 409, data: { detail: 'changed' } } })
+    const { wrapper, slotProps } = mountModal()
+    await openOn(wrapper, 'regions/tavern')
+    slotProps.markDirty()
+    await nextTick()
+    await buttonByText(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.modal-header [role="alert"]').text()).toMatch(/Changed elsewhere/)
+    expect(api.save.mock.calls[0][1]).toHaveProperty('base_updated_at')
+
+    await buttonByText(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(api.save.mock.calls[1][1]).not.toHaveProperty('base_updated_at')
+    expect(wrapper.find('.modal-header [role="alert"]').exists()).toBe(false)
+  })
+
+  it('keeps the changes unsaved when saving fails, and says why', async () => {
+    api.save.mockRejectedValueOnce({ message: 'x', response: { data: { detail: 'Storage is down' } } })
     const { wrapper, slotProps } = mountModal()
     await openOn(wrapper, 'regions/tavern')
     slotProps.markDirty()
@@ -125,6 +156,27 @@ describe('DocumentModal — a document edited whole and saved', () => {
     await buttonByText(wrapper, 'Save').trigger('click')
     await flushPromises()
     expect(buttonByText(wrapper, 'Save').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('.modal-header [role="alert"]').text()).toBe('Not saved: Storage is down')
+
+    await buttonByText(wrapper, 'Save').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.modal-header [role="alert"]').exists()).toBe(false)
+  })
+
+  it('keeps unsaved what changed while the save was on its way', async () => {
+    let finish
+    api.save.mockReturnValueOnce(new Promise((resolve) => { finish = resolve }))
+    const { wrapper, slotProps } = mountModal()
+    await openOn(wrapper, 'regions/tavern')
+    slotProps.markDirty()
+    await nextTick()
+    await buttonByText(wrapper, 'Save').trigger('click')
+    slotProps.doc.pins.push({ id: 'q', x: 3, y: 4, name: 'Door' }) // after the save was sent
+    slotProps.markDirty()
+    finish({})
+    await flushPromises()
+    expect(buttonByText(wrapper, 'Save').attributes('disabled')).toBeUndefined()
+    expect(buttonByText(wrapper, 'Saved')).toBeUndefined()
   })
 
   it('asks before throwing away unsaved changes, on close and on going back', async () => {
@@ -162,6 +214,16 @@ describe('DocumentModal — a document edited whole and saved', () => {
     expect(api.setAsset).toHaveBeenCalledWith('regions/tavern', 'image', '/api/observatory/images/1a2b3c4d-new.png')
     expect(slotProps.doc.image_url).toBe('/api/observatory/images/1a2b3c4d-new.png')
     expect(buttonByText(wrapper, 'Saved')).toBeDefined() // not something left to Save
+  })
+
+  it('says so when its picture cannot be changed', async () => {
+    api.setAsset.mockRejectedValueOnce({ response: { data: { detail: 'Not an Observatory image' } } })
+    const { wrapper, slotProps } = mountModal()
+    await openOn(wrapper, 'regions/tavern')
+    await slotProps.setAsset('image', 'https://example.com/x.png')
+    await nextTick()
+    expect(wrapper.find('.modal-header [role="alert"]').text()).toBe('Picture not changed: Not an Observatory image')
+    expect(slotProps.doc.image_url).toBe(MAP)
   })
 
   it('copies the reference to paste into a note', async () => {
@@ -256,11 +318,16 @@ describe('DocumentModal — a live document', () => {
     expect(buttonByText(wrapper, 'Go live')).toBeUndefined()
   })
 
-  it('finds the name of a document opened by id from the listing', async () => {
-    api.fetchAll.mockResolvedValue([{ id: 'fight', name: 'The big fight' }])
+  it('takes its name from the live document, and follows a rename', async () => {
+    liveDocs.fight = ref({ id: 'fight', rev: 1, name: 'The big fight' })
     const { wrapper } = mountModal(DOC_TYPES.encounter)
     await openOn(wrapper, 'fight')
+    expect(followed).toEqual(['encounter:fight'])
+    expect(api.fetchAll).not.toHaveBeenCalled()
     expect(wrapper.find('.modal-header').text()).toContain('The big fight')
+    liveDocs.fight.value.name = 'The bigger fight'
+    await nextTick()
+    expect(wrapper.find('.modal-header').text()).toContain('The bigger fight')
   })
 
   it('goes back and closes without asking anything', async () => {
@@ -279,6 +346,32 @@ describe('DocumentModal — a live document', () => {
 })
 
 describe('DocumentModal — where it is opened from', () => {
+  it('switches to another document asked for while one is open', async () => {
+    api.fetch.mockImplementation(async (id) => chart({ id, name: id === 'b' ? 'Bee' : 'Ay' }))
+    const { wrapper } = mountModal()
+    await openOn(wrapper, 'a')
+    await openOn(wrapper, 'b') // picked in Ctrl+K, over the first
+    expect(api.fetch).toHaveBeenLastCalledWith('b')
+    expect(wrapper.find('.editor-view').text()).toBe('editing:b:Bee')
+    expect(modal.targetId.value).toBeNull()
+  })
+
+  it('asks before leaving unsaved changes for another document, and stays if told no', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+    api.fetch.mockImplementation(async (id) => chart({ id, name: id }))
+    const { wrapper, slotProps } = mountModal()
+    await openOn(wrapper, 'a')
+    slotProps.markDirty()
+    await openOn(wrapper, 'b')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(wrapper.find('.editor-view').text()).toBe('editing:a:a')
+
+    confirm.mockReturnValue(true)
+    await openOn(wrapper, 'b')
+    expect(wrapper.find('.editor-view').text()).toBe('editing:b:b')
+    expect(buttonByText(wrapper, 'Saved')).toBeDefined()
+  })
+
   it('opens the Observatory instead when it is not opened on a document', async () => {
     const { wrapper } = mountModal()
     modal.open()

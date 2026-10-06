@@ -1,24 +1,11 @@
 <template>
   <div class="tracker">
-    <div v-if="status === 'loading'" class="tracker-state" role="status">
-      <span class="rk-spinner rk-spinner--lg"></span>
-      <span>Loading encounter...</span>
-    </div>
-    <div v-else-if="status === 'gone'" class="tracker-state" role="alert">
-      <span class="mdi mdi-file-question-outline"></span>
-      <span>This encounter was moved or deleted. Look for it in the Observatory.</span>
-    </div>
-    <div v-else-if="status === 'error'" class="tracker-state tracker-error" role="alert">
-      <span class="mdi mdi-alert-circle-outline"></span>
-      <span>{{ error }}</span>
-    </div>
+    <LiveDocumentState v-if="unavailable" class="tracker-state" :status="status" :error="error" noun="encounter" />
 
     <template v-else-if="doc">
       <div class="tracker-bar">
         <span class="bar-spacer"></span>
-        <span class="live-badge" :class="`live-badge--${syncStatus}`" :title="liveTitle">
-          <span class="mdi mdi-circle-medium"></span>{{ liveLabel }}
-        </span>
+        <LiveBadge />
         <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm" :aria-expanded="adding" @click="adding = !adding">
           <span class="mdi" :class="adding ? 'mdi-close' : 'mdi-plus'"></span> {{ adding ? 'Close' : 'Add' }}
         </button>
@@ -157,10 +144,11 @@ import EncounterAddPanel from './EncounterAddPanel.vue'
 import SheetView from './SheetView.vue'
 import { encountersApi } from '@/api/docs'
 import { fetchSheet } from '@/api/sheets'
-import { useSyncedDoc } from '@/composables/useSyncedDoc'
+import { useLiveDocument } from '@/composables/useLiveDocument'
 import { useCharacters } from '@/composables/useCharacters'
-import { syncStatus } from '@/composables/syncSocket'
 import { combatantsFromSheet, customCombatant, moveBefore } from '@/utils/encounter'
+import LiveBadge from './LiveBadge.vue'
+import LiveDocumentState from './LiveDocumentState.vue'
 
 // One encounter, live: everyone who has it open sees every change as it is
 // made. Nothing here saves; each action is a command (api/docs.js) and the
@@ -173,39 +161,17 @@ const props = defineProps({
 
 const id = props.encounterId
 const { commands } = encountersApi
-const { doc, status, error, commit } = useSyncedDoc('encounter', id, () => encountersApi.fetch(id))
+// Each action is a command (`send`): the event it returns is applied at once.
+const { doc, status, error, actionError, unavailable, attempt, send } = useLiveDocument('encounter', id, () => encountersApi.fetch(id))
 // The saved values of the characters in it: one live document each.
 const characters = useCharacters(() => (doc.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
 const adding = ref(false)
-const actionError = ref('')
 const sheets = reactive({}) // by ref: { status: 'loading' | 'missing' | 'ready', sheet }
 
-const LIVE = {
-  open: ['Live', 'Changes appear for everyone as they are made'],
-  connecting: ['Connecting…', 'Waiting for the connection: changes may be late'],
-  denied: ['Signed out', 'Sign in again to see changes live'],
-  idle: ['Connecting…', '']
-}
-const liveLabel = computed(() => LIVE[syncStatus.value][0])
-const liveTitle = computed(() => LIVE[syncStatus.value][1])
 
 const presentCharacters = computed(() => (doc.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
-/** Waits for `work`, and shows what went wrong. True if nothing did. */
-async function attempt(work) {
-  actionError.value = ''
-  try {
-    await work
-    return true
-  } catch (err) {
-    actionError.value = err.response?.data?.detail || err.message
-    return false
-  }
-}
-
-/** Runs a command on this encounter: the event it returns is applied at once. */
-const send = (command) => attempt(commit(command))
 
 const patchCombatant = (c, patch) => send(commands.patchItem(id, 'combatants', c.id, patch))
 
@@ -286,11 +252,13 @@ function addCondition(c, event) {
   if (!name) return
   event.target.value = ''
   const condition = { id: `${Date.now().toString(36)}${conditionSeq++}`, name }
-  patchCombatant(c, { conditions: [...c.conditions, condition] })
+  send(commands.editList(id, 'combatants', c.id, 'conditions', { add: [condition] }))
 }
 
+// Conditions go in and out one by one, never as the whole list: two people
+// adding one at once both add theirs.
 const removeCondition = (c, condition) =>
-  patchCombatant(c, { conditions: c.conditions.filter((item) => item.id !== condition.id) })
+  send(commands.editList(id, 'combatants', c.id, 'conditions', { remove: [condition.id] }))
 
 const addFromSheet = (sheet, count) => send(commands.addItems(id, 'combatants', combatantsFromSheet(sheet, count, doc.value.combatants)))
 
@@ -322,17 +290,7 @@ async function loadSheet(c) {
 }
 
 .tracker-state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
   min-height: 12rem;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.tracker-error {
-  color: var(--status-error);
 }
 
 .tracker-bar {
@@ -353,22 +311,6 @@ async function loadSheet(c) {
 
 .bar-spacer {
   flex: 1;
-}
-
-.live-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.live-badge--open {
-  color: var(--status-success);
-}
-
-.live-badge--connecting,
-.live-badge--denied {
-  color: var(--status-warning);
 }
 
 .tracker-empty {

@@ -11,47 +11,123 @@ import {
   renameTrack as apiRenameTrack,
   streamUrl
 } from '@/api/player'
+import { errorMessage } from '@/api/http'
 
 // Module-level (singleton) state: playback survives closing the player modal
 // or navigating away, since the same <audio> element keeps running.
 const audio = new Audio()
 
+// What the player modal is browsing: an album and its tracks.
 const albums = ref([])
 const currentAlbum = ref(null)
 const tracks = ref([])
-const currentTrackIndex = ref(-1)
+const loadingAlbums = ref(false)
+const loadingTracks = ref(false)
+const albumsError = ref(null)
+const tracksError = ref(null)
+
+// What is playing: the album a track was started from and its tracks (the
+// play queue), kept apart from the album being browsed - opening another
+// album doesn't touch the music, and Next keeps to the album that plays. The
+// track playing is known by its key, so a refreshed track list (an upload,
+// a rename) can't shift it onto another song.
+const queueAlbum = ref(null)
+const playingTracks = ref([])
+const playingKey = ref(null)
+// Keys of playingTracks in shuffled order.
+const shuffleOrder = ref([])
+
 const isPlaying = ref(false)
 const isShuffle = ref(false)
 const isRepeat = ref(false)
-const shuffleOrder = ref([])
-const loadingAlbums = ref(false)
-const loadingTracks = ref(false)
-const error = ref(null)
 const progress = ref(0)
 const duration = ref(0)
 const volume = ref(1)
+// The last track that wouldn't play (blocked autoplay, missing file).
+const playError = ref(null)
 
-const currentTrack = computed(() => tracks.value[currentTrackIndex.value] || null)
+const currentTrack = computed(() => playingTracks.value.find(t => t.key === playingKey.value) || null)
+// Where the playing track is in the album being browsed, -1 if elsewhere.
+const currentTrackIndex = computed(() => playingKey.value ? tracks.value.findIndex(t => t.key === playingKey.value) : -1)
 
-function generateShuffleOrder() {
-  const indices = tracks.value.map((_, i) => i)
-  for (let i = indices.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[indices[i], indices[j]] = [indices[j], indices[i]]
-  }
-  shuffleOrder.value = indices
+function albumOf(key) {
+  return key.slice(0, key.indexOf('/'))
 }
 
+function shuffled(keys) {
+  const order = keys.slice()
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[order[i], order[j]] = [order[j], order[i]]
+  }
+  return order
+}
+
+function generateShuffleOrder() {
+  shuffleOrder.value = shuffled(playingTracks.value.map(t => t.key))
+}
+
+// Makes `list` the play queue. The same album again (a refreshed list) keeps
+// its shuffle order: tracks gone are dropped, new ones come last.
+function setQueue(album, list) {
+  const sameAlbum = queueAlbum.value === album
+  queueAlbum.value = album
+  playingTracks.value = list.slice()
+  if (!sameAlbum) {
+    generateShuffleOrder()
+    return
+  }
+  const keys = new Set(list.map(t => t.key))
+  const kept = shuffleOrder.value.filter(k => keys.has(k))
+  const added = list.map(t => t.key).filter(k => !kept.includes(k))
+  shuffleOrder.value = kept.concat(shuffled(added))
+}
+
+function clearQueue() {
+  queueAlbum.value = null
+  playingTracks.value = []
+  shuffleOrder.value = []
+}
+
+// Starts a track of the queue. Resolves once it plays and rejects if it
+// can't (autoplay blocked, missing file), after noting it in playError. A
+// play cut short by the next one (AbortError) is not a failure.
+function playKey(key) {
+  playingKey.value = key
+  audio.src = streamUrl(key)
+  return started(audio.play(), key)
+}
+
+function started(playing, key) {
+  return Promise.resolve(playing).then(
+    () => { playError.value = null },
+    (e) => {
+      if (e?.name === 'AbortError') return
+      const track = playingTracks.value.find(t => t.key === key)
+      playError.value = `Could not play ${track?.name || key}.`
+      throw e
+    }
+  )
+}
+
+// For the transport buttons and the end of a track, which nobody awaits:
+// the failure is already in playError.
+function quietly(promise) {
+  promise?.catch(() => {})
+}
+
+/** Plays the track at `index` of the album being browsed, which becomes the
+ * play queue. Returns the play() promise: it rejects if the track can't play. */
 function playTrackAt(index) {
-  if (index < 0 || index >= tracks.value.length) return
-  currentTrackIndex.value = index
-  audio.src = streamUrl(tracks.value[index].key)
-  audio.play()
+  if (index < 0 || index >= tracks.value.length) return Promise.resolve()
+  setQueue(currentAlbum.value, tracks.value)
+  return playKey(tracks.value[index].key)
 }
 
 // Plays a track referenced by its key ("Album/filename.mp3"), as used by the
 // song-link buttons rendered from notes. Loads the album's track list first
-// if it isn't the one currently selected.
+// if it isn't the one currently selected. Rejects if the track is missing or
+// won't play, so the link can show it.
 async function playByKey(key) {
   const slashIndex = key.indexOf('/')
   if (slashIndex === -1) throw new Error(`Invalid track key: ${key}`)
@@ -61,45 +137,43 @@ async function playByKey(key) {
   }
   const index = tracks.value.findIndex(t => t.key === key)
   if (index === -1) throw new Error(`Track not found: ${key}`)
-  playTrackAt(index)
+  return playTrackAt(index)
+}
+
+// Nothing started yet: the transport plays the album being browsed.
+function ensureQueue() {
+  if (!playingTracks.value.length && tracks.value.length) setQueue(currentAlbum.value, tracks.value)
+}
+
+// The key `step` places after (1) or before (-1) the playing track, in
+// shuffle order or album order; null past either end. With nothing playing,
+// 1 is the first track.
+function keyAt(step) {
+  if (isShuffle.value) return shuffleOrder.value[shuffleOrder.value.indexOf(playingKey.value) + step] ?? null
+  const index = playingTracks.value.findIndex(t => t.key === playingKey.value)
+  return playingTracks.value[index + step]?.key ?? null
 }
 
 function playNext() {
-  if (!tracks.value.length) return
-  if (isShuffle.value) {
-    const pos = shuffleOrder.value.indexOf(currentTrackIndex.value)
-    const nextPos = pos + 1
-    if (nextPos >= shuffleOrder.value.length) return
-    playTrackAt(shuffleOrder.value[nextPos])
-  } else {
-    const next = currentTrackIndex.value + 1
-    if (next >= tracks.value.length) return
-    playTrackAt(next)
-  }
+  ensureQueue()
+  const key = keyAt(1)
+  if (key) quietly(playKey(key))
+}
+
+function playPrev() {
+  ensureQueue()
+  const key = keyAt(-1)
+  if (key) quietly(playKey(key))
 }
 
 // Called when the current track finishes on its own. Repeat means "loop the
 // track that's playing", separate from the Next button which always advances
 // (skipping manually is not affected by repeat).
 function handleTrackEnded() {
-  if (isRepeat.value) {
-    playTrackAt(currentTrackIndex.value)
+  if (isRepeat.value && playingKey.value) {
+    quietly(playKey(playingKey.value))
   } else {
     playNext()
-  }
-}
-
-function playPrev() {
-  if (!tracks.value.length) return
-  if (isShuffle.value) {
-    const pos = shuffleOrder.value.indexOf(currentTrackIndex.value)
-    const prevPos = pos - 1
-    if (prevPos < 0) return
-    playTrackAt(shuffleOrder.value[prevPos])
-  } else {
-    const prev = currentTrackIndex.value - 1
-    if (prev < 0) return
-    playTrackAt(prev)
   }
 }
 
@@ -114,14 +188,14 @@ let loadAlbumsToken = 0
 async function loadAlbums() {
   const token = ++loadAlbumsToken
   loadingAlbums.value = true
-  error.value = null
+  albumsError.value = null
   try {
     const result = await fetchAlbums()
     if (token !== loadAlbumsToken) return
     albums.value = result
   } catch (e) {
     if (token !== loadAlbumsToken) return
-    error.value = e.response?.data?.detail || 'Could not load albums.'
+    albumsError.value = errorMessage(e, 'Could not load albums.')
   } finally {
     if (token === loadAlbumsToken) loadingAlbums.value = false
   }
@@ -130,35 +204,46 @@ async function loadAlbums() {
 // Guards against out-of-order responses: if selectAlbum is called again
 // (switch album, or a delete/upload triggering a refresh) before an earlier
 // call's fetch resolves, only the most recent call is allowed to commit
-// its result into `tracks`.
+// its result into `tracks`. Browsing only: the music goes on, though a
+// fresh list of the album that plays also refreshes the queue.
 let selectAlbumToken = 0
 
 async function selectAlbum(name) {
   const token = ++selectAlbumToken
   currentAlbum.value = name
   loadingTracks.value = true
-  error.value = null
+  tracksError.value = null
   try {
     const result = await fetchTracks(name)
     if (token !== selectAlbumToken) return
     tracks.value = result
-    currentTrackIndex.value = -1
-    generateShuffleOrder()
+    if (name === queueAlbum.value) setQueue(name, result)
   } catch (e) {
     if (token !== selectAlbumToken) return
-    error.value = e.response?.data?.detail || 'Could not load tracks.'
+    tracksError.value = errorMessage(e, 'Could not load tracks.')
     tracks.value = []
   } finally {
     if (token === selectAlbumToken) loadingTracks.value = false
   }
 }
 
+// After a change to an album's tracks: refetch it if it is browsed or plays.
+async function refreshAlbum(album) {
+  if (album === currentAlbum.value) {
+    await selectAlbum(album)
+  } else if (album === queueAlbum.value) {
+    const result = await fetchTracks(album)
+    if (album === queueAlbum.value) setQueue(album, result)
+  }
+}
+
 function togglePlay() {
   if (!currentTrack.value) {
-    if (tracks.value.length) playTrackAt(0)
+    if (tracks.value.length) quietly(playTrackAt(0))
     return
   }
-  if (audio.paused) audio.play()
+  // Resumes where it was paused.
+  if (audio.paused) quietly(started(audio.play(), playingKey.value))
   else audio.pause()
 }
 
@@ -183,7 +268,7 @@ function setVolume(v) {
 function resetPlayback() {
   audio.pause()
   audio.removeAttribute('src')
-  currentTrackIndex.value = -1
+  playingKey.value = null
 }
 
 async function createAlbum(name) {
@@ -196,51 +281,62 @@ async function deleteAlbum(name) {
   if (currentAlbum.value === name) {
     currentAlbum.value = null
     tracks.value = []
+  }
+  if (queueAlbum.value === name) {
     resetPlayback()
+    clearQueue()
   }
   await loadAlbums()
 }
 
+// Renaming changes every track key of the album, so its music stops: the
+// track playing would be streamed from a key that no longer exists.
 async function renameAlbum(oldName, newName) {
   await apiRenameAlbum(oldName, newName)
-  if (currentAlbum.value === oldName) {
+  if (queueAlbum.value === oldName) {
     resetPlayback()
-    await selectAlbum(newName)
+    clearQueue()
   }
+  if (currentAlbum.value === oldName) await selectAlbum(newName)
   await loadAlbums()
 }
 
-async function uploadTrack(file, onProgress) {
-  if (!currentAlbum.value) return
-  await apiUploadTrack(currentAlbum.value, file, onProgress)
-  await selectAlbum(currentAlbum.value)
+/** Uploads into `album` - the one browsed when the upload began, so that
+ * switching albums during a batch doesn't send the rest elsewhere. */
+async function uploadTrack(file, onProgress, album = currentAlbum.value) {
+  if (!album) return
+  await apiUploadTrack(album, file, onProgress)
+  await refreshAlbum(album)
 }
 
 async function deleteTrack(track) {
-  const wasCurrent = currentTrack.value?.key === track.key
+  const wasCurrent = playingKey.value === track.key
   await apiDeleteTrack(track.key)
   if (wasCurrent) resetPlayback()
-  await selectAlbum(currentAlbum.value)
+  await refreshAlbum(albumOf(track.key))
 }
 
 async function moveTrack(track, destAlbum) {
-  const wasCurrent = currentTrack.value?.key === track.key
+  const wasCurrent = playingKey.value === track.key
+  const source = albumOf(track.key)
   await apiMoveTrack(track.key, destAlbum)
   if (wasCurrent) resetPlayback()
-  await selectAlbum(currentAlbum.value)
+  await refreshAlbum(source)
+  if (destAlbum !== source) await refreshAlbum(destAlbum)
 }
 
 async function renameTrack(track, newName) {
-  const wasCurrent = currentTrack.value?.key === track.key
+  const wasCurrent = playingKey.value === track.key
   await apiRenameTrack(track.key, newName)
   if (wasCurrent) resetPlayback()
-  await selectAlbum(currentAlbum.value)
+  await refreshAlbum(albumOf(track.key))
 }
 
 export function usePlayer() {
   return {
     albums, currentAlbum, tracks, currentTrack, currentTrackIndex,
-    isPlaying, isShuffle, isRepeat, loadingAlbums, loadingTracks, error,
+    queueAlbum, playingTracks, playingKey,
+    isPlaying, isShuffle, isRepeat, loadingAlbums, loadingTracks, albumsError, tracksError, playError,
     progress, duration, volume,
     loadAlbums, selectAlbum, playTrackAt, playByKey, togglePlay, playNext, playPrev,
     toggleShuffle, toggleRepeat, seek, setVolume,

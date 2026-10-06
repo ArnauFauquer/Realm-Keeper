@@ -10,6 +10,7 @@
         :show-save="saved"
         :has-unsaved-changes="hasUnsavedChanges"
         :saving="saving"
+        :save-error="saveError"
         :show-send-to-screen="!!kind.screen"
         :can-send-to-screen="!!activeDoc?.[kind.imageField]"
         :sending-to-screen="sendingToScreen"
@@ -62,9 +63,11 @@ import { computed, ref, watch } from 'vue'
 import DocumentModalHeader from './DocumentModalHeader.vue'
 import { folderOf, useObservatoryModal } from '@/composables/useObservatoryModal'
 import { useLiveScreen } from '@/composables/useLiveScreen'
+import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { docRefMarkdown } from '@/utils/inlineRefs'
 import { savePayload, screenPayload } from '@/utils/docTypes'
+import { errorMessage } from '@/api/http'
 
 // The editor every kind of document shares, opened on one document (from the
 // Observatory, a note's embed, a sheet's "Open it"): its header, and the
@@ -96,12 +99,27 @@ const isOpen = computed(() => props.modal.isOpen.value)
 const observatory = useObservatoryModal()
 
 const activeId = ref(null)
-const activeName = ref(null)
 const activeDoc = ref(null)
 const loadingDoc = ref(false)
 const loadError = ref(null)
 const hasUnsavedChanges = ref(false)
 const saving = ref(false)
+// What went wrong with the last save (or picture), shown in the header until
+// the next one works.
+const saveError = ref(null)
+// Counts the editor's changes: a save only marks the document saved if
+// nothing changed while it was on its way.
+let edits = 0
+// Set when a save was refused because the document changed elsewhere since it
+// was opened (another tab, another GM): Save again overwrites it.
+let overwrite = false
+
+// A live document is its editor's, and the same copy (useSyncedDoc shares it)
+// gives the header its name, which follows a rename made anywhere.
+const liveDoc = useSyncedDocFollowing(
+  props.kind.type, () => (!saved && isOpen.value ? activeId.value : null), (id) => props.api.fetch(id)
+)
+const activeName = computed(() => (saved ? activeDoc.value?.name : liveDoc.doc.value?.name) || null)
 
 // What the screen shows is the document as it is right now, saved or not.
 const screen = props.kind.screen
@@ -113,25 +131,37 @@ const { confirmDiscard } = useUnsavedChangesGuard(
   hasUnsavedChanges, `You have unsaved changes to this ${props.kind.label}. Discard them?`
 )
 
-watch(isOpen, (open) => {
+// Opened on a document, or asked for another while open (a chart picked in
+// Ctrl+K while one is being edited): the one asked for is taken, and cleared.
+watch(() => [isOpen.value, props.modal.targetId.value], ([open, target], [wasOpen]) => {
   if (!open) return
-  const target = props.modal.targetId.value
-  props.modal.targetId.value = null
   if (target) {
-    openItem(target)
-  } else {
+    props.modal.targetId.value = null
+    switchTo(target)
+  } else if (!wasOpen) {
     // Nothing to edit: the documents are found in the Observatory.
     props.modal.close()
     observatory.open()
   }
 })
 
+function switchTo(id) {
+  if (id === activeId.value) return
+  if (activeId.value) {
+    // Leaving the one open, as Close would, except the modal stays.
+    if (!confirmDiscard()) return
+    stopLive({ revert: hasUnsavedChanges.value })
+  }
+  openItem(id)
+}
+
 function reset() {
   activeId.value = null
-  activeName.value = null
   activeDoc.value = null
   loadError.value = null
+  saveError.value = null
   hasUnsavedChanges.value = false
+  overwrite = false
 }
 
 function leave() {
@@ -152,17 +182,10 @@ function backToObservatory() {
   observatory.open(folder)
 }
 
-async function openItem(id) {
+function openItem(id) {
   reset()
   activeId.value = id
-  if (saved) return loadDoc(id)
-  // Opened by id: its name is what the header shows, and the listing has it.
-  try {
-    const all = await props.api.fetchAll()
-    if (activeId.value === id) activeName.value = all.find((item) => item.id === id)?.name || null
-  } catch {
-    // The editor shows the problem if there is one; the header just has no title.
-  }
+  if (saved) loadDoc(id)
 }
 
 async function loadDoc(id) {
@@ -171,26 +194,43 @@ async function loadDoc(id) {
     const doc = await props.api.fetch(id)
     if (activeId.value !== id) return // moved on while it loaded
     activeDoc.value = doc
-    activeName.value = doc.name
     hasUnsavedChanges.value = false
   } catch (err) {
-    loadError.value = err.response?.data?.detail || err.message
+    loadError.value = errorMessage(err)
   } finally {
     loadingDoc.value = false
   }
 }
 
-const markDirty = () => { hasUnsavedChanges.value = true }
+const markDirty = () => {
+  edits += 1
+  hasUnsavedChanges.value = true
+}
 
 async function saveNow() {
   const doc = activeDoc.value
   if (!doc || saving.value) return
   saving.value = true
+  const sent = edits
   try {
-    await props.api.save(doc.id, savePayload(props.kind, doc))
-    hasUnsavedChanges.value = false
+    // The copy this was edited from: the server refuses the save (409) if the
+    // stored one is no longer it, rather than silently undo the other save.
+    const base = overwrite ? {} : { base_updated_at: doc.updated_at ?? null }
+    const stored = await props.api.save(doc.id, { ...savePayload(props.kind, doc), ...base })
+    doc.updated_at = stored?.updated_at ?? doc.updated_at
+    overwrite = false
+    if (activeDoc.value !== doc) return // another one is open now
+    saveError.value = null
+    // Changed while the save was on its way: those changes are still unsaved.
+    if (edits === sent) hasUnsavedChanges.value = false
   } catch (err) {
-    console.error(`Failed to save ${props.kind.label}:`, err)
+    if (activeDoc.value !== doc) return
+    if (err.response?.status === 409) {
+      overwrite = true
+      saveError.value = 'Changed elsewhere since you opened it. Save again to overwrite it.'
+    } else {
+      saveError.value = `Not saved: ${errorMessage(err)}`
+    }
   } finally {
     saving.value = false
   }
@@ -204,8 +244,11 @@ async function setAsset(route, url) {
   try {
     const updated = await props.api.setAsset(doc.id, route, url)
     doc[props.kind.imageField] = updated[props.kind.imageField]
+    // Stored anew: the next save is over this copy.
+    doc.updated_at = updated.updated_at ?? doc.updated_at
+    if (activeDoc.value === doc) saveError.value = null
   } catch (err) {
-    console.error(`Failed to set the ${props.kind.label}'s picture:`, err)
+    if (activeDoc.value === doc) saveError.value = `Picture not changed: ${errorMessage(err)}`
   }
 }
 </script>

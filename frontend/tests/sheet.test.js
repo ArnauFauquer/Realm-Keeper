@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { normalizeImage, SHEET_TEMPLATES, sheetFromDoc, sheetProblems } from '@/utils/sheet'
+import { counterStart, normalizeImage, SHEET_TEMPLATES, sheetFromDoc, sheetProblems } from '@/utils/sheet'
 
 // The same files backend/tests/test_sheets.py checks: both sides must draw a
 // document's sheet alike, or a sheet would show one thing in a note and
@@ -67,5 +67,19 @@ describe('normalizeImage', () => {
   it('refuses a path that is not an Observatory image', () => {
     expect(normalizeImage('Bestiary/boar.png')).toEqual([null, expect.stringMatching(/Observatory/)])
     expect(normalizeImage('')).toEqual([null, null])
+  })
+
+  it('knows a file name by its uid as the backend does: lower-case hex, any case of extension', () => {
+    expect(normalizeImage('1a2b3c4d-boar.PNG')[0]).toBe('/api/observatory/images/1a2b3c4d-boar.PNG')
+    expect(normalizeImage('1A2B3C4D-boar.png')).toEqual([null, expect.stringMatching(/Observatory/)])
+  })
+})
+
+describe('counterStart', () => {
+  it('starts a counter at its start, or its max, within its range (as the backend does)', () => {
+    expect(counterStart({ max: 6 })).toBe(6)
+    expect(counterStart({ max: 6, start: 2 })).toBe(2)
+    expect(counterStart({ max: 3, start: 9 })).toBe(3)
+    expect(counterStart({ max: 3, min: 1, start: -4 })).toBe(1)
   })
 })

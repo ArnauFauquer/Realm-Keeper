@@ -9,6 +9,24 @@
   />
 </template>
 
+<script>
+// A grid's default values, the same as backend models/battlemap.py's Grid:
+// change them together.
+export const GRID_DEFAULTS = Object.freeze({
+  type: 'square',
+  size: 70,
+  offset_x: 0,
+  offset_y: 0,
+  snap: true,
+  visible: true,
+  color: '#ffffff',
+  opacity: 0.25,
+  distance: 1,
+  unit: 'cell',
+  measure: 'grid'
+})
+</script>
+
 <script setup>
 import { computed } from 'vue'
 import BattlemapCanvas from './BattlemapCanvas.vue'
@@ -21,9 +39,5 @@ const props = defineProps({
 })
 
 // A projection carries the grid's public fields; the rest take their usual values.
-const grid = computed(() => ({
-  type: 'square', size: 70, offset_x: 0, offset_y: 0, visible: true, color: '#ffffff', opacity: 0.25,
-  distance: 1, unit: 'cell', measure: 'grid',
-  ...props.state.grid
-}))
+const grid = computed(() => ({ ...GRID_DEFAULTS, ...props.state.grid }))
 </script>

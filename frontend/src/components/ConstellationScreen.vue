@@ -16,8 +16,7 @@
  * (the same shape for a frozen "send to screen" and for live updates).
  */
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCached } from '@/api/http'
-import { apiUrl } from '@/config/env'
+import { fetchGraph } from '@/composables/useGraphData'
 import { getNodeColor } from '@/config/nodeColors'
 import {
   applyPositions,
@@ -97,8 +96,8 @@ function start() {
 
 onMounted(async () => {
   try {
-    rawGraph = await getCached(`${apiUrl}/api/graph/all`, { useCache: false })
-    if (!rawGraph?.nodes || !rawGraph?.links) throw new Error('Invalid graph data')
+    // Fresh: a screen is often opened long after the graph was last read.
+    rawGraph = await fetchGraph({ fresh: true })
     start()
   } catch (err) {
     console.error('Failed to load constellation for screen:', err)

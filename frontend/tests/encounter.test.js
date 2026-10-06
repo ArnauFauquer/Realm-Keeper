@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  combatantsFromSheet, counterFromSpec, customCombatant, moveBefore
+  MAX_COPIES, combatantsFromSheet, copiesCount, counterFromSpec, customCombatant, moveBefore
 } from '@/utils/encounter'
 
 const BUGBOAR = {
@@ -19,6 +19,11 @@ describe('counterFromSpec', () => {
     expect(counterFromSpec({ max: 3, start: 0, min: 0 }).current).toBe(0)
     expect(counterFromSpec({ max: 3, start: 2, color: 'gold' })).toMatchObject({ current: 2, color: 'gold' })
   })
+
+  it('starts within the range, as the backend starts a character (sheet_docs.py)', () => {
+    expect(counterFromSpec({ max: 3, start: 9 }).current).toBe(3)
+    expect(counterFromSpec({ max: 3, min: 1, start: -2 }).current).toBe(1)
+  })
 })
 
 describe('combatantsFromSheet', () => {
@@ -36,12 +41,23 @@ describe('combatantsFromSheet', () => {
     const existing = [{ sheet: BUGBOAR.ref }, { sheet: BUGBOAR.ref }]
     expect(combatantsFromSheet(BUGBOAR, 2, existing).map((c) => c.name)).toEqual(['Bugboar 3', 'Bugboar 4'])
     expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref }])[0].name).toBe('Bugboar 2')
+    // after the highest number left, never a second "Bugboar 3"
+    const gap = [{ sheet: BUGBOAR.ref, name: 'Bugboar 1' }, { sheet: BUGBOAR.ref, name: 'Bugboar 3' }]
+    expect(combatantsFromSheet(BUGBOAR, 1, gap)[0].name).toBe('Bugboar 4')
+    expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, name: 'Bugboar' }])[0].name).toBe('Bugboar 2')
+    expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, name: 'The boss' }])[0].name).toBe('Bugboar 2')
     // a character that happens to share the id is not a copy
     expect(combatantsFromSheet(BUGBOAR, 1, [{ sheet: BUGBOAR.ref, type: 'character' }])[0].name).toBe('Bugboar')
   })
 
   it('adds a character once, with no counters, and no image the screen could not load', () => {
     expect(combatantsFromSheet(ARIA, 5)).toEqual([{ name: 'Aria', type: 'character', sheet: 'aria', image_url: null }])
+  })
+})
+
+describe('copiesCount', () => {
+  it('is a whole number of copies, 1 to MAX_COPIES, whatever was typed', () => {
+    expect([copiesCount('3'), copiesCount(2.7), copiesCount(''), copiesCount(-4), copiesCount(999)]).toEqual([3, 2, 1, 1, MAX_COPIES])
   })
 })
 
