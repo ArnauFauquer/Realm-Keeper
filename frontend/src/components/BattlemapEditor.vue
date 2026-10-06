@@ -223,6 +223,7 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
+import { TOKEN_COLORS } from '@/utils/palette'
 import { errorMessage } from '@/api/http'
 import { screenApi } from '@/api/screen'
 import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
@@ -249,7 +250,7 @@ const { doc: encounter } = useSyncedDocFollowing('encounter', () => doc.value?.e
 const characters = useCharacters(() => (encounter.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 
 const TABS = [{ value: 'tokens', label: 'Tokens' }, { value: 'map', label: 'Map' }]
-const COLORS = ['#6d4fc2', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#94a3b8']
+const COLORS = TOKEN_COLORS
 const DEFAULT_COLOR = COLORS[0]
 
 const tab = ref('tokens')

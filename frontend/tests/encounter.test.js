@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  combatantsFromSheet, counterFromSpec, customCombatant, moveBefore
+  MAX_COPIES, combatantsFromSheet, copiesCount, counterFromSpec, customCombatant, moveBefore
 } from '@/utils/encounter'
 
 const BUGBOAR = {
@@ -52,6 +52,12 @@ describe('combatantsFromSheet', () => {
 
   it('adds a character once, with no counters, and no image the screen could not load', () => {
     expect(combatantsFromSheet(ARIA, 5)).toEqual([{ name: 'Aria', type: 'character', sheet: 'aria', image_url: null }])
+  })
+})
+
+describe('copiesCount', () => {
+  it('is a whole number of copies, 1 to MAX_COPIES, whatever was typed', () => {
+    expect([copiesCount('3'), copiesCount(2.7), copiesCount(''), copiesCount(-4), copiesCount(999)]).toEqual([3, 2, 1, 1, MAX_COPIES])
   })
 })
 

@@ -345,6 +345,8 @@ import CanvasEmptyState from './CanvasEmptyState.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { useMapViewport } from '@/composables/useMapViewport'
 import { usePointerDrag } from '@/composables/usePointerDrag'
+import { uuid } from '@/utils/ids'
+import { CHART_COLORS } from '@/utils/palette'
 
 const props = defineProps({
   chart: { type: Object, required: true },
@@ -355,19 +357,15 @@ const props = defineProps({
   zoomable: { type: Boolean, default: true }
 })
 
-// Cycled through in order as paths are created, so each new path reads as
-// distinct from the one before it. DEFAULT_PATH_COLOR covers paths saved
-// before this field existed.
-const PATH_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
-const DEFAULT_PATH_COLOR = PATH_COLORS[0]
-const nextPathColor = computed(() => PATH_COLORS[props.chart.paths.length % PATH_COLORS.length])
-
-// Same palette pins cycle through as they're placed, so consecutive pins
-// read as distinct. DEFAULT_PIN_COLOR covers pins saved before this field
-// existed (it matches their old hard-coded fill).
-const PIN_COLORS = ['#a78bfa', '#22d3ee', '#f472b6', '#34d399', '#fbbf24', '#60a5fa', '#fb7185', '#c084fc']
-const DEFAULT_PIN_COLOR = PIN_COLORS[0]
-const nextPinColor = computed(() => PIN_COLORS[props.chart.pins.length % PIN_COLORS.length])
+// Paths and pins cycle through one palette in order as they are created, so
+// each new one reads as distinct from the one before it. The first colour
+// covers paths and pins saved before they had one (it matches their old
+// hard-coded fill).
+const PIN_COLORS = CHART_COLORS
+const DEFAULT_PATH_COLOR = CHART_COLORS[0]
+const DEFAULT_PIN_COLOR = CHART_COLORS[0]
+const nextPathColor = computed(() => CHART_COLORS[props.chart.paths.length % CHART_COLORS.length])
+const nextPinColor = computed(() => CHART_COLORS[props.chart.pins.length % CHART_COLORS.length])
 const PIN_SCALE_MIN = 0.5
 const PIN_SCALE_MAX = 3
 
@@ -470,10 +468,6 @@ function clientToPercent(evt) {
     x: Math.min(100, Math.max(0, (point.x / naturalWidth.value) * 100)),
     y: Math.min(100, Math.max(0, (point.y / naturalHeight.value) * 100))
   }
-}
-
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 function emitChange() {

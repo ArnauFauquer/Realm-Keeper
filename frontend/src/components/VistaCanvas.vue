@@ -205,6 +205,7 @@ import { resolveUrl } from '@/utils/resolveUrl'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { usePointerDrag } from '@/composables/usePointerDrag'
+import { uuid } from '@/utils/ids'
 import { useImageSize } from '@/composables/useImageSize'
 import CanvasEmptyState from './CanvasEmptyState.vue'
 
@@ -431,10 +432,6 @@ const saturationPct = computed({
   get: () => (selectedAsset.value?.saturation ?? 1) * 100,
   set: (v) => { if (selectedAsset.value) selectedAsset.value.saturation = v / 100 }
 })
-
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
 
 function emitChange() {
   emit('change', {

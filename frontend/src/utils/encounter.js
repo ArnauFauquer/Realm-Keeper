@@ -4,6 +4,12 @@ import { counterStart } from './sheet'
 
 import { OBSERVATORY_IMAGE_PREFIX as LIBRARY_PREFIX } from './docTypes'
 
+/** How many copies of an adversary may be added at once. */
+export const MAX_COPIES = 20
+
+/** A number of copies as typed (anything), within 1 and MAX_COPIES. */
+export const copiesCount = (value) => Math.max(1, Math.min(MAX_COPIES, Math.floor(Number(value)) || 1))
+
 /** A counter as the live documents keep it: its definition plus where it stands. */
 export function counterFromSpec(spec) {
   return {
