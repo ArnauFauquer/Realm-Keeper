@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.4.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.3.0...v0.4.0) (2026-10-06)
+
+
+### ⚠ BREAKING CHANGES
+
+* **sheets:** character and adversary documents hold `sheet` (JSON) instead of `source` (YAML), and PATCH /api/characters/<id> takes `sheet`.
+
+### Features
+
+* **charts:** double-clicking a pin opens its linked note ([#47](https://github.com/ArnauFauquer/Realm-Keeper/issues/47)) ([bda6894](https://github.com/ArnauFauquer/Realm-Keeper/commit/bda689484841c9edf4a2c5f87ff0273632401670))
+* **sheets:** build sheets with a visual builder, stored as JSON ([#49](https://github.com/ArnauFauquer/Realm-Keeper/issues/49)) ([899098e](https://github.com/ArnauFauquer/Realm-Keeper/commit/899098e9ffcf08148b35fccf09228bd690dcc3b3))
+
+
+### Bug Fixes
+
+* architecture review — data-loss races, a non-blocking event loop, and shared building blocks ([#50](https://github.com/ArnauFauquer/Realm-Keeper/issues/50)) ([c535a0d](https://github.com/ArnauFauquer/Realm-Keeper/commit/c535a0d9408fe4c9db733e105b5c5bc7a1bc2873))
+* **observatory:** a card dragged within the gallery is moved, not its thumbnail imported ([#46](https://github.com/ArnauFauquer/Realm-Keeper/issues/46)) ([89c38ea](https://github.com/ArnauFauquer/Realm-Keeper/commit/89c38eafd5b0d2987daa1f870fd2471b5bceeb81))
+
 ## [0.3.0](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.2.3...v0.3.0) (2026-10-05)
 
 
