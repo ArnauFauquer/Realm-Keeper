@@ -34,12 +34,12 @@ import pytest  # noqa: E402
 from botocore.exceptions import ClientError  # noqa: E402
 
 
-class _Body(io.BytesIO):
-    """A response body, as botocore's StreamingBody reads."""
-
-    def iter_chunks(self, chunk_size=1024):
-        while chunk := self.read(chunk_size):
-            yield chunk
+def _Body(data: bytes):
+    """A response body: botocore's own StreamingBody, so the code reads it as
+    it reads S3's. (A look-alike hid that `with body as b` gives the raw
+    urllib3 stream, not the body: 0.4.0 served no image.)"""
+    from botocore.response import StreamingBody
+    return StreamingBody(io.BytesIO(data), len(data))
 
 
 class FakeS3:
