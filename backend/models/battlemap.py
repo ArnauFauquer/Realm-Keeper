@@ -51,6 +51,56 @@ class Token(BaseModel):
     bars: List[str] = Field(default_factory=list, max_length=8)
 
 
+MAX_SIGNAL_POINTS = 64
+# A pointer's stroke longer than this (in ms since it began) is drawn anyway,
+# just as if it had begun again.
+MAX_SIGNAL_TIME = 600_000
+
+
+class SignalPoint(BaseModel):
+    """A point of the map, in cells (like a token's x, y), and when it was
+    pointed at: ms since its stroke began, so a stroke is replayed at the pace
+    it was drawn."""
+    x: float = Field(ge=-MAX_COORD, le=MAX_COORD)
+    y: float = Field(ge=-MAX_COORD, le=MAX_COORD)
+    t: float = Field(0, ge=0, le=MAX_SIGNAL_TIME)
+
+
+class SignalRoll(BaseModel):
+    """A roll made from the sheet of whoever a token stands for, as it is
+    shown over the token: what for, the formula, the total."""
+    label: str = Field("", max_length=80)
+    formula: str = Field("", max_length=200)
+    total: int = Field(ge=-1_000_000, le=1_000_000)
+
+
+class MapSignal(BaseModel):
+    """Something shown on a map for a moment, to everyone looking at it and on
+    the screens, and kept nowhere: a `ping` at a point, the laser `pointer`
+    (sent a few points at a time, as it moves: one `stroke` until `end`), or
+    a `roll` over a token. `source` tells the tab that sent it, so it can skip
+    its own."""
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["ping", "pointer", "roll"]
+    points: List[SignalPoint] = Field(default_factory=list, max_length=MAX_SIGNAL_POINTS)
+    stroke: Optional[str] = Field(None, max_length=40)
+    end: bool = False
+    token: Optional[str] = Field(None, max_length=64)
+    roll: Optional[SignalRoll] = None
+    source: str = Field("", max_length=40)
+
+    @model_validator(mode="after")
+    def _complete(self):
+        if self.kind == "ping" and len(self.points) != 1:
+            raise ValueError("a ping is one point")
+        if self.kind == "pointer" and not self.stroke:
+            raise ValueError("a pointer's points belong to a stroke")
+        if self.kind == "roll" and (not self.token or self.roll is None):
+            raise ValueError("a roll is shown over a token")
+        return self
+
+
 class BattlemapMetadata(BaseModel):
     id: str
     name: str = Field(max_length=120)

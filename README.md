@@ -157,6 +157,18 @@ costs one cell or its length.
   screen**: *Show on the screen* sends the server's view of the map, made
   without them (and without which sheet or combatant a token stands for). The
   screen follows every change — moves, new tokens, counters — a moment later.
+- **Play the sheets from the map.** The *Sheet* tab shows whoever the selected
+  token stands for (double-click a token, or pick anyone in the encounter, on
+  the map or not): their whole sheet, with its counters live (an adversary's
+  own, a character's saved ones), conditions, notes, *defeated*, and a link to
+  edit the sheet. Its rolls are named after the combatant ("Bugboar 2 · Gore"),
+  go to the screen like any roll, and show over the token for a few seconds,
+  for everyone on the map and on the screen (unless the token is hidden).
+- **Point at things.** The pointer tool (`P`; `V` selects, `R` measures): a
+  tap pings a spot, a drag is a laser pointer with a fading trail.
+  Double-clicking the bare map pings too. Everyone with the map open sees it,
+  in the pointer's own player colour and with their name, and so does the
+  screen when it shows this map. Nothing is kept: a ping is not part of the map.
 - Everyone signed in can move any token and change any setting.
 
 **The Observatory** — where everything but the notes lives: one tree of folders

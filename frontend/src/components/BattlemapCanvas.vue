@@ -15,6 +15,7 @@
         :viewBox="`0 0 ${naturalWidth} ${naturalHeight}`"
         preserveAspectRatio="xMidYMid meet"
         @pointerdown="onBackgroundDown"
+        @dblclick="onBackgroundDoubleClick"
       >
         <g ref="groupRef">
           <image :href="resolvedImageUrl" x="0" y="0" :width="naturalWidth" :height="naturalHeight" preserveAspectRatio="none" />
@@ -37,6 +38,7 @@
             @pointerdown.stop="onTokenDown(token, $event)"
             @mousedown.stop.prevent
             @touchstart.stop
+            @dblclick.stop="emit('open', token.id)"
           >
             <title>{{ token.name }}</title>
             <clipPath :id="`clip-${uid}-${token.id}`"><circle :r="radius(token)" /></clipPath>
@@ -71,6 +73,8 @@
               <text class="ruler-label" :font-size="rulerSize" text-anchor="middle" dominant-baseline="central">{{ ruler.label }}</text>
             </g>
           </g>
+
+          <BattlemapSignals v-if="signals" :layer="signals" :grid="grid" :tokens="tokens" />
         </g>
       </svg>
       <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
@@ -84,6 +88,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMapViewport } from '@/composables/useMapViewport'
 import CanvasEmptyState from './CanvasEmptyState.vue'
+import BattlemapSignals from './BattlemapSignals.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
@@ -102,14 +107,21 @@ const props = defineProps({
   tokens: { type: Array, default: () => [] },
   selectedId: { type: String, default: null },
   // 'select': drag tokens, pan the map. 'ruler': measure a distance.
+  // 'pointer': a tap pings, a drag is the laser pointer.
   tool: { type: String, default: 'select' },
   editable: { type: Boolean, default: false },
   // false on /screen: a projection to look at, not to pan around in.
   zoomable: { type: Boolean, default: true },
-  resetKey: { type: String, default: null }
+  resetKey: { type: String, default: null },
+  // What is pointed at on the map, drawn over it (a layer of utils/mapSignals.js).
+  signals: { type: Object, default: null }
 })
 
-const emit = defineEmits(['select', 'moving', 'move'])
+// Besides moving tokens: `open` (a token double-clicked: show whoever it
+// stands for), `ping` (a point tapped with the pointer, or the map
+// double-clicked), `point` (the pointer dragged there) and `release` (let go
+// of). Points are in cells.
+const emit = defineEmits(['select', 'moving', 'move', 'open', 'ping', 'point', 'release'])
 
 const DEFAULT_COLOR = '#6d4fc2'
 const DEFAULT_METER = '#4ade80'
@@ -220,8 +232,41 @@ function rulerPoint(event) {
   return point && cellCenter(props.grid, point.x, point.y)
 }
 
+// ── the pointer ────────────────────────────────────────────────────────────
+
+const cellPoint = (event) => {
+  const point = pointer(event)
+  if (!point) return null
+  const cells = toCells(props.grid, point.x, point.y)
+  return { x: Math.round(cells.x * 100) / 100, y: Math.round(cells.y * 100) / 100 }
+}
+
+const pointing = usePointerDrag({
+  toPoint: cellPoint,
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(point) {
+    emit('point', point)
+  },
+  onEnd(state, { moved }) {
+    if (moved) emit('release')
+    else emit('ping', state.from)
+  },
+  onCancel(_state, { moved }) {
+    if (moved) emit('release')
+  }
+})
+
+function onBackgroundDoubleClick(event) {
+  if (props.tool !== 'select') return
+  const at = cellPoint(event)
+  if (at) emit('ping', at)
+}
+
 function onBackgroundDown(event) {
-  if (props.tool === 'ruler') {
+  if (props.tool === 'pointer') {
+    const from = cellPoint(event)
+    if (from) pointing.start(event, { from })
+  } else if (props.tool === 'ruler') {
     if (event.button) return
     const from = rulerPoint(event)
     if (!from || !measuring.start(event)) return
@@ -265,7 +310,8 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   cursor: grab;
 }
 
-.canvas-svg.tool-ruler {
+.canvas-svg.tool-ruler,
+.canvas-svg.tool-pointer {
   cursor: crosshair;
 }
 
@@ -281,7 +327,8 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   cursor: grabbing;
 }
 
-.canvas-svg.tool-ruler .token {
+.canvas-svg.tool-ruler .token,
+.canvas-svg.tool-pointer .token {
   pointer-events: none;
 }
 

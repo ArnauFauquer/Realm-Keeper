@@ -208,7 +208,9 @@ export function useSyncedDocFollowing(kind, id, fetchFor) {
 
   return {
     doc: computed(() => entry.value?.doc.value ?? null),
-    status: computed(() => entry.value?.status.value ?? 'idle')
+    status: computed(() => entry.value?.status.value ?? 'idle'),
+    /** Runs a command on the document followed and applies the event it returns. */
+    commit: (command) => (entry.value ? entry.value.commit(command) : command)
   }
 }
 

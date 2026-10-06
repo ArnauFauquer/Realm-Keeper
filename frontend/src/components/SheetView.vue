@@ -1,6 +1,6 @@
 <template>
   <div class="sheet-card" :class="`sheet--${sheet.type}`" @click="onClick" @keydown="onKeydown">
-    <header v-if="!compact" class="sheet-head">
+    <header v-if="!compact && showHeader" class="sheet-head">
       <img v-if="imageSrc" :src="imageSrc" :alt="sheet.name" class="sheet-portrait" />
       <div class="sheet-title">
         <div class="sheet-name" :class="{ 'sheet-name--hidden': hideName }">{{ sheet.name }}</div>
@@ -177,8 +177,18 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   // The page around the sheet already shows its name (the note's title):
   // the header keeps it for screen readers only.
-  hideName: { type: Boolean, default: false }
+  hideName: { type: Boolean, default: false },
+  // Whoever shows it has its own header (a battlemap's sheet panel names the
+  // combatant): the sheet starts at its sections.
+  showHeader: { type: Boolean, default: true },
+  // Who rolls, named with each roll ("Bugboar 2 · Gore"): an adversary in an
+  // encounter is one copy of its sheet. The sheet's name without one.
+  rollerName: { type: String, default: null }
 })
+
+// `rolled` ({ label, formula, total }) once a roll from the sheet has landed:
+// a battlemap shows it over the token too.
+const emit = defineEmits(['rolled'])
 
 const TYPE_LABELS = { character: 'Character', adversary: 'Adversary' }
 
@@ -249,8 +259,10 @@ const renderedTexts = computed(() => {
 const block = (text) => renderedTexts.value.get(text) ?? render(text)
 const columnsStyle = (columns) => (columns ? { '--sheet-columns': columns } : null)
 
-function rollFormula(formula, label) {
-  roll(formula, { label: label ? `${props.sheet.name} · ${label}` : props.sheet.name })
+async function rollFormula(formula, label) {
+  const who = props.rollerName || props.sheet.name
+  const result = await roll(formula, { label: label ? `${who} · ${label}` : who })
+  if (result) emit('rolled', { label: label || '', formula, total: result.total })
 }
 
 // Dice written inside a text (`1d8+2`) and links to other notes come out of

@@ -369,6 +369,27 @@ combatant a token stands for, and any counter it doesn't show.
 pushes a fresh one on every change to the map, its encounter or the characters,
 coalesced to at most one per 80 ms so dragging a token doesn't flood the screens.
 
+**Signals** — a ping, the laser pointer, a roll shown over a token
+(`models/battlemap.py` `MapSignal`) — are what is pointed at for a moment, and
+are kept nowhere: `POST /api/battlemaps/<id>/signal` changes no document and
+bumps no `rev`. The route stamps who sent it and their colour (from the
+session, like a dice roll) and hands it to `DocHub.announce`, which sends it on
+`/ws/sync` as `{type: "signal", battlemap, …}`, without a `doc` key, so no
+synced document takes it for an event of its own. `BattlemapScreen.relay_signal`
+passes it on to the screens as `battlemap_signal` only when that map is the
+one shown, and never a roll over a hidden token; `ConnectionManager` keeps it
+out of `current_state` (`TRANSIENT_TYPES`, like `dice_roll`), so a screen that
+connects later sees none of it. The pointer is sent a few points at a time
+(at most every 50 ms, one request after another), each point with its time
+since the stroke began, and every view replays it at that pace a moment behind
+(`utils/mapSignals.js`); `BattlemapSignals.vue` redraws only while something is
+showing.
+
+Playing a combatant from the map (`CombatantPlay.vue`, the *Sheet* tab) uses
+the same commands as the encounter tracker (`composables/useCombatantActions.js`:
+counters, conditions, notes, *defeated*, and the combatants' sheets), sent to
+the encounter the map follows.
+
 ### Screens and who may read what
 
 `/ws/screen` broadcasts what the GM is showing (`display_chart`, `display_vista`,

@@ -77,6 +77,20 @@ class BattlemapScreen:
             {"type": "update_battlemap", **projection},
         )
 
+    async def relay_signal(self, battlemap: Dict[str, Any], signal: Dict[str, Any]) -> bool:
+        """Shows a signal (a ping, the pointer, a roll over a token) on the
+        screens, if the map is the one they show. A roll over a hidden token
+        doesn't reach them, as the token itself doesn't. True if it was sent."""
+        if self.displayed() != battlemap["id"]:
+            return False
+        if signal.get("token"):
+            token = next((t for t in battlemap.get("tokens", []) if t["id"] == signal["token"]), None)
+            if token is None or token.get("hidden"):
+                return False
+        public = {key: value for key, value in signal.items() if key != "source"}
+        await self.manager.broadcast({**public, "type": "battlemap_signal", "battlemap_id": battlemap["id"]})
+        return True
+
     async def on_event(self, event: Dict[str, Any]) -> None:
         """Called by the hub after every change to a live document."""
         displayed = self.displayed()

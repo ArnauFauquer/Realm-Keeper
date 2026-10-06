@@ -39,6 +39,28 @@ export const PLAYER_DICE_THEMES = [
   { bg: '#be185d', fg: '#fff0f6', accent: 'rgba(249, 168, 212, 0.55)' }  // rose
 ]
 
+// The same players' colour for what they point at on a battlemap (a ping, the
+// laser pointer): one bright tone per theme above, in the same order, that
+// reads over any map image.
+export const PLAYER_SIGNAL_COLORS = [
+  '#c4b5fd', // violet
+  '#67e8f9', // teal
+  '#86efac', // emerald
+  '#93c5fd', // sapphire
+  '#fdba74', // ember
+  '#f0abfc', // magenta
+  '#bef264', // moss
+  '#fef3c7', // ivory
+  '#e2e8f0', // slate
+  '#f9a8d4' // rose
+]
+
+/** The colour a player's pings and pointer are drawn in; no slot gets the first. */
+export function signalColorForSlot(slot) {
+  if (!Number.isInteger(slot) || slot < 0) return PLAYER_SIGNAL_COLORS[0]
+  return PLAYER_SIGNAL_COLORS[slot % PLAYER_SIGNAL_COLORS.length]
+}
+
 /** The dice colours for a player's slot; no slot (auth disabled, or a roll
  * from before this field existed) gets the default theme. */
 export function themeForSlot(slot, fallback = DEFAULT_DICE_THEME) {

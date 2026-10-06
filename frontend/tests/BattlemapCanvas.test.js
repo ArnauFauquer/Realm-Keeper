@@ -228,4 +228,51 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.find('.ruler').exists()).toBe(false)
     })
   })
+
+  describe('pointing', () => {
+    it('a tap with the pointer pings where it landed, in cells', () => {
+      const wrapper = mountCanvas({ tool: 'pointer' })
+      const svg = wrapper.find('svg').element
+      svg.dispatchEvent(pointer('pointerdown', 175, 245))
+      svg.dispatchEvent(pointer('pointerup', 176, 245))
+      expect(wrapper.emitted('ping')).toEqual([[{ x: 2.5, y: 3.5 }]])
+      expect(wrapper.emitted('point')).toBeUndefined()
+    })
+
+    it('a drag is the laser: where it goes, then let go of; tokens are not moved', async () => {
+      const wrapper = mountCanvas({ tool: 'pointer' })
+      const svg = wrapper.find('svg').element
+      svg.dispatchEvent(pointer('pointerdown', 0, 0))
+      svg.dispatchEvent(pointer('pointermove', 140, 70))
+      await frame()
+      svg.dispatchEvent(pointer('pointerup', 140, 70))
+      expect(wrapper.emitted('point')).toEqual([[{ x: 2, y: 1 }]])
+      expect(wrapper.emitted('release')).toEqual([[]])
+      expect(wrapper.emitted('ping')).toBeUndefined()
+      expect(wrapper.emitted('move')).toBeUndefined()
+    })
+
+    it('a double click on the bare map pings; on a token, opens whoever it stands for', () => {
+      const wrapper = mountCanvas()
+      wrapper.find('svg').element.dispatchEvent(new MouseEvent('dblclick', { clientX: 35, clientY: 35, bubbles: true }))
+      expect(wrapper.emitted('ping')).toEqual([[{ x: 0.5, y: 0.5 }]])
+      wrapper.findAll('.token')[0].element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      expect(wrapper.emitted('open')).toEqual([['orc']])
+      expect(wrapper.emitted('ping')).toHaveLength(1) // the token's double click is its own
+    })
+
+    it('draws the signals it is given over the map', async () => {
+      const { createSignalLayer } = await import('@/utils/mapSignals')
+      const layer = createSignalLayer()
+      layer.receive({ kind: 'ping', points: [{ x: 1, y: 1 }], by: 'Leo' })
+      layer.receive({ kind: 'roll', token: 'orc', roll: { label: 'Bite', formula: '1d6', total: 5 } })
+      const wrapper = mountCanvas({ signals: layer })
+      await frame()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.ping').attributes('transform')).toBe('translate(70, 70)')
+      expect(wrapper.find('.ping .signal-name').text()).toBe('Leo')
+      expect(wrapper.find('.roll').text()).toContain('Bite')
+      expect(wrapper.find('.roll .roll-total').text()).toBe('5')
+    })
+  })
 })

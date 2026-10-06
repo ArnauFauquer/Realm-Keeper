@@ -42,6 +42,10 @@ async def reject(websocket: WebSocket, code: int) -> None:
 # edits. They're kept apart from current_state (see ConnectionManager).
 LIVE_UPDATE_TYPES = {"update_chart", "update_vista", "update_constellation", "update_battlemap"}
 
+# Messages shown for a moment over whatever is on screen, which change nothing
+# about it: a dice roll, a ping or the pointer on the battlemap showing.
+TRANSIENT_TYPES = {"dice_roll", "battlemap_signal"}
+
 
 class ConnectionManager:
     def __init__(self):
@@ -91,9 +95,10 @@ class ConnectionManager:
                 await self._broadcast(message)
 
     async def _broadcast(self, message: dict):
-        # Dice rolls are a transient overlay on top of whatever is showing,
-        # not what's showing: keeping them out of current_state means a
-        # screen that reconnects still gets the chart/vista/image, and that
+        # Dice rolls and pings (TRANSIENT_TYPES) are a transient overlay on
+        # top of whatever is showing, not what's showing: keeping them out of
+        # current_state means a screen that reconnects still gets the
+        # chart/vista/image, and that
         # content stays readable to paired screens (routes/screen_access.py).
         #
         # Live edits are the same kind of overlay: current_state stays the
@@ -102,7 +107,7 @@ class ConnectionManager:
         kind = message.get("type")
         if kind in LIVE_UPDATE_TYPES:
             self.live_draft = message
-        elif kind != "dice_roll":
+        elif kind not in TRANSIENT_TYPES:
             self.current_state = message
             self.live_draft = None
         # DEBUG, not INFO: every payload (media URLs, dice rolls) would

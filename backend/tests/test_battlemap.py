@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app
-from models.battlemap import Battlemap
+from models.battlemap import Battlemap, MapSignal
 from routes import screen
 from services import battlemap_screen, doc_commands, storage_service, sync_hub
 from services.auth_service import SCREEN_COOKIE_NAME, SESSION_COOKIE_NAME, create_screen_key, create_session_token
@@ -453,3 +453,75 @@ def test_a_moved_encounter_is_followed_by_the_maps_that_use_it(gm):
     assert gm.get(f"/api/battlemaps/{cave}").json()["encounter"] == moved
     assert gm.get(f"/api/battlemaps/{other}").json()["encounter"] is None
     assert gm.get("/api/characters/party/vex").json()["resources"]["HP"]["current"] == 4
+
+
+# ── signals: a ping, the pointer, a roll over a token ───────────────────────
+
+@pytest.mark.parametrize("signal", [
+    {"kind": "ping", "points": []},
+    {"kind": "ping", "points": [{"x": 1, "y": 1}, {"x": 2, "y": 2}]},
+    {"kind": "pointer", "points": [{"x": 1, "y": 1}]},                       # no stroke
+    {"kind": "roll", "token": "orc"},                                         # no roll
+    {"kind": "roll", "roll": {"total": 3}},                                   # over no token
+    {"kind": "ping", "points": [{"x": 1e9, "y": 0}]},
+    {"kind": "pointer", "stroke": "s", "points": [{"x": 0, "y": 0}] * 65},
+    {"kind": "ping", "points": [{"x": 1, "y": 1}], "doc": "battlemap:cave"},   # nothing else rides along
+    {"kind": "draw", "points": [{"x": 1, "y": 1}]},
+])
+def test_nonsense_signals_are_refused(signal):
+    with pytest.raises(ValueError):
+        MapSignal.model_validate(signal)
+
+
+def test_a_signal_reaches_everyone_on_the_map_and_changes_nothing(gm):
+    base = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Signal cave'}).json()['id']}"
+    before = gm.get(base).json()
+    with gm.websocket_connect("/ws/sync") as socket:
+        sent = gm.post(f"{base}/signal", json={"kind": "ping", "points": [{"x": 2.5, "y": 3}], "source": "tab1"})
+        assert sent.status_code == 200
+        heard = socket.receive_json()
+    assert heard["type"] == "signal" and "doc" not in heard   # no document takes it as its own
+    assert heard["battlemap"] == "signal-cave" and heard["kind"] == "ping" and heard["source"] == "tab1"
+    assert heard["points"] == [{"x": 2.5, "y": 3, "t": 0}]
+    assert heard["by"] and "slot" in heard                    # who, from the session
+    assert gm.get(base).json()["rev"] == before["rev"]
+
+
+def test_signals_need_a_login_and_a_map(gm, client):
+    ping = {"kind": "ping", "points": [{"x": 0, "y": 0}]}
+    assert gm.post("/api/battlemaps/nowhere/signal", json=ping).status_code == 404
+    assert gm.post("/api/battlemaps/x/signal", json={"kind": "ping"}).status_code == 422
+    client.cookies.clear()
+    assert client.post("/api/battlemaps/nowhere/signal", json=ping).status_code == 401
+
+
+def test_the_screens_see_signals_on_the_map_they_show_but_not_over_hidden_tokens(gm, client):
+    base = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Pointed cave'}).json()['id']}"
+    other = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Other cave'}).json()['id']}"
+    gm.post(f"{base}/tokens", json={"items": [
+        {"id": "orc", "name": "Orc", "x": 1, "y": 1},
+        {"id": "dragon", "name": "Dragon", "x": 2, "y": 2, "hidden": True},
+    ]})
+    _paired(client)
+    with client.websocket_connect("/ws/screen") as socket:
+        gm.cookies.clear()
+        gm.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
+        gm.post("/api/screen/battlemap", json={"battlemap_id": "pointed-cave"})
+        assert socket.receive_json()["type"] == "display_battlemap"
+        assert socket.receive_json()["type"] == "update_battlemap"
+
+        roll = {"label": "Bite", "formula": "2d6", "total": 9}
+        gm.post(f"{other}/signal", json={"kind": "ping", "points": [{"x": 0, "y": 0}]})        # not on screen
+        gm.post(f"{base}/signal", json={"kind": "roll", "token": "dragon", "roll": roll})       # hidden
+        gm.post(f"{base}/signal", json={"kind": "roll", "token": "orc", "roll": roll, "source": "tab1"})
+        shown = socket.receive_json()
+        assert shown["type"] == "battlemap_signal" and shown["battlemap_id"] == "pointed-cave"
+        assert shown["token"] == "orc" and shown["roll"]["total"] == 9 and "source" not in shown
+
+        stroke = [{"x": 1, "y": 1, "t": 0}, {"x": 2, "y": 1, "t": 40}]
+        gm.post(f"{base}/signal", json={"kind": "pointer", "stroke": "s1", "points": stroke})
+        pointer = socket.receive_json()
+        assert pointer["kind"] == "pointer" and len(pointer["points"]) == 2
+
+    # What is on screen is still the map: a screen connecting now gets it, not a ping.
+    assert screen.manager.current_state == {"type": "display_battlemap", "battlemap_id": "pointed-cave"}
