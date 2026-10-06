@@ -6,7 +6,6 @@ are checked against the shared cases in tests/fixtures/sheets/, so a change
 here needs the same change there.
 """
 import re
-import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
@@ -14,6 +13,7 @@ from pydantic import ValidationError
 
 from models.encounter import MAX_COUNTER_COLOR_LENGTH, MAX_COUNTER_STYLE_LENGTH, MAX_COUNTERS
 from models.sheet import ResourceSpec, SheetItem, SheetSection, SheetSpec, StatGroup, StatSpec
+from services.doc_paths import slug as slugify   # "Jabalí Gigante" -> "jabali-gigante", as a document's slug
 from services.observatory import image_uid, image_url, is_image_name
 from services.storage_service import IMAGE_URL_PREFIX
 
@@ -43,12 +43,6 @@ class _NoAliasLoader(yaml.SafeLoader):
             event = self.peek_event()
             raise yaml.YAMLError(f"aliases (*{event.anchor}) aren't supported in a sheet")
         return super().compose_node(parent, index)
-
-
-def slugify(text: str) -> str:
-    """Lowercase ASCII with hyphens: "Jabalí Gigante" -> "jabali-gigante"."""
-    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9]+", "-", ascii_text.lower()).strip("-")
 
 
 def _text(value: Any) -> Optional[str]:
