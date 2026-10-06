@@ -69,6 +69,14 @@ describe('BattlemapCanvas', () => {
     expect(orc.find('.token-label').text()).toBe('Orc')
   })
 
+  it("turns a token's art by its rotation, not its name", () => {
+    const tokens = [{ ...TOKENS[0], rotation: 90 }, TOKENS[2]]
+    const [orc, quiet] = mountCanvas({ tokens }).findAll('.token')
+    expect(orc.find('image').attributes('transform')).toBe('rotate(90)')
+    expect(orc.find('.token-label').attributes('transform')).toBeUndefined()
+    expect(quiet.find('.token-initials').attributes('transform')).toBeUndefined()
+  })
+
   it('shows the counters a token carries as bars, by how full they are', () => {
     const wrapper = mountCanvas()
     const [orc, dragon] = wrapper.findAll('.token')

@@ -42,11 +42,13 @@
             <title>{{ token.name }}</title>
             <clipPath :id="`clip-${uid}-${token.id}`"><circle :r="radius(token)" /></clipPath>
             <circle class="token-body" :r="radius(token)" :fill="token.color || DEFAULT_COLOR" />
+            <!-- The art turns with the token (which way it faces); its name and bars don't. -->
             <image
               v-if="token.image_url"
               :href="resolveUrl(token.image_url)"
               :x="-radius(token)" :y="-radius(token)" :width="radius(token) * 2" :height="radius(token) * 2"
               :clip-path="`url(#clip-${uid}-${token.id})`"
+              :transform="token.rotation ? `rotate(${token.rotation})` : null"
               preserveAspectRatio="xMidYMid slice"
             />
             <text v-else class="token-initials" :font-size="radius(token) * 0.9" text-anchor="middle" dominant-baseline="central">{{ initials(token.name) }}</text>
@@ -93,8 +95,8 @@ import {
 // nothing itself: moving a token is reported (`moving` while it is dragged,
 // `move` once dropped) for whoever owns the map to apply, and the screen's
 // copy is just this with nothing editable. `tokens` carry what to draw:
-// { id, name, x, y, size, image_url, color, hidden, meters: [{ name, current,
-// max, min, color }] }.
+// { id, name, x, y, size, rotation (degrees, clockwise), image_url, color,
+// hidden, meters: [{ name, current, max, min, color }] }.
 const props = defineProps({
   imageUrl: { type: String, default: null },
   grid: { type: Object, required: true },
