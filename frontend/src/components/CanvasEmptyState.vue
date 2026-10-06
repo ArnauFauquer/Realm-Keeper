@@ -1,7 +1,4 @@
 <template>
-  <!-- What a canvas shows instead of its image: none chosen yet, or one that
-       couldn't be loaded. The message is the default slot, what to do about
-       it the `actions` slot. -->
   <div class="canvas-empty-state" :role="error ? 'alert' : null">
     <span class="mdi" :class="icon" aria-hidden="true"></span>
     <p><slot /></p>
@@ -10,6 +7,9 @@
 </template>
 
 <script setup>
+// What a canvas shows instead of its image: none chosen yet, or one that
+// couldn't be loaded. The message is the default slot, what to do about it
+// the `actions` slot.
 defineProps({
   icon: { type: String, default: 'mdi-image-plus' },
   // An image that should be there and isn't: read out when it appears.

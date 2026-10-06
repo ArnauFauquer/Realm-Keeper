@@ -1,17 +1,6 @@
 <template>
   <div class="editor">
-    <div v-if="status === 'loading'" class="editor-state" role="status">
-      <span class="rk-spinner rk-spinner--lg"></span>
-      <span>Loading map...</span>
-    </div>
-    <div v-else-if="status === 'gone'" class="editor-state" role="alert">
-      <span class="mdi mdi-file-question-outline"></span>
-      <span>This map was moved or deleted. Look for it in the Observatory.</span>
-    </div>
-    <div v-else-if="status === 'error'" class="editor-state editor-error" role="alert">
-      <span class="mdi mdi-alert-circle-outline"></span>
-      <span>{{ error }}</span>
-    </div>
+    <LiveDocumentState v-if="unavailable" class="editor-state" :status="status" :error="error" noun="map" />
 
     <template v-else-if="doc">
       <div class="stage">
@@ -30,7 +19,7 @@
               <span class="mdi mdi-monitor-share"></span>
             </button>
           </template>
-          <span class="live-badge" :class="`live-badge--${syncStatus}`" :title="liveTitle"><span class="mdi mdi-circle-medium"></span>{{ liveLabel }}</span>
+          <LiveBadge />
         </div>
 
         <BattlemapCanvas
@@ -223,11 +212,12 @@ import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
 import { TOKEN_COLORS } from '@/utils/palette'
 import { useLibraryPicker } from '@/composables/useLibraryPicker'
-import { errorMessage } from '@/api/http'
 import { screenApi } from '@/api/screen'
-import { useSyncedDoc, useSyncedDocFollowing } from '@/composables/useSyncedDoc'
+import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
+import { useLiveDocument } from '@/composables/useLiveDocument'
+import LiveBadge from './LiveBadge.vue'
+import LiveDocumentState from './LiveDocumentState.vue'
 import { useCharacters } from '@/composables/useCharacters'
-import { syncStatus } from '@/composables/syncSocket'
 import { barOptions, metersFor } from '@/utils/battlemapMeters'
 import { freeCells } from '@/utils/battlemapGeometry'
 
@@ -241,7 +231,8 @@ const props = defineProps({
 
 const id = props.battlemapId
 const { commands } = battlemapsApi
-const { doc, status, error, commit } = useSyncedDoc('battlemap', id, () => battlemapsApi.fetch(id))
+// Each action is a command (`send`): the event it returns is applied at once.
+const { doc, status, error, actionError, unavailable, attempt, send } = useLiveDocument('battlemap', id, () => battlemapsApi.fetch(id))
 // The encounter whose combatants the tokens stand for, followed live too (a
 // token shows its combatant's counters as they change).
 const { doc: encounter } = useSyncedDocFollowing('encounter', () => doc.value?.encounter || null, (encounterId) => encountersApi.fetch(encounterId))
@@ -260,17 +251,8 @@ const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPi
   else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
 })
 const encounters = ref([])
-const actionError = ref('')
 const onScreen = ref(false)
 
-const LIVE = {
-  open: ['Live', 'Changes appear for everyone as they are made'],
-  connecting: ['Connecting…', 'Waiting for the connection: changes may be late'],
-  denied: ['Signed out', 'Sign in again to see changes live'],
-  idle: ['Connecting…', '']
-}
-const liveLabel = computed(() => LIVE[syncStatus.value][0])
-const liveTitle = computed(() => LIVE[syncStatus.value][1])
 
 // The encounters to choose from, once signed in (the session check may still
 // be on its way when the editor opens).
@@ -292,19 +274,6 @@ const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0)
 const clamp = (value, low, high) => Math.min(high, Math.max(low, num(value)))
 const positive = (value, fallback) => (num(value) > 0 ? num(value) : fallback)
 
-async function attempt(work) {
-  actionError.value = ''
-  try {
-    await work
-    return true
-  } catch (err) {
-    actionError.value = errorMessage(err)
-    return false
-  }
-}
-
-/** Runs a command on this map: the event it returns is applied at once. */
-const send = (command) => attempt(commit(command))
 
 const patchToken = (patch) => send(commands.patchItem(id, 'tokens', selected.value.id, patch))
 const patchGrid = (patch) => send(commands.patch(id, { grid: patch }))
@@ -413,16 +382,6 @@ async function toggleScreen() {
 
 .editor-state {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-3);
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.editor-error {
-  color: var(--status-error);
 }
 
 .stage {
@@ -453,21 +412,9 @@ async function toggleScreen() {
   color: var(--text-primary);
 }
 
+/* LiveBadge's root, from here. */
 .live-badge {
-  display: inline-flex;
-  align-items: center;
   padding-right: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.live-badge--open {
-  color: var(--status-success);
-}
-
-.live-badge--connecting,
-.live-badge--denied {
-  color: var(--status-warning);
 }
 
 .panel {
