@@ -459,7 +459,10 @@ src/
   and **Add to encounter**. A sheet named like the note's title or a heading
   hides its name. Signed out, it shows "Sign in to see this character".
 - **Sheet editing.** `SheetEditor` is the sheet builder beside a live preview
-  ("Start from a template" when empty); `CharacterEditor` and
+  ("Start from a template" when empty: a menu of game systems, Generic,
+  D&D 5e, Daggerheart, Pathfinder 2e, Call of Cthulhu 7e, Cyberpunk RED,
+  Shadowdark and Blades in the Dark, each with a
+  character and an adversary sheet in `utils/sheetTemplates.js`); `CharacterEditor` and
   `AdversariesModal` use it. In the note editor,
   `SheetRefPicker` (the **Sheet** button) searches the catalog and inserts a
   link.

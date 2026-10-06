@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { SHEET_TEMPLATES, sheetFromDoc } from '@/utils/sheet'
+import { sheetFromDoc } from '@/utils/sheet'
+import { SHEET_SYSTEMS } from '@/utils/sheetTemplates'
 import {
   bodyFromModel,
   modelFromBody,
@@ -23,8 +24,11 @@ describe('sheet builder model', () => {
     expect(drawn(bodyFromModel(modelFromBody(doc.sheet)), type)).toEqual(drawn(doc.sheet, type))
   })
 
-  it.each(Object.keys(SHEET_TEMPLATES))('the %s template draws the same after going through the builder', (type) => {
-    expect(drawn(normalizeBody(SHEET_TEMPLATES[type]), type)).toEqual(drawn(SHEET_TEMPLATES[type], type))
+  const templates = SHEET_SYSTEMS.flatMap((system) =>
+    Object.entries(system.templates).map(([type, body]) => [`${system.name} ${type}`, type, body])
+  )
+  it.each(templates)('the %s template draws the same after going through the builder', (_name, type, body) => {
+    expect(drawn(normalizeBody(body), type)).toEqual(drawn(body, type))
   })
 
   it('saves every field, as the server stores it', () => {

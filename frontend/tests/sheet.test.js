@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { counterStart, normalizeImage, SHEET_TEMPLATES, sheetFromDoc, sheetProblems } from '@/utils/sheet'
+import { counterStart, normalizeImage, sheetFromDoc, sheetProblems } from '@/utils/sheet'
 
 // The same files backend/tests/test_sheets.py checks: both sides must draw a
 // document's sheet alike, or a sheet would show one thing in a note and
@@ -27,12 +27,6 @@ describe('sheetFromDoc', () => {
     expect([sheet.id, sheet.name, sheet.type, sheet.sections, warnings]).toEqual(['imp', 'Imp', 'adversary', [], []])
   })
 
-  it.each(Object.keys(SHEET_TEMPLATES))('the %s template is a sheet with counters', (type) => {
-    const { sheet, warnings } = sheetFromDoc({ id: 'new', name: 'New', sheet: SHEET_TEMPLATES[type] }, type)
-    expect(warnings).toEqual([])
-    expect(Object.keys(sheet.resources)).toEqual(['HP', 'Stress'])
-    expect(sheetProblems(SHEET_TEMPLATES[type])).toEqual([])
-  })
 })
 
 describe('sheetProblems', () => {

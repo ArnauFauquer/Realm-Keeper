@@ -81,6 +81,7 @@ describe('CharacterEditor', () => {
     const wrapper = mountEditor()
     await flushPromises()
     await wrapper.findAll('button').find((b) => b.text().includes('template')).trigger('click')
+    await wrapper.findAll('[role="menuitem"]').find((b) => b.text().includes('D&D 5e')).trigger('click')
     expect(wrapper.findAll('input[aria-label="Counter name"]').length).toBeGreaterThan(0)
   })
 
