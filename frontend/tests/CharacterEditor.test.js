@@ -17,6 +17,11 @@ const SOURCE = 'sections:\n  - counters:\n      HP: 9\n'
 const ARIA = { id: 'party/aria', name: 'Aria', rev: 3, source: SOURCE, resources: { HP: { current: 4, max: 9, min: 0 } } }
 const mountEditor = (props = {}) => mount(CharacterEditor, { props: { characterId: 'party/aria', canInteract: true, ...props } })
 const saveButton = (wrapper) => wrapper.findAll('button').find((b) => /Save/.test(b.text()))
+// What is typed is parsed once typing pauses (SheetEditor's PARSE_DELAY).
+const typingPause = async () => {
+  await new Promise((resolve) => setTimeout(resolve, 200))
+  await flushPromises()
+}
 
 beforeEach(() => {
   state.value = ARIA
@@ -48,7 +53,9 @@ describe('CharacterEditor', () => {
     const wrapper = mountEditor()
     await flushPromises()
     await wrapper.find('textarea').setValue(`${SOURCE}subtitle: Ranger\n`)
-    expect(wrapper.text()).toContain('Ranger')                           // the preview follows
+    expect(wrapper.text()).not.toContain('Ranger')                       // not at every keystroke...
+    await typingPause()
+    expect(wrapper.text()).toContain('Ranger')                           // ...but the preview follows
     await saveButton(wrapper).trigger('click')
     await flushPromises()
     expect(characters.patch).toHaveBeenCalledWith('party/aria', { source: `${SOURCE}subtitle: Ranger\n` })
@@ -58,6 +65,7 @@ describe('CharacterEditor', () => {
     const wrapper = mountEditor()
     await flushPromises()
     await wrapper.find('textarea').setValue('sections:\n  - counters: { HP: lots }')
+    await typingPause()
     expect(wrapper.find('.source-error').text()).toContain('whole number')
     expect(wrapper.find('.rc-value').text()).toBe('4 / 9')
   })
