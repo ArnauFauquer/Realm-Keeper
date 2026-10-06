@@ -27,7 +27,7 @@ from config.cache import CacheControlMiddleware
 from config.csrf import OriginCheckMiddleware
 from services.doc_registry import hub as doc_hub, import_legacy_documents
 from services.git_sync_utils import GitCommitError, clear_stale_index_lock, pull_rebase, redact_credentials, run_git
-from services.sheet_import import import_note_sheets
+from services.sheet_import import convert_yaml_sheets, import_note_sheets
 
 logger = setup_logging(log_level=settings.LOG_LEVEL, log_dir=settings.LOG_DIR)
 
@@ -142,6 +142,8 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(import_legacy_documents, settings.VAULT_PATH)
     # Sheets used to be ```sheet blocks in notes: make documents of them (once).
     await asyncio.to_thread(import_note_sheets, settings.VAULT_PATH)
+    # And then were YAML in their documents: they are JSON now (once).
+    await asyncio.to_thread(convert_yaml_sheets)
     task = asyncio.create_task(_periodic_sync())
     housekeeping = asyncio.create_task(doc_hub.run_housekeeping())
     yield

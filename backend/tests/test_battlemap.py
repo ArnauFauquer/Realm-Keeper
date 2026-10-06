@@ -263,7 +263,7 @@ def test_the_counters_a_token_shows_follow_its_encounter_and_the_characters(worl
 
         # A character's counters are its own document's.
         world._collections["character"].create("Aria")
-        await world.mutate("character", "aria", lambda d: d.update(source="sections:\n  - counters: { HP: { max: 12, start: 9 } }\n"))
+        await world.mutate("character", "aria", lambda d: d.update(sheet={"sections": [{"counters": [{"name": "HP", "max": 12, "start": 9}]}]}))
         await world.mutate("encounter", "fight", lambda d: doc_commands.add_items(d, ENCOUNTER, "combatants", [
             {"id": "c2", "name": "Aria", "type": "character", "sheet": "aria"},
         ]))
@@ -423,7 +423,7 @@ def test_a_screen_that_connects_later_gets_the_map_as_it_is(gm, client):
 
 def test_a_character_moved_is_followed_by_its_encounters_and_tokens(gm):
     gm.post("/api/characters", json={"name": "Vex"})
-    gm.patch("/api/characters/vex", json={"source": "sections:\n  - counters: { HP: { max: 9, start: 4 } }\n"})
+    gm.patch("/api/characters/vex", json={"sheet": {"sections": [{"counters": [{"name": "HP", "max": 9, "start": 4}]}]}})
     fight = gm.post("/api/encounters", json={"name": "Vex fight"}).json()["id"]
     gm.post(f"/api/encounters/{fight}/combatants", json={"items": [
         {"id": "v", "name": "Vex", "type": "character", "sheet": "vex"},

@@ -51,7 +51,7 @@ import { adversariesApi } from '@/api/docs'
 import { useCharacters } from '@/composables/useCharacters'
 import { useDocModal } from '@/composables/useDocModal'
 import { DOC_TYPES } from '@/utils/docTypes'
-import { counterStart, parseSheetDoc } from '@/utils/sheet'
+import { counterStart, sheetFromDoc } from '@/utils/sheet'
 import { errorMessage } from '@/api/http'
 
 // A character or an adversary shown in a note (`character:<id>`,
@@ -95,7 +95,7 @@ const loading = computed(() => (characters ? characters.status.value === 'loadin
 
 const parsed = computed(() => {
   try {
-    return parseSheetDoc(doc.value, props.type)
+    return sheetFromDoc(doc.value, props.type)
   } catch (e) {
     return { error: e.message }
   }

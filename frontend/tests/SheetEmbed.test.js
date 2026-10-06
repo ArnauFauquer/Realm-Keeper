@@ -16,8 +16,8 @@ vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 const SheetEmbed = (await import('@/components/SheetEmbed.vue')).default
 
-const ARIA = { id: 'party/aria', name: 'Aria', source: 'subtitle: Ranger\nsections:\n  - counters: { HP: 9 }\n', resources: { HP: { current: 4, max: 9, min: 0 } } }
-const BUGBOAR = { id: 'Bestiary/bugboar', name: 'Bugboar', source: 'sections:\n  - counters: { HP: 6 }\n' }
+const ARIA = { id: 'party/aria', name: 'Aria', sheet: { subtitle: 'Ranger', sections: [{ counters: [{ name: 'HP', max: 9 }] }] }, resources: { HP: { current: 4, max: 9, min: 0 } } }
+const BUGBOAR = { id: 'Bestiary/bugboar', name: 'Bugboar', sheet: { sections: [{ counters: [{ name: 'HP', max: 6 }] }] } }
 const embed = (props) => mount(SheetEmbed, { props: { canInteract: true, ...props } })
 
 beforeEach(() => {

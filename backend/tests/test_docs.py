@@ -35,10 +35,10 @@ ENCOUNTER = DocType(
 CHARACTER = DocType(
     kind="character", prefix="characters",
     model=Character, metadata_model=SheetDocMetadata, items_key="characters",
-    live=True, patchable=("name", "description", "source"), resources_field="resources",
+    live=True, patchable=("name", "description", "sheet"), resources_field="resources",
     prepare=sheet_preparer("character"),
 )
-ARIA_SHEET = "sections:\n  - counters:\n      HP: 12\n      Hope: { max: 6, start: 2 }\n"
+ARIA_SHEET = {"sections": [{"counters": [{"name": "HP", "max": 12}, {"name": "Hope", "max": 6, "start": 2}]}]}
 LIBRARY_IMAGE = "/api/observatory/images/1a2b3c4d-orc.png"
 
 
@@ -599,19 +599,19 @@ def test_a_character_follows_its_sheet_and_is_played_like_any_live_document(hub_
             await hub.snapshot("character", "aria")
         made = characters.create("Aria", folder_path="party")
         assert made.id == "party/aria" and made.resources == {}
-        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": ARIA_SHEET}))
+        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"sheet": ARIA_SHEET}))
         doc = await hub.snapshot("character", "party/aria")
         assert {k: v["current"] for k, v in doc["resources"].items()} == {"HP": 12, "Hope": 2}  # where the sheet says
         event = await hub.mutate("character", "party/aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -3))
         assert event["set"]["resources"]["HP"]["current"] == 9 and event["doc"] == "character:party/aria"
         # The sheet changes: a max that shrinks keeps the value within it, a
         # counter it no longer has goes, a new one starts where it says.
-        smaller = "sections:\n  - counters:\n      HP: 8\n      Armor: { max: 3, start: 0 }\n"
-        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": smaller}))
+        smaller = {"sections": [{"counters": [{"name": "HP", "max": 8}, {"name": "Armor", "max": 3, "start": 0}]}]}
+        await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"sheet": smaller}))
         doc = await hub.snapshot("character", "party/aria")
         assert {k: (v["current"], v["max"]) for k, v in doc["resources"].items()} == {"HP": (8, 8), "Armor": (0, 3)}
-        with pytest.raises(ValueError, match="whole number"):
-            await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": "sections:\n  - counters: { HP: x }"}))
+        with pytest.raises(ValueError, match="valid integer"):
+            await hub.mutate("character", "party/aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"sheet": {"sections": [{"counters": [{"name": "HP", "max": "x"}]}]}}))
         await hub.flush_all()
         assert characters.read_raw("party/aria")["resources"]["HP"]["current"] == 8
 
@@ -623,7 +623,7 @@ def test_a_character_keeps_its_values_when_renamed(hub_and_collections):
     characters.create("Aria")
 
     async def scenario():
-        await hub.mutate("character", "aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"source": ARIA_SHEET}))
+        await hub.mutate("character", "aria", lambda d: doc_commands.patch_doc(d, CHARACTER, {"sheet": ARIA_SHEET}))
         await hub.mutate("character", "aria", lambda d: doc_commands.adjust_own_resource(d, CHARACTER, "HP", -5))
         await hub.mutate("character", "aria", lambda d: d.update(name="Aria la Roja"))
         doc = await hub.snapshot("character", "aria")
@@ -713,12 +713,12 @@ def test_characters_over_http(api):
     assert api.get("/api/characters/aria").status_code == 404
     made = api.post("/api/characters", json={"name": "Aria", "folder_path": "party"}).json()
     assert made["id"] == "party/aria"
-    patched = api.patch("/api/characters/party/aria", json={"source": ARIA_SHEET + "subtitle: Ranger\n"}).json()
+    patched = api.patch("/api/characters/party/aria", json={"sheet": {**ARIA_SHEET, "subtitle": "Ranger"}}).json()
     assert patched["set"]["resources"]["HP"] == {"current": 12, "max": 12, "min": 0, "color": None, "style": None}
     assert api.post("/api/characters/party/aria/adjust", json={"resource": "HP", "by": -5}).json()["rev"] == 2
     assert api.get("/api/characters/party/aria").json()["resources"]["HP"]["current"] == 7
     assert api.patch("/api/characters/party/aria", json={"resources": {}}).status_code == 400   # they follow the sheet
-    assert api.patch("/api/characters/party/aria", json={"source": "- not a mapping"}).status_code == 400
+    assert api.patch("/api/characters/party/aria", json={"sheet": ["not a mapping"]}).status_code == 400
     assert api.get("/api/characters/party/aria").json()["subtitle"] == "Ranger"   # what its card shows
     listed = api.get("/api/observatory", params={"path": "party"}).json()["items"]
     assert [(c["kind"], c["id"]) for c in listed] == [("character", "party/aria")]

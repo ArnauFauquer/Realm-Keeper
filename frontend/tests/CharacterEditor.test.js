@@ -13,15 +13,11 @@ vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
 const CharacterEditor = (await import('@/components/CharacterEditor.vue')).default
 
-const SOURCE = 'sections:\n  - counters:\n      HP: 9\n'
-const ARIA = { id: 'party/aria', name: 'Aria', rev: 3, source: SOURCE, resources: { HP: { current: 4, max: 9, min: 0 } } }
+const SHEET = { sections: [{ counters: [{ name: 'HP', max: 9 }] }] }
+const ARIA = { id: 'party/aria', name: 'Aria', rev: 3, sheet: SHEET, resources: { HP: { current: 4, max: 9, min: 0 } } }
 const mountEditor = (props = {}) => mount(CharacterEditor, { props: { characterId: 'party/aria', canInteract: true, ...props } })
 const saveButton = (wrapper) => wrapper.findAll('button').find((b) => /Save/.test(b.text()))
-// What is typed is parsed once typing pauses (SheetEditor's PARSE_DELAY).
-const typingPause = async () => {
-  await new Promise((resolve) => setTimeout(resolve, 200))
-  await flushPromises()
-}
+const subtitle = (wrapper) => wrapper.find('input[placeholder^="Tier 1"]')
 
 beforeEach(() => {
   state.value = ARIA
@@ -33,10 +29,10 @@ beforeEach(() => {
 })
 
 describe('CharacterEditor', () => {
-  it("shows its sheet's YAML beside the sheet, with the character's own counters", async () => {
+  it("shows its sheet's builder beside the sheet, with the character's own counters", async () => {
     const wrapper = mountEditor()
     await flushPromises()
-    expect(wrapper.find('textarea').element.value).toBe(SOURCE)
+    expect(wrapper.find('input[aria-label="Counter name"]').element.value).toBe('HP')
     expect(wrapper.find('.rc-value').text()).toBe('4 / 9')
     expect(wrapper.text()).toContain('character:party/aria')
     expect(saveButton(wrapper).attributes('disabled')).toBeDefined()   // nothing to save yet
@@ -52,40 +48,40 @@ describe('CharacterEditor', () => {
   it('saves the sheet with its own button', async () => {
     const wrapper = mountEditor()
     await flushPromises()
-    await wrapper.find('textarea').setValue(`${SOURCE}subtitle: Ranger\n`)
-    expect(wrapper.text()).not.toContain('Ranger')                       // not at every keystroke...
-    await typingPause()
-    expect(wrapper.text()).toContain('Ranger')                           // ...but the preview follows
+    await subtitle(wrapper).setValue('Ranger')
+    expect(wrapper.find('.sheet-editor-preview').text()).toContain('Ranger')   // the preview follows
     await saveButton(wrapper).trigger('click')
     await flushPromises()
-    expect(characters.patch).toHaveBeenCalledWith('party/aria', { source: `${SOURCE}subtitle: Ranger\n` })
+    const [, { sheet }] = characters.patch.mock.calls[0]
+    expect(sheet.subtitle).toBe('Ranger')
+    expect(sheet.sections[0].counters[0]).toMatchObject({ name: 'HP', max: 9 })
   })
 
-  it('keeps the last valid sheet in the preview while the YAML is half typed, and says so', async () => {
+  it('is no longer unsaved once what was typed is undone', async () => {
     const wrapper = mountEditor()
     await flushPromises()
-    await wrapper.find('textarea').setValue('sections:\n  - counters: { HP: lots }')
-    await typingPause()
-    expect(wrapper.find('.source-error').text()).toContain('whole number')
-    expect(wrapper.find('.rc-value').text()).toBe('4 / 9')
+    await subtitle(wrapper).setValue('Ranger')
+    expect(saveButton(wrapper).attributes('disabled')).toBeUndefined()
+    await subtitle(wrapper).setValue('')
+    expect(saveButton(wrapper).attributes('disabled')).toBeDefined()
   })
 
   it('shows what the server refused', async () => {
     characters.patch.mockRejectedValue({ response: { data: { detail: 'The document is too large' } } })
     const wrapper = mountEditor()
     await flushPromises()
-    await wrapper.find('textarea').setValue(`${SOURCE}# more\n`)
+    await subtitle(wrapper).setValue('Ranger')
     await saveButton(wrapper).trigger('click')
     await flushPromises()
     expect(wrapper.find('.save-error').text()).toContain('too large')
   })
 
   it('offers a template for an empty sheet', async () => {
-    state.value = { ...ARIA, source: '', resources: {} }
+    state.value = { ...ARIA, sheet: { sections: [] }, resources: {} }
     const wrapper = mountEditor()
     await flushPromises()
     await wrapper.findAll('button').find((b) => b.text().includes('template')).trigger('click')
-    expect(wrapper.find('textarea').element.value).toContain('sections:')
+    expect(wrapper.findAll('input[aria-label="Counter name"]').length).toBeGreaterThan(0)
   })
 
   it('says so when the character is gone', async () => {

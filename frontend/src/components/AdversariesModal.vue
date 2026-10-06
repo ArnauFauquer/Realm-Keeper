@@ -3,7 +3,7 @@
     <template #editor="{ id, doc, markDirty }">
       <SheetEditor
         :id="id"
-        v-model="doc.source"
+        v-model="doc.sheet"
         type="adversary"
         :name="doc.name"
         :can-edit="!!user"

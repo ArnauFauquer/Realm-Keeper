@@ -55,12 +55,12 @@ BATTLEMAP = DocType(
 
 # Sheets: a character is an individual whose counters are played live, the
 # same on every note and in every encounter and map; an adversary is a template,
-# copied into an encounter each time it is added. Both are their sheet's YAML
-# (`source`); see models/sheet_doc.py.
+# copied into an encounter each time it is added. Both hold their sheet as JSON
+# (`sheet`); see models/sheet_doc.py.
 CHARACTER = DocType(
     kind="character", prefix="characters",
     model=Character, metadata_model=SheetDocMetadata, items_key="characters",
-    live=True, patchable=("name", "description", "source"), resources_field="resources",
+    live=True, patchable=("name", "description", "sheet"), resources_field="resources",
     prepare=sheet_preparer("character"),
 )
 
