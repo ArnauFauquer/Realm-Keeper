@@ -3,6 +3,7 @@
     :image-url="state.image_url"
     :grid="grid"
     :tokens="state.tokens"
+    :areas="state.areas || []"
     :editable="false"
     :zoomable="false"
     :reset-key="state.battlemap_id"
@@ -24,7 +25,8 @@ export const GRID_DEFAULTS = Object.freeze({
   opacity: 0.25,
   distance: 1,
   unit: 'cell',
-  measure: 'grid'
+  measure: 'grid',
+  bands: []
 })
 </script>
 

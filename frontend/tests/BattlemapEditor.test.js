@@ -4,15 +4,16 @@ import { ref } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import * as fake from './helpers/fakeSyncedDoc'
 
-const { commands, encounterCommands, encounterCommit, fetchAll, fetchSheet, post, encounter, signals } = vi.hoisted(() => ({
+const { commands, encounterCommands, createEncounter, encounterCommit, fetchAll, fetchSheet, post, encounter, signals } = vi.hoisted(() => ({
   commands: { patch: vi.fn(), patchItem: vi.fn(), addItems: vi.fn(), removeItem: vi.fn(), editList: vi.fn() },
-  encounterCommands: { adjust: vi.fn(), patchItem: vi.fn(), editList: vi.fn() },
+  encounterCommands: { adjust: vi.fn(), patchItem: vi.fn(), editList: vi.fn(), addItems: vi.fn() },
+  createEncounter: vi.fn(),
   encounterCommit: vi.fn((command) => Promise.resolve(command)),
   fetchAll: vi.fn(),
   fetchSheet: vi.fn(),
   post: vi.fn(),
   encounter: { value: null },
-  signals: { layer: { kind: 'layer' }, ping: vi.fn(), point: vi.fn(), release: vi.fn(), roll: vi.fn() }
+  signals: { layer: { kind: 'layer' }, ping: vi.fn(), point: vi.fn(), release: vi.fn(), roll: vi.fn(), measure: vi.fn() }
 }))
 
 vi.mock('@/composables/useSyncedDoc', async () => {
@@ -29,7 +30,7 @@ vi.mock('@/composables/useCharacters', async () => {
 })
 vi.mock('@/composables/syncSocket', () => ({ syncStatus: ref('open'), listenToSync: () => () => {} }))
 vi.mock('@/composables/useMapSignals', () => ({ useMapSignals: () => signals }))
-vi.mock('@/api/docs', () => ({ battlemapsApi: { commands }, encountersApi: { fetchAll, fetch: vi.fn(), commands: encounterCommands } }))
+vi.mock('@/api/docs', () => ({ battlemapsApi: { commands }, encountersApi: { fetchAll, fetch: vi.fn(), create: createEncounter, commands: encounterCommands } }))
 vi.mock('@/api/sheets', () => ({ fetchSheet }))
 vi.mock('@/api/http', async (importOriginal) => ({ ...(await importOriginal()), post }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
@@ -37,12 +38,16 @@ vi.mock('@/config/env', () => ({ apiUrl: '' }))
 vi.mock('@/components/BattlemapCanvas.vue', () => ({
   default: {
     name: 'BattlemapCanvas',
-    props: ['imageUrl', 'grid', 'tokens', 'selectedId', 'tool', 'editable', 'signals'],
-    emits: ['select', 'moving', 'move', 'open', 'ping', 'point', 'release'],
+    props: ['imageUrl', 'grid', 'tokens', 'areas', 'selectedId', 'selectedAreaId', 'tool', 'areaShape', 'editable', 'signals'],
+    emits: ['select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'add-area'],
     template: '<div class="canvas"><slot name="empty" /></div>'
   }
 }))
-// So is the sheet a combatant is played from (tests/CombatantPlay.test.js).
+// So is the sheet picker (an encounter's own) and the sheet a combatant is
+// played from (tests/CombatantPlay.test.js).
+vi.mock('@/components/EncounterAddPanel.vue', () => ({
+  default: { name: 'EncounterAddPanel', props: ['presentCharacters'], emits: ['add', 'add-custom'], template: '<div class="add-panel" />' }
+}))
 vi.mock('@/components/CombatantPlay.vue', () => ({
   default: {
     name: 'CombatantPlay',
@@ -259,21 +264,15 @@ describe('BattlemapEditor', () => {
   })
 
   describe('moving tokens', () => {
-    it('sends where a dragged token is at most every 80 ms, and where it is dropped at once', async () => {
-      vi.useFakeTimers()
+    it('moves a token where it is dropped, and shares the path it is dragged along', async () => {
       const wrapper = mountEditor()
-      canvas(wrapper).vm.$emit('moving', 't1', { x: 2, y: 1 })
-      canvas(wrapper).vm.$emit('moving', 't1', { x: 3, y: 1 })
-      canvas(wrapper).vm.$emit('moving', 't1', { x: 4, y: 1 })
-      expect(commands.patchItem).not.toHaveBeenCalled()
-      await vi.advanceTimersByTimeAsync(80)
-      expect(commands.patchItem).toHaveBeenCalledTimes(1)
-      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { x: 4, y: 1 }) // the latest
-      canvas(wrapper).vm.$emit('moving', 't1', { x: 5, y: 1 })
-      canvas(wrapper).vm.$emit('move', 't1', { x: 6, y: 2 })
-      await vi.advanceTimersByTimeAsync(500)
-      expect(commands.patchItem).toHaveBeenCalledTimes(2)
-      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { x: 6, y: 2 }) // the pending one was dropped
+      const path = { points: [{ x: 1.5, y: 1.5 }, { x: 4.5, y: 1.5 }], token: 't1', end: false }
+      canvas(wrapper).vm.$emit('measure', path)
+      expect(signals.measure).toHaveBeenCalledWith(path)
+      expect(commands.patchItem).not.toHaveBeenCalled() // nothing moves while it is dragged
+      canvas(wrapper).vm.$emit('move', 't1', { x: 4, y: 1 })
+      await flushPromises()
+      expect(commands.patchItem).toHaveBeenCalledWith('cave', 'tokens', 't1', { x: 4, y: 1 })
     })
 
     it('sends one move at a time, so an older one cannot land after the drop', async () => {
@@ -484,7 +483,104 @@ describe('BattlemapEditor', () => {
     it('has no pointer for someone signed out: everyone would see it', () => {
       const wrapper = mountEditor({ canInteract: false })
       const tools = wrapper.findAll('.tool-group button').map((b) => b.attributes('aria-label'))
-      expect(tools).toEqual(['Select and move', 'Measure a distance'])
+      expect(tools).toEqual(['Select and move', 'Measure: Space adds a turn']) // no pointer, no areas
+    })
+  })
+
+  describe('areas', () => {
+    const AREA = { id: 'a1', shape: 'circle', x: 2, y: 2, size: 2, angle: 0, spread: 60, width: 1, color: '#f97316', label: '', hidden: false }
+
+    it('adds one drawn on the map, in the first area colour, and selects it', async () => {
+      commands.addItems.mockResolvedValue({ upsert: { areas: [{ ...AREA, id: 'new' }] } })
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('add-area', { shape: 'cone', x: 2, y: 2, size: 4, angle: 90 })
+      await flushPromises()
+      expect(commands.addItems).toHaveBeenCalledWith('cave', 'areas', [{ shape: 'cone', x: 2, y: 2, size: 4, angle: 90, color: '#f97316' }])
+      expect(canvas(wrapper).props('selectedAreaId')).toBe('new')
+    })
+
+    it('lists them, and changes, moves and removes the selected one', async () => {
+      fake.doc.value.areas = [AREA]
+      const wrapper = mountEditor()
+      await openTab(wrapper, 'Tokens')
+      expect(wrapper.find('.area-size').text()).toBe('2 cell') // its reach, as the map counts it
+      canvas(wrapper).vm.$emit('select-area', 'a1')
+      await flushPromises()
+      const inspector = wrapper.findComponent({ name: 'AreaInspector' })
+      inspector.vm.$emit('patch', { shape: 'line' })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { shape: 'line' })
+      canvas(wrapper).vm.$emit('move-area', 'a1', { x: 5, y: 5.5 })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { x: 5, y: 5.5 })
+      inspector.vm.$emit('remove')
+      expect(commands.removeItem).toHaveBeenCalledWith('cave', 'areas', 'a1')
+    })
+
+    it('selects a token or an area, never both', async () => {
+      fake.doc.value.areas = [AREA]
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('select', 't1')
+      canvas(wrapper).vm.$emit('select-area', 'a1')
+      await flushPromises()
+      expect(canvas(wrapper).props('selectedId')).toBeNull()
+      canvas(wrapper).vm.$emit('select', 't1')
+      await flushPromises()
+      expect(canvas(wrapper).props('selectedAreaId')).toBeNull()
+    })
+
+    it('draws with the shape picked under the toolbar', async () => {
+      const wrapper = mountEditor()
+      await wrapper.find('.toolbar button[aria-label="Draw an area"]').trigger('click')
+      await wrapper.find('button[aria-label="Line"]').trigger('click')
+      expect(canvas(wrapper).props('tool')).toBe('area')
+      expect(canvas(wrapper).props('areaShape')).toBe('line')
+    })
+  })
+
+  describe('setting the map up', () => {
+    it('frames a token\'s image', async () => {
+      fake.doc.value.tokens[0].image_url = '/api/observatory/images/1a2b3c4d-orc.png'
+      const wrapper = mountEditor()
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      wrapper.findComponent({ name: 'TokenImageEditor' }).vm.$emit('change', { image_scale: 1.5, image_x: 0.1 })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_scale: 1.5, image_x: 0.1 })
+    })
+
+    it('measures in range bands of its own', async () => {
+      fake.doc.value.grid = { ...GRID, measure: 'bands', bands: [] }
+      const wrapper = mountEditor()
+      await openTab(wrapper, 'Map')
+      const bands = [{ name: 'Near', max: 2 }, { name: 'Far', max: null }]
+      wrapper.findComponent({ name: 'RangeBandsEditor' }).vm.$emit('change', bands)
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { bands } })
+    })
+  })
+
+  describe('adding to the fight from the map', () => {
+    it('adds from sheets to the encounter, and puts the new ones on the map', async () => {
+      encounter.value = ENCOUNTER
+      fake.doc.value.encounter = 'fight'
+      encounterCommit.mockImplementation(async (command) => command)
+      encounterCommands.addItems.mockResolvedValue({ upsert: { combatants: [{ id: 'n1', name: 'Bugboar', type: 'adversary', sheet: 'bugboar', resources: {} }] } })
+      const wrapper = mountEditor()
+      await wrapper.find('.sheet-actions button').trigger('click')
+      const sheet = { ref: 'bugboar', name: 'Bugboar', type: 'adversary', resources: { HP: { max: 6 } } }
+      wrapper.findComponent({ name: 'EncounterAddPanel' }).vm.$emit('add', sheet, 1)
+      await flushPromises()
+      const [encounterId, collection, items] = encounterCommands.addItems.mock.calls[0]
+      expect([encounterId, collection, items[0].name, items[0].resources.HP.current]).toEqual(['fight', 'combatants', 'Bugboar', 6])
+      const [, tokens, placed] = commands.addItems.mock.calls[0]
+      expect(tokens).toBe('tokens')
+      expect(placed).toEqual([expect.objectContaining({ name: 'Bugboar', combatant: 'n1', sheet: 'bugboar', x: 2, y: 1 })])
+    })
+
+    it('gives a map without one an encounter of its own, next to it', async () => {
+      createEncounter.mockResolvedValue({ id: 'cave-2', name: 'Cave' })
+      const wrapper = mountEditor()
+      await openTab(wrapper, 'Sheet')
+      await wrapper.find('.sheet-empty .rk-btn').trigger('click')
+      await flushPromises()
+      expect(createEncounter).toHaveBeenCalledWith('Cave', null, '')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: 'cave-2' })
     })
   })
 })

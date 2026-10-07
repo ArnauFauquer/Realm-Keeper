@@ -32,8 +32,9 @@ export function thin(points, max = MAX_POINTS) {
  * socket, and this tab's own, drawn at once and sent. `ping(point)` pings a
  * point, `point(point)` moves the pointer there (starting a stroke) and
  * `release()` lifts it; `roll(tokenId, { label, formula, total })` shows a
- * roll over a token. Points are in cells. Nothing is sent when `canSend()`
- * says no (signed out).
+ * roll over a token; `measure({ points, token, end })` shares a ruler or a
+ * token's path (the canvas draws this tab's own). Points are in cells.
+ * Nothing is sent when `canSend()` says no (signed out).
  */
 export function useMapSignals(battlemapId, { canSend = () => true } = {}) {
   const layer = createSignalLayer()
@@ -106,10 +107,41 @@ export function useMapSignals(battlemapId, { canSend = () => true } = {}) {
     else if (current.queued.length || current.ended === true) schedule(current)
   }
 
+  // ── measuring ──────────────────────────────────────────────────────────
+  // A ruler, or a token's path as it is moved: drawn here by the canvas, and
+  // sent whole each time (only the newest path matters), one request after
+  // another, the last saying it is over.
+  let measurement = null // { id, pending, sending, timer, closed }
+
+  function measure({ points, token = null, end = false }) {
+    if (!measurement || measurement.closed) measurement = { id: randomId(), pending: null, sending: false, timer: null, closed: false }
+    const current = measurement
+    current.pending = { kind: 'ruler', stroke: current.id, points: thin(points.map(({ x, y }) => ({ x, y }))), token, end }
+    if (end) current.closed = true
+    scheduleMeasure(current)
+  }
+
+  function scheduleMeasure(current) {
+    if (current.sending || current.timer) return
+    current.timer = setTimeout(() => flushMeasure(current), POINTER_INTERVAL_MS)
+  }
+
+  async function flushMeasure(current) {
+    current.timer = null
+    const signal = current.pending
+    current.pending = null
+    if (!signal) return
+    current.sending = true
+    await send(signal)
+    current.sending = false
+    if (current.pending) scheduleMeasure(current)
+  }
+
   onBeforeUnmount(() => {
     if (stroke) clearTimeout(stroke.timer)
+    if (measurement) clearTimeout(measurement.timer)
     stop()
   })
 
-  return { layer, ping, point, release, roll }
+  return { layer, ping, point, release, roll, measure }
 }

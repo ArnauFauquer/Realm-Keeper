@@ -103,15 +103,49 @@ describe('BattlemapCanvas', () => {
   })
 
   describe('moving a token', () => {
-    it('selects it, and reports where it goes as it is dragged and where it is dropped, on a cell', async () => {
+    it('selects it, shares the path it is dragged along, and moves it where it is dropped, on a cell', async () => {
       const wrapper = mountCanvas()
       down(wrapper, '.token:nth-of-type(1)', 175, 245)
       expect(wrapper.emitted('select')[0]).toEqual(['orc'])
       const svg = wrapper.find('svg').element
       svg.dispatchEvent(pointer('pointermove', 400, 300))
+      await frame()
+      expect(wrapper.emitted('move')).toBeUndefined() // not until it is let go of
+      expect(wrapper.emitted('measure').at(-1)).toEqual([{ points: [{ x: 2.5, y: 3.5 }, { x: 5.5, y: 4.5 }], token: 'orc', end: false }])
       svg.dispatchEvent(pointer('pointerup', 400, 300))
-      expect(wrapper.emitted('moving').at(-1)).toEqual(['orc', { x: 5, y: 4 }])
       expect(wrapper.emitted('move')).toEqual([['orc', { x: 5, y: 4 }]])
+      expect(wrapper.emitted('measure').at(-1)[0].end).toBe(true)
+    })
+
+    it('Space adds a turn to the path, Backspace takes it back, and the distance counts every leg', async () => {
+      const wrapper = mountCanvas()
+      down(wrapper, '.token:nth-of-type(1)', 175, 245) // cell (2,3)
+      window.dispatchEvent(pointer('pointermove', 175 + 70 * 3, 245)) // 3 cells right
+      await frame()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: ' ' }))
+      window.dispatchEvent(pointer('pointermove', 175 + 70 * 3, 245 + 70 * 4)) // then 4 down
+      await frame()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.measure-label').text()).toBe('35 ft') // 3 + 4 cells, 5 ft each (not 4 straight)
+      expect(wrapper.findAll('.measure-turn')).toHaveLength(1)
+      expect(wrapper.emitted('measure').at(-1)[0].points).toHaveLength(3)
+
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace' }))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.measure-label').text()).toBe('20 ft')
+      window.dispatchEvent(pointer('pointerup', 385, 525))
+      expect(wrapper.emitted('move')).toEqual([['orc', { x: 5, y: 7 }]])
+    })
+
+    it('a second finger adds a turn too', async () => {
+      const wrapper = mountCanvas()
+      down(wrapper, '.token:nth-of-type(1)', 175, 245)
+      window.dispatchEvent(pointer('pointermove', 385, 245))
+      await frame()
+      wrapper.find('svg').element.dispatchEvent(pointer('pointerdown', 600, 600, { pointerId: 9 }))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.findAll('.measure-turn')).toHaveLength(1)
+      expect(wrapper.emitted('select')).toHaveLength(1) // and selects nothing else
     })
 
     it('does not count a tiny wobble as a move, and still selects', () => {
@@ -133,14 +167,21 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.emitted('move')[0][1]).toEqual({ x: 5, y: 4.29 }) // (360-10)/70, (310-10)/70 to a hundredth
     })
 
-    it('shows the token where it is being dragged, before anyone has agreed', async () => {
+    it('leaves the token where it is while its ghost follows the pointer, then shows it where it was put', async () => {
       const wrapper = mountCanvas()
       down(wrapper, '.token:nth-of-type(1)', 175, 245)
       wrapper.find('svg').element.dispatchEvent(pointer('pointermove', 400, 300))
       await frame()
       await wrapper.vm.$nextTick()
-      expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(385, 315)')
-      expect(wrapper.findAll('.token')[0].classes()).toContain('dragging')
+      const orc = wrapper.findAll('.token')[0]
+      expect(orc.attributes('transform')).toBe('translate(175, 245)')
+      expect(orc.classes()).toContain('dragging')
+      expect(wrapper.find('.token.ghost').attributes('transform')).toBe('translate(385, 315)')
+
+      window.dispatchEvent(pointer('pointerup', 400, 300))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.token.ghost').exists()).toBe(false)
+      expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(385, 315)') // before anyone has agreed
     })
 
     it('lets a screen only look', () => {
@@ -150,7 +191,7 @@ describe('BattlemapCanvas', () => {
       svg.dispatchEvent(pointer('pointermove', 400, 300))
       svg.dispatchEvent(pointer('pointerup', 400, 300))
       expect(wrapper.emitted('move')).toBeUndefined()
-      expect(wrapper.emitted('moving')).toBeUndefined()
+      expect(wrapper.emitted('measure')).toBeUndefined()
     })
 
     it('counts the wobble in pixels of the screen, so a tap on a big map shown small still only selects', () => {
@@ -160,7 +201,7 @@ describe('BattlemapCanvas', () => {
       down(wrapper, '.token:nth-of-type(1)', 175, 245)
       window.dispatchEvent(pointer('pointermove', 178, 245))
       window.dispatchEvent(pointer('pointerup', 178, 245))
-      expect(wrapper.emitted('moving')).toBeUndefined()
+      expect(wrapper.emitted('measure')).toBeUndefined()
       expect(wrapper.emitted('move')).toBeUndefined()
     })
 
@@ -184,16 +225,17 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.emitted('move')).toEqual([['orc', { x: 5, y: 4 }]])
     })
 
-    it('puts the token back where it was when the browser cancels the gesture', async () => {
+    it('moves nothing when the browser cancels the gesture, and says the path is over', async () => {
       const wrapper = mountCanvas()
       down(wrapper, '.token:nth-of-type(1)', 175, 245)
       window.dispatchEvent(pointer('pointermove', 400, 300))
       await frame()
       window.dispatchEvent(pointer('pointercancel', 400, 300))
       await wrapper.vm.$nextTick()
-      // Everyone saw it move, so everyone is told it is back.
-      expect(wrapper.emitted('move')).toEqual([['orc', { x: 2, y: 3 }]])
+      expect(wrapper.emitted('move')).toBeUndefined()
+      expect(wrapper.emitted('measure').at(-1)[0].end).toBe(true)
       expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(175, 245)')
+      expect(wrapper.find('.token.ghost').exists()).toBe(false)
     })
 
     it('clears the selection on the bare map', () => {
@@ -211,9 +253,10 @@ describe('BattlemapCanvas', () => {
       svg.dispatchEvent(pointer('pointermove', 40 + 70 * 3, 40 + 70 * 2)) // cell (3,2)
       await frame()
       await wrapper.vm.$nextTick()
-      expect(wrapper.find('.ruler-label').text()).toBe('15 ft') // 3 cells by grid, 5 ft each
+      expect(wrapper.find('.measure-label').text()).toBe('15 ft') // 3 cells by grid, 5 ft each
       svg.dispatchEvent(pointer('pointerup', 250, 180))
-      expect(wrapper.find('.ruler').exists()).toBe(true) // stays until the next one
+      expect(wrapper.find('.measure').exists()).toBe(true) // stays until the next one
+      expect(wrapper.emitted('measure').at(-1)).toEqual([{ points: [{ x: 0.5, y: 0.5 }, { x: 3.5, y: 2.5 }], token: null, end: true }])
       expect(wrapper.emitted('move')).toBeUndefined()
       expect(wrapper.emitted('select')).toBeUndefined()
     })
@@ -225,7 +268,65 @@ describe('BattlemapCanvas', () => {
       svg.dispatchEvent(pointer('pointermove', 200, 40))
       await wrapper.vm.$nextTick()
       await wrapper.setProps({ tool: 'select' })
-      expect(wrapper.find('.ruler').exists()).toBe(false)
+      expect(wrapper.find('.measure').exists()).toBe(false)
+    })
+
+    it('names the range band a distance falls in, with its rings, on a map measured in bands', async () => {
+      const bands = [{ name: 'Melee', max: 5 }, { name: 'Close', max: 30 }, { name: 'Far', max: null }]
+      const wrapper = mountCanvas({ tool: 'ruler', grid: { ...GRID, measure: 'bands', bands } })
+      const svg = wrapper.find('svg').element
+      svg.dispatchEvent(pointer('pointerdown', 40, 40))
+      svg.dispatchEvent(pointer('pointermove', 40 + 70 * 3, 40 + 70 * 4)) // 5 cells straight, 25 ft
+      await frame()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.measure-label').text()).toBe('Close')
+      expect(wrapper.findAll('.band-ring').map((r) => r.attributes('r'))).toEqual(['70', '420']) // 1 and 6 cells
+      expect(wrapper.find('.band.current .band-name').text()).toBe('Close')
+    })
+  })
+
+  describe('areas', () => {
+    const AREAS = [
+      { id: 'fire', shape: 'circle', x: 2, y: 2, size: 2, angle: 0, spread: 60, width: 1, color: '#f97316', label: 'Fireball' },
+      { id: 'mist', shape: 'square', x: 6, y: 6, size: 1, angle: 0, spread: 60, width: 1, hidden: true, label: '' }
+    ]
+
+    it('draws each with its reach, the hidden ones marked', () => {
+      const wrapper = mountCanvas({ areas: AREAS })
+      const areas = wrapper.findAll('.area')
+      expect(areas).toHaveLength(2)
+      expect(areas[0].find('.area-label').text()).toBe('Fireball · 10 ft')
+      expect(areas[1].classes()).toContain('hidden')
+      expect(areas[1].find('.area-label').text()).toBe('10 ft') // a square's side
+    })
+
+    it('draws a new one by dragging from where it starts, on a cell, with the area tool', async () => {
+      const wrapper = mountCanvas({ tool: 'area', areaShape: 'cone' })
+      const svg = wrapper.find('svg').element
+      svg.dispatchEvent(pointer('pointerdown', 140, 140)) // the corner of cell (2,2)
+      svg.dispatchEvent(pointer('pointermove', 140 + 70 * 4, 140))
+      await frame()
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.area.preview').exists()).toBe(true)
+      svg.dispatchEvent(pointer('pointerup', 140 + 70 * 4, 140))
+      expect(wrapper.emitted('add-area')).toEqual([[{ shape: 'cone', x: 2, y: 2, size: 4, angle: 0 }]])
+      await wrapper.vm.$nextTick()
+      expect(wrapper.find('.area.preview').exists()).toBe(false)
+    })
+
+    it('selects one by its outline or origin and moves it by its origin', async () => {
+      const wrapper = mountCanvas({ areas: AREAS })
+      wrapper.find('.area-handle').element.dispatchEvent(pointer('pointerdown', 140, 140))
+      expect(wrapper.emitted('select-area')).toEqual([['fire']])
+      window.dispatchEvent(pointer('pointermove', 140 + 70 * 2 + 30, 140))
+      await frame()
+      window.dispatchEvent(pointer('pointerup', 140 + 70 * 2 + 30, 140))
+      expect(wrapper.emitted('move-area')).toEqual([['fire', { x: 4.5, y: 2 }]]) // on a cell's centre or corner
+    })
+
+    it('lets a screen only look', () => {
+      const wrapper = mountCanvas({ areas: AREAS, editable: false })
+      expect(wrapper.find('.area-handle').exists()).toBe(false)
     })
   })
 

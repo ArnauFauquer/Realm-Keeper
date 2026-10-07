@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PING_MS, REPLAY_DELAY_MS, ROLL_MS, STROKE_IDLE_MS, TRAIL_MS, createSignalLayer } from '@/utils/mapSignals'
+import { PING_MS, REPLAY_DELAY_MS, ROLL_MS, RULER_IDLE_MS, RULER_LINGER_MS, STROKE_IDLE_MS, TRAIL_MS, createSignalLayer } from '@/utils/mapSignals'
 import { PLAYER_SIGNAL_COLORS } from '@/dice/diceTheme'
 
 const ping = (x, y, extra = {}) => ({ kind: 'ping', points: [{ x, y }], by: 'Mia', slot: 1, ...extra })
@@ -100,6 +100,31 @@ describe('a signal layer', () => {
     layer.receive(ping(0, 0), 0)
     expect(heard).toBe(1)
     layer.clear()
+    expect(layer.idle()).toBe(true)
+  })
+
+  it("shows someone else's ruler as it is, the newest path, and lets it fade once they let go", () => {
+    const layer = createSignalLayer()
+    const ruler = (points, extra = {}) => ({ kind: 'ruler', stroke: 'r1', source: 'tab', by: 'Leo', slot: 0, points, ...extra })
+    layer.receive(ruler([{ x: 1, y: 1 }, { x: 3, y: 1 }]), 0)
+    layer.receive(ruler([{ x: 1, y: 1 }, { x: 3, y: 1 }, { x: 3, y: 4 }], { token: 'orc' }), 100)
+    const [shown] = layer.view(200).rulers
+    expect(shown).toMatchObject({ by: 'Leo', token: 'orc', opacity: 1, ended: false })
+    expect(shown.points).toHaveLength(3)
+
+    layer.receive(ruler([], { end: true }), 300) // the end keeps the path
+    expect(layer.view(300 + RULER_LINGER_MS / 2).rulers[0]).toMatchObject({ ended: true, opacity: 0.5 })
+    expect(layer.view(300 + RULER_LINGER_MS).rulers).toEqual([])
+    layer.prune(300 + RULER_LINGER_MS)
+    expect(layer.idle()).toBe(true)
+  })
+
+  it('keeps a ruler held still a good while, and lets go of one whose end never came', () => {
+    const layer = createSignalLayer()
+    layer.receive({ kind: 'ruler', stroke: 'r', points: [{ x: 0, y: 0 }, { x: 1, y: 0 }] }, 0)
+    layer.prune(RULER_IDLE_MS / 2)
+    expect(layer.view(RULER_IDLE_MS / 2).rulers).toHaveLength(1)
+    layer.prune(RULER_IDLE_MS)
     expect(layer.idle()).toBe(true)
   })
 })

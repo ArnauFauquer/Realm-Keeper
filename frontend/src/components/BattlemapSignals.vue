@@ -1,5 +1,19 @@
 <template>
   <g class="map-signals" pointer-events="none">
+    <!-- Someone else measuring, or moving a token: the path, and the token's
+         ghost at its end until it is let go of. -->
+    <g v-for="ruler in frame.rulers" :key="ruler.key" class="remote-ruler">
+      <MeasurePath :grid="grid" :points="ruler.points.map((p) => px(p.x, p.y))" :color="ruler.color" :by="ruler.by" :opacity="ruler.opacity" />
+      <BattlemapToken
+        v-if="ruler.token && !ruler.ended && tokenById(ruler.token)"
+        :token="tokenById(ruler.token)"
+        :cell="grid.size"
+        :clip-id="`ghost-${uid}-${ruler.key}`"
+        ghost
+        :transform="`translate(${px(ruler.points.at(-1).x, ruler.points.at(-1).y).x}, ${px(ruler.points.at(-1).x, ruler.points.at(-1).y).y})`"
+      />
+    </g>
+
     <!-- The pointer: a trail fading behind a bright head. -->
     <g v-for="stroke in frame.strokes" :key="stroke.key" class="pointer" :style="{ '--signal': stroke.color }">
       <line
@@ -60,20 +74,25 @@
 
 <script setup>
 import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
+import BattlemapToken from './BattlemapToken.vue'
+import MeasurePath from './MeasurePath.vue'
 import { toPixels, tokenCenter } from '@/utils/battlemapGeometry'
 
 // What is pointed at on the map, drawn over it (inside the map's SVG, so it
 // zooms with it): the pointers' trails, pings and rolls over tokens of a
-// signal layer (utils/mapSignals.js). It redraws every frame while anything
+// signal layer (utils/mapSignals.js), and the rulers and token moves of
+// everyone else. It redraws every frame while anything
 // is showing, and not at all otherwise; only this part of the map does.
 const props = defineProps({
   layer: { type: Object, required: true },
   grid: { type: Object, required: true },
-  // The tokens rolls are shown over: { id, x, y, size }.
+  // The tokens rolls are shown over, and moving ones' ghosts are drawn as.
   tokens: { type: Array, default: () => [] }
 })
 
-const EMPTY = Object.freeze({ pings: [], strokes: [], rolls: [] })
+const EMPTY = Object.freeze({ pings: [], strokes: [], rolls: [], rulers: [] })
+const uid = Math.random().toString(36).slice(2, 8)
+const tokenById = (id) => props.tokens.find((t) => t.id === id) || null
 const frame = shallowRef(EMPTY)
 
 const cell = computed(() => props.grid.size)

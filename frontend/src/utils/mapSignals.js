@@ -1,5 +1,6 @@
 // What is pointed at on a battlemap for a moment: a ping at a point, the laser
-// pointer's trail, a roll shown over a token (backend models/battlemap.py
+// pointer's trail, a roll shown over a token, someone's ruler or a token's
+// path as it is moved (backend models/battlemap.py
 // MapSignal). Nothing of it is kept in the map; each view of the map (the
 // table's, the screen's) holds the signals it was sent in a layer like this
 // one, which forgets them as they fade. Points are in cells, like tokens.
@@ -17,6 +18,10 @@ export const STROKE_IDLE_MS = 2500
 /** Someone else's pointer is replayed this far behind, so the points of a
  * batch are spread out as they were drawn instead of all landing at once. */
 export const REPLAY_DELAY_MS = 120
+/** How long someone else's ruler (or a token's path) stays once they let go. */
+export const RULER_LINGER_MS = 1500
+/** A ruler whose end never came: someone may hold still measuring a while. */
+export const RULER_IDLE_MS = 30000
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
@@ -32,6 +37,7 @@ export function createSignalLayer() {
   let pings = []
   const strokes = new Map()
   const rolls = new Map() // by token: one roll over it at a time, the newest
+  const rulers = new Map() // by stroke: { key, color, by, token, points, ended, lastAt }
   const listeners = new Set()
   let seq = 0
 
@@ -44,6 +50,12 @@ export function createSignalLayer() {
       pings.push({ id: ++seq, x: point.x, y: point.y, color, by, at })
     } else if (signal.kind === 'pointer') {
       receivePointer(signal, at, { color, by, local })
+    } else if (signal.kind === 'ruler' && signal.stroke) {
+      // Each one carries the whole path so far: it replaces the last.
+      const key = `${signal.source || ''}|${signal.by || ''}|${signal.stroke}`
+      const before = rulers.get(key)
+      const points = signal.points?.length ? signal.points.map(({ x, y }) => ({ x, y })) : before?.points || []
+      rulers.set(key, { key, color, by, token: signal.token || null, points, ended: !!signal.end, lastAt: at })
     } else if (signal.kind === 'roll' && signal.token && signal.roll) {
       rolls.set(signal.token, { id: ++seq, token: signal.token, ...signal.roll, color, by, at })
     } else {
@@ -75,6 +87,9 @@ export function createSignalLayer() {
         .filter((ping) => at - ping.at < PING_MS)
         .map((ping) => ({ ...ping, progress: Math.max(0, (at - ping.at) / PING_MS) })),
       strokes: [...strokes.values()].map((stroke) => strokeView(stroke, at)).filter(Boolean),
+      rulers: [...rulers.values()]
+        .filter((ruler) => ruler.points.length && (!ruler.ended || at - ruler.lastAt < RULER_LINGER_MS))
+        .map((ruler) => ({ ...ruler, opacity: ruler.ended ? Math.max(0, 1 - (at - ruler.lastAt) / RULER_LINGER_MS) : 1 })),
       rolls: [...rolls.values()]
         .filter((roll) => at - roll.at < ROLL_MS)
         .map((roll) => ({ ...roll, progress: Math.max(0, (at - roll.at) / ROLL_MS) }))
@@ -103,6 +118,9 @@ export function createSignalLayer() {
   function prune(at = now()) {
     pings = pings.filter((ping) => at - ping.at < PING_MS)
     for (const [token, roll] of rolls) if (at - roll.at >= ROLL_MS) rolls.delete(token)
+    for (const [key, ruler] of rulers) {
+      if (at - ruler.lastAt >= (ruler.ended ? RULER_LINGER_MS : RULER_IDLE_MS)) rulers.delete(key)
+    }
     for (const [key, stroke] of strokes) {
       // The head stays where the pointer rests: only points behind it fade out.
       const lastPoint = stroke.points[stroke.points.length - 1]
@@ -112,12 +130,13 @@ export function createSignalLayer() {
     }
   }
 
-  const idle = () => !pings.length && !strokes.size && !rolls.size
+  const idle = () => !pings.length && !strokes.size && !rolls.size && !rulers.size
 
   function clear() {
     pings = []
     strokes.clear()
     rolls.clear()
+    rulers.clear()
   }
 
   function subscribe(listener) {

@@ -4,6 +4,7 @@
 
     <template v-else-if="doc">
       <div class="stage">
+        <div class="toolbars">
         <div class="toolbar">
           <div class="tool-group" role="group" aria-label="Tools">
             <button
@@ -34,23 +35,46 @@
           </template>
           <LiveBadge />
         </div>
+        <!-- What the area tool draws. -->
+        <div v-if="tool === 'area'" class="toolbar" role="group" aria-label="Area shape">
+          <button
+            v-for="s in AREA_SHAPES"
+            :key="s.value"
+            type="button"
+            class="tool rk-icon-btn"
+            :class="{ active: areaShape === s.value }"
+            :aria-pressed="areaShape === s.value"
+            :title="`${s.label}: drag from where it starts`"
+            :aria-label="s.label"
+            @click="areaShape = s.value"
+          >
+            <span class="mdi" :class="s.icon"></span>
+          </button>
+        </div>
+        </div>
 
         <BattlemapCanvas
           :image-url="doc.image_url"
           :grid="doc.grid"
           :tokens="viewTokens"
+          :areas="doc.areas || []"
           :selected-id="selectedId"
+          :selected-area-id="selectedAreaId"
           :tool="tool"
+          :area-shape="areaShape"
           :editable="canInteract"
           :reset-key="doc.id"
           :signals="signals.layer"
-          @select="selectedId = $event"
-          @moving="onMoving"
+          @select="selectToken"
+          @select-area="selectArea"
           @move="onMove"
+          @move-area="moveArea"
+          @add-area="addArea"
           @open="openToken"
           @ping="signals.ping"
           @point="signals.point"
           @release="signals.release"
+          @measure="signals.measure"
         >
           <template #empty-actions>
             <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
@@ -82,6 +106,9 @@
                 <option v-for="e in encounters" :key="e.id" :value="e.id">{{ e.id.includes('/') ? e.id : e.name }}</option>
               </select>
             </label>
+            <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm" :disabled="creatingEncounter" @click="createEncounter">
+              <span class="mdi mdi-plus"></span> New encounter for this map
+            </button>
           </div>
 
           <template v-else>
@@ -100,7 +127,22 @@
                 </button>
               </li>
             </ul>
-            <p v-else class="hint">This encounter has nobody in it yet. Add combatants from its tracker.</p>
+            <p v-else class="hint">Nobody is in this encounter yet.</p>
+
+            <div v-if="canInteract" class="sheet-actions" role="group" aria-label="Encounter">
+              <button type="button" class="rk-btn rk-btn--sm" :aria-expanded="adding" @click="adding = !adding">
+                <span class="mdi" :class="adding ? 'mdi-close' : 'mdi-account-multiple-plus-outline'"></span> {{ adding ? 'Close' : 'Add to the fight' }}
+              </button>
+              <button v-if="focused && tokenOf(focused)" type="button" class="rk-btn rk-btn--sm" :title="`${focused.name}'s token: image, size, colour`" @click="editToken(tokenOf(focused))">
+                <span class="mdi mdi-image-edit-outline"></span> Token
+              </button>
+            </div>
+            <EncounterAddPanel
+              v-if="adding && canInteract"
+              :present-characters="presentCharacters"
+              @add="addFromSheet"
+              @add-custom="addCustom"
+            />
 
             <CombatantPlay
               v-if="focused"
@@ -179,6 +221,18 @@
               <button v-if="selected.image_url" type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="patchToken({ image_url: null })">Remove image</button>
             </div>
 
+            <TokenImageEditor
+              v-if="selected.image_url"
+              :image-url="selected.image_url"
+              :scale="selected.image_scale ?? 1"
+              :x="selected.image_x ?? 0"
+              :y="selected.image_y ?? 0"
+              :rotation="selected.rotation ?? 0"
+              :color="selected.color"
+              :disabled="!canInteract"
+              @change="patchToken"
+            />
+
             <label v-if="encounter" class="field">
               <span>Stands for</span>
               <select class="rk-input" :value="selected.combatant || ''" :disabled="!canInteract" @change="linkCombatant($event.target.value)">
@@ -203,6 +257,32 @@
               <p v-if="!options.length" class="hint">It has no counters.</p>
             </div>
           </section>
+
+          <div class="areas-head">
+            <h3 class="section-title">Areas</h3>
+            <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm" :class="{ active: tool === 'area' }" @click="tool = 'area'">
+              <span class="mdi mdi-shape-outline"></span> Draw
+            </button>
+          </div>
+          <p v-if="!(doc.areas || []).length" class="hint">Spell reaches, zones, hazards: pick the area tool (A) and drag from where it starts.</p>
+          <ul class="token-list">
+            <li v-for="a in doc.areas || []" :key="a.id">
+              <button type="button" class="token-row" :class="{ active: a.id === selectedAreaId, hidden: a.hidden }" @click="selectArea(a.id)">
+                <span class="mdi" :class="AREA_ICONS[a.shape]" :style="{ color: a.color || AREA_COLORS[0] }"></span>
+                <span class="token-name">{{ a.label || AREA_LABELS[a.shape] }}</span>
+                <span class="area-size">{{ areaMeasure(doc.grid, a) }}</span>
+                <span v-if="a.hidden" class="mdi mdi-eye-off-outline" title="Hidden from the screen"></span>
+              </button>
+            </li>
+          </ul>
+          <AreaInspector
+            v-if="selectedArea"
+            :area="selectedArea"
+            :grid="doc.grid"
+            :disabled="!canInteract"
+            @patch="patchArea"
+            @remove="removeArea"
+          />
         </div>
 
         <!-- Map -->
@@ -263,8 +343,19 @@
               <select class="rk-input" :value="doc.grid.measure" @change="patchGrid({ measure: $event.target.value })">
                 <option value="grid">Cells (a diagonal is one)</option>
                 <option value="straight">The straight line</option>
+                <option value="bands">Range bands (by name)</option>
               </select>
             </label>
+            <RangeBandsEditor
+              v-if="doc.grid.measure === 'bands'"
+              :bands="doc.grid.bands || []"
+              :unit="doc.grid.unit"
+              :disabled="!canInteract"
+              @change="(bands) => patchGrid({ bands })"
+            />
+            <p v-if="doc.grid.measure === 'bands' && doc.grid.snap" class="hint">
+              For free movement, turn off <em>Snap tokens to cells</em> above.
+            </p>
           </fieldset>
         </div>
       </aside>
@@ -286,7 +377,7 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
-import { TOKEN_COLORS } from '@/utils/palette'
+import { AREA_COLORS, TOKEN_COLORS } from '@/utils/palette'
 import { useLibraryPicker } from '@/composables/useLibraryPicker'
 import { screenApi } from '@/api/screen'
 import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
@@ -295,15 +386,21 @@ import LiveBadge from './LiveBadge.vue'
 import LiveDocumentState from './LiveDocumentState.vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { barOptions, metersFor } from '@/utils/battlemapMeters'
-import { freeCells } from '@/utils/battlemapGeometry'
+import { areaMeasure, freeCells } from '@/utils/battlemapGeometry'
+import { combatantsFromSheet, customCombatant } from '@/utils/encounter'
 import CombatantPlay from './CombatantPlay.vue'
+import EncounterAddPanel from './EncounterAddPanel.vue'
+import TokenImageEditor from './TokenImageEditor.vue'
+import RangeBandsEditor from './RangeBandsEditor.vue'
+import AreaInspector, { AREA_SHAPES } from './AreaInspector.vue'
 import { useCombatantActions, useCombatantSheets } from '@/composables/useCombatantActions'
 import { useMapSignals } from '@/composables/useMapSignals'
 import { useDocModal } from '@/composables/useDocModal'
 
 // One battlemap, live: everyone who has it open sees tokens move as they are
-// moved. Nothing here saves; each action is a command (api/docs.js) and the
-// server announces its result. What the screen shows is made by the server.
+// moved, areas laid, rulers measured and its combatants played. Nothing here
+// saves; each action is a command (api/docs.js) and the server announces its
+// result. What the screen shows is made by the server.
 const props = defineProps({
   battlemapId: { type: String, required: true },
   canInteract: { type: Boolean, default: false }
@@ -312,7 +409,7 @@ const props = defineProps({
 const id = props.battlemapId
 const { commands } = battlemapsApi
 // Each action is a command (`send`): the event it returns is applied at once.
-const { doc, status, error, actionError, unavailable, attempt, send } = useLiveDocument('battlemap', id, () => battlemapsApi.fetch(id))
+const { doc, status, error, actionError, unavailable, attempt, send, commit } = useLiveDocument('battlemap', id, () => battlemapsApi.fetch(id))
 // The encounter whose combatants the tokens stand for, followed live too (a
 // token shows its combatant's counters as they change).
 const followed = useSyncedDocFollowing('encounter', () => doc.value?.encounter || null, (encounterId) => encountersApi.fetch(encounterId))
@@ -334,17 +431,24 @@ const signals = useMapSignals(id, { canSend: () => props.canInteract })
 const TABS = [{ value: 'sheet', label: 'Sheet' }, { value: 'tokens', label: 'Tokens' }, { value: 'map', label: 'Map' }]
 const TOOLS = [
   { value: 'select', label: 'Select and move', icon: 'mdi-cursor-default', key: 'v' },
-  { value: 'ruler', label: 'Measure a distance', icon: 'mdi-ruler', key: 'r' },
+  { value: 'ruler', label: 'Measure: Space adds a turn', icon: 'mdi-ruler', key: 'r' },
+  { value: 'area', label: 'Draw an area', icon: 'mdi-shape-outline', key: 'a', signedIn: true },
   // Seen by everyone on the map and on the screen: for the signed in only.
   { value: 'pointer', label: 'Point: tap to ping, drag for the laser', icon: 'mdi-laser-pointer', key: 'p', signedIn: true }
 ]
 const COLORS = TOKEN_COLORS
 const DEFAULT_COLOR = COLORS[0]
 const CHARACTER_COLOR = '#34d399'
+const AREA_ICONS = Object.fromEntries(AREA_SHAPES.map((s) => [s.value, s.icon]))
+const AREA_LABELS = Object.fromEntries(AREA_SHAPES.map((s) => [s.value, s.label]))
 
 const tab = ref('tokens')
 const tool = ref('select')
 const selectedId = ref(null)
+const selectedAreaId = ref(null)
+const areaShape = ref('circle')
+const adding = ref(false)
+const creatingEncounter = ref(false)
 // Whose sheet the Sheet tab plays: the selected token's combatant, or one
 // picked from the roster (who may not be on the map at all).
 const focusId = ref(null)
@@ -368,6 +472,8 @@ const viewTokens = computed(() =>
 )
 const selected = computed(() => doc.value?.tokens.find((t) => t.id === selectedId.value) || null)
 const options = computed(() => (selected.value ? barOptions(selected.value, encounter.value, characters.docs.value) : []))
+const selectedArea = computed(() => doc.value?.areas?.find((a) => a.id === selectedAreaId.value) || null)
+const presentCharacters = computed(() => (encounter.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
 const focused = computed(() => encounter.value?.combatants.find((c) => c.id === focusId.value) || null)
 const tokenOf = (c) => doc.value?.tokens.find((t) => t.combatant === c.id) || null
 // The combatant the selected token stands for, if it is in the encounter.
@@ -388,6 +494,24 @@ watch(selectedId, () => {
 })
 
 watch(focused, (c) => { if (c) loadSheet(c) }, { immediate: true })
+
+// One thing selected at a time: a token, or an area.
+function selectToken(tokenId) {
+  selectedId.value = tokenId
+  if (tokenId) selectedAreaId.value = null
+}
+
+function selectArea(areaId) {
+  selectedAreaId.value = areaId
+  if (!areaId) return
+  selectedId.value = null
+  tab.value = 'tokens'
+}
+
+function editToken(token) {
+  selectToken(token.id)
+  tab.value = 'tokens'
+}
 
 function focusCombatant(c) {
   focusId.value = c.id
@@ -437,9 +561,13 @@ function removeToken() {
   send(commands.removeItem(id, 'tokens', tokenId))
 }
 
-function placeCombatants() {
-  const cells = freeCells(unplaced.value.length, doc.value.tokens)
-  const items = unplaced.value.map((c, index) => ({
+const placeCombatants = () => place(unplaced.value)
+
+// A token each for some of the encounter's combatants, on free cells.
+function place(combatants) {
+  if (!combatants.length) return
+  const cells = freeCells(combatants.length, doc.value.tokens)
+  const items = combatants.map((c, index) => ({
     name: c.name,
     combatant: c.id,
     sheet: c.sheet || null,
@@ -449,7 +577,60 @@ function placeCombatants() {
     y: cells[index].y,
     size: 1
   }))
-  send(commands.addItems(id, 'tokens', items))
+  return send(commands.addItems(id, 'tokens', items))
+}
+
+// Added to the fight from here: into the encounter, then onto the map. The
+// encounter's own event says who is new.
+async function addToEncounter(combatants) {
+  let event = null
+  const added = await attempt((async () => {
+    event = await followed.commit(encountersApi.commands.addItems(doc.value.encounter, 'combatants', combatants))
+  })())
+  if (!added) return
+  const known = new Set((doc.value.tokens || []).map((t) => t.combatant))
+  const fresh = (event?.upsert?.combatants || []).filter((c) => !known.has(c.id))
+  await place(fresh)
+  if (fresh.length) focusCombatant(fresh[0])
+}
+
+const addFromSheet = (sheet, count) => addToEncounter(combatantsFromSheet(sheet, count, encounter.value.combatants))
+const addCustom = (name) => addToEncounter([customCombatant(name)])
+
+// An encounter of its own for a map that has none, next to it.
+async function createEncounter() {
+  creatingEncounter.value = true
+  try {
+    let created = null
+    const made = await attempt((async () => {
+      created = await encountersApi.create(doc.value.name, null, folderOf(id))
+    })())
+    if (!made) return
+    encounters.value = [...encounters.value, created]
+    if (await setEncounter(created.id)) adding.value = true
+  } finally {
+    creatingEncounter.value = false
+  }
+}
+
+// ── areas ──────────────────────────────────────────────────────────────
+
+async function addArea(area) {
+  let event = null
+  const added = await attempt((async () => {
+    event = await commit(commands.addItems(id, 'areas', [{ ...area, color: AREA_COLORS[0] }]))
+  })())
+  const created = added && event?.upsert?.areas?.at(-1)
+  if (created) selectArea(created.id)
+}
+
+const moveArea = (areaId, position) => send(commands.patchItem(id, 'areas', areaId, position))
+const patchArea = (fields) => send(commands.patchItem(id, 'areas', selectedAreaId.value, fields))
+
+function removeArea() {
+  const areaId = selectedAreaId.value
+  selectedAreaId.value = null
+  send(commands.removeItem(id, 'areas', areaId))
 }
 
 function linkCombatant(combatantId) {
@@ -462,15 +643,11 @@ function linkCombatant(combatantId) {
 const toggleBar = (name, on) =>
   send(commands.editList(id, 'tokens', selected.value.id, 'bars', on ? { add: [name] } : { remove: [name] }))
 
-// A token being dragged is sent as it moves, at most every MOVE_INTERVAL ms,
-// so everyone sees it travel; where it is dropped is sent at once.
-//
-// Moves go out one at a time, the newest position of each token: requests in
-// flight together can reach the server in any order, and an older one landing
-// after the drop would put the token back where it was a moment ago.
-const MOVE_INTERVAL = 80
-let pendingMove = null
-let moveTimer = null
+// A token moves where it is let go of (while it is dragged, everyone sees
+// the path it would take: signals.measure). Moves go out one at a time, the
+// newest position of each token: requests in flight together can reach the
+// server in any order, and an older one landing after a newer one would put
+// the token back where it was a moment ago.
 const queuedMoves = new Map() // token id -> position
 let sending = null
 
@@ -490,26 +667,9 @@ function sendMove(tokenId, position) {
   return sending
 }
 
-function onMoving(tokenId, position) {
-  pendingMove = { tokenId, position }
-  if (moveTimer) return
-  moveTimer = setTimeout(() => {
-    moveTimer = null
-    if (pendingMove) sendMove(pendingMove.tokenId, pendingMove.position)
-    pendingMove = null
-  }, MOVE_INTERVAL)
-}
+const onMove = (tokenId, position) => sendMove(tokenId, position)
 
-function onMove(tokenId, position) {
-  clearTimeout(moveTimer)
-  moveTimer = null
-  pendingMove = null
-  sendMove(tokenId, position)
-}
-
-onBeforeUnmount(() => clearTimeout(moveTimer))
-
-// V, R and P pick a tool, as the buttons' titles say; not while typing.
+// V, R, A and P pick a tool, as the buttons' titles say; not while typing.
 function onKeydown(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || !event.key) return
   if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
@@ -547,11 +707,18 @@ async function toggleScreen() {
   min-height: 0;
 }
 
-.toolbar {
+.toolbars {
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
   z-index: var(--z-raised);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -751,6 +918,38 @@ async function toggleScreen() {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.areas-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.section-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.areas-head .active {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.area-size {
+  flex: none;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
 }
 
 .link-btn {

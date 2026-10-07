@@ -109,6 +109,53 @@ def test_the_map_and_its_grid_are_what_a_screen_needs_to_draw_it():
     assert "snap" not in shown["grid"]
 
 
+def test_range_bands_are_the_tables_own_and_in_order():
+    bands = [{"name": "Melee", "max": 1}, {"name": "Close", "max": 9}, {"name": "Far"}]
+    grid = Battlemap(id="c", name="C", grid={"measure": "bands", "bands": bands}).grid
+    assert grid.measure == "bands" and [b.name for b in grid.bands] == ["Melee", "Close", "Far"]
+    assert grid.bands[-1].max is None   # anything further
+    for nonsense in (
+        [{"name": "Far"}, {"name": "Close", "max": 9}],             # unlimited before the last
+        [{"name": "Close", "max": 9}, {"name": "Melee", "max": 1}],  # nearer after further
+        [{"name": "A", "max": 3}, {"name": "B", "max": 3}],
+        [{"name": "", "max": 3}],
+        [{"name": "A", "max": 0}],
+    ):
+        with pytest.raises(ValueError):
+            Battlemap(id="c", name="C", grid={"bands": nonsense})
+    shown = project_for_screen(_map(grid={**_map()["grid"], "measure": "bands", "bands": bands}))
+    assert shown["grid"]["bands"] == bands   # a screen measures as the table does
+
+
+def test_areas_are_shapes_on_the_map_and_hidden_ones_stay_off_screens():
+    battlemap = Battlemap(id="c", name="C", areas=[
+        {"id": "fire", "shape": "cone", "x": 2, "y": 3, "size": 6, "angle": 45, "color": "#f97316", "label": "Breath"},
+        {"id": "trap", "shape": "square", "x": 5, "y": 5, "size": 1, "hidden": True},
+    ])
+    assert battlemap.areas[0].spread == 60 and battlemap.areas[1].width == 1
+    for nonsense in ({"id": "a", "shape": "hexagon"}, {"id": "a", "size": 0}, {"id": "a", "spread": 1}):
+        with pytest.raises(ValueError):
+            Battlemap(id="c", name="C", areas=[nonsense])
+    with pytest.raises(ValueError, match="unique"):
+        Battlemap(id="c", name="C", areas=[{"id": "a"}, {"id": "a"}])
+
+    shown = project_for_screen(_map(areas=battlemap.model_dump(mode="json")["areas"]))
+    assert [a["id"] for a in shown["areas"]] == ["fire"]
+    assert shown["areas"][0] == {"id": "fire", "shape": "cone", "x": 2, "y": 3, "size": 6, "angle": 45,
+                                 "spread": 60, "width": 1, "color": "#f97316", "label": "Breath"}
+
+
+def test_a_token_frames_its_image_and_a_screen_frames_it_the_same():
+    token = Battlemap(id="c", name="C", tokens=[{"id": "a", "image_scale": 1.8, "image_x": -0.2, "image_y": 0.1}]).tokens[0]
+    assert (token.image_scale, token.image_x, token.image_y) == (1.8, -0.2, 0.1)
+    for nonsense in ({"image_scale": 0}, {"image_scale": 9}, {"image_x": 2}):
+        with pytest.raises(ValueError):
+            Battlemap(id="c", name="C", tokens=[{"id": "a", **nonsense}])
+    tokens = [{**_map()["tokens"][0], "image_scale": 2, "image_x": 0.25}]
+    shown = project_for_screen(_map(tokens=tokens), ENCOUNTER_DOC)["tokens"][0]
+    assert (shown["image_scale"], shown["image_x"], shown["image_y"]) == (2, 0.25, 0)
+
+
 # ── commands ────────────────────────────────────────────────────────────────
 
 def test_changing_one_grid_setting_keeps_the_others():
@@ -347,6 +394,20 @@ def test_a_map_and_its_tokens_over_http(gm):
     assert gm.delete(f"{base}/tokens/orc").status_code == 200
 
 
+def test_areas_and_range_bands_over_http(gm):
+    base = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Zoned cave'}).json()['id']}"
+    added = gm.post(f"{base}/areas", json={"items": [{"shape": "circle", "x": 3, "y": 3, "size": 4}]}).json()
+    area = added["upsert"]["areas"][0]
+    assert gm.patch(f"{base}/areas/{area['id']}", json={"shape": "line", "angle": 90}).status_code == 200
+    assert gm.patch(f"{base}/areas/{area['id']}", json={"shape": "blob"}).status_code == 400
+    bands = [{"name": "Near", "max": 3}, {"name": "Far"}]
+    assert gm.patch(base, json={"grid": {"measure": "bands", "bands": bands}}).status_code == 200
+    doc = gm.get(base).json()
+    assert doc["areas"][0]["shape"] == "line" and doc["grid"]["size"] == 70
+    assert doc["grid"]["bands"] == [{"name": "Near", "max": 3}, {"name": "Far", "max": None}]
+    assert gm.delete(f"{base}/areas/{area['id']}").status_code == 200
+
+
 def test_only_library_images_and_sane_tokens(gm):
     base = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Strict cave'}).json()['id']}"
     assert gm.patch(base, json={"image_url": "https://evil.example/map.png"}).status_code == 400
@@ -461,6 +522,7 @@ def test_a_moved_encounter_is_followed_by_the_maps_that_use_it(gm):
     {"kind": "ping", "points": []},
     {"kind": "ping", "points": [{"x": 1, "y": 1}, {"x": 2, "y": 2}]},
     {"kind": "pointer", "points": [{"x": 1, "y": 1}]},                       # no stroke
+    {"kind": "ruler", "points": [{"x": 1, "y": 1}]},                         # nor here
     {"kind": "roll", "token": "orc"},                                         # no roll
     {"kind": "roll", "roll": {"total": 3}},                                   # over no token
     {"kind": "ping", "points": [{"x": 1e9, "y": 0}]},
@@ -522,6 +584,15 @@ def test_the_screens_see_signals_on_the_map_they_show_but_not_over_hidden_tokens
         gm.post(f"{base}/signal", json={"kind": "pointer", "stroke": "s1", "points": stroke})
         pointer = socket.receive_json()
         assert pointer["kind"] == "pointer" and len(pointer["points"]) == 2
+
+        # Moving a hidden token shows its path to no screen; measuring, or a
+        # token everyone sees, does.
+        path = [{"x": 1.5, "y": 1.5}, {"x": 4.5, "y": 1.5}, {"x": 4.5, "y": 6.5}]
+        gm.post(f"{base}/signal", json={"kind": "ruler", "stroke": "m1", "token": "dragon", "points": path})
+        gm.post(f"{base}/signal", json={"kind": "ruler", "stroke": "m2", "token": "orc", "points": path, "end": True})
+        ruler = socket.receive_json()
+        assert ruler["kind"] == "ruler" and ruler["token"] == "orc" and ruler["end"] is True
+        assert [(p["x"], p["y"]) for p in ruler["points"]] == [(1.5, 1.5), (4.5, 1.5), (4.5, 6.5)]
 
     # What is on screen is still the map: a screen connecting now gets it, not a ping.
     assert screen.manager.current_state == {"type": "display_battlemap", "battlemap_id": "pointed-cave"}

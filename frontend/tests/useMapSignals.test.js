@@ -87,6 +87,30 @@ describe('useMapSignals', () => {
     expect(sent()[2].stroke).not.toBe(first.stroke)
   })
 
+  it('shares a measurement whole, only the newest, and its end; this tab draws its own', async () => {
+    let finish
+    post.mockImplementation(() => new Promise((resolve) => { finish = resolve }))
+    mountWith()
+    const path = (n) => Array.from({ length: n }, (_, i) => ({ x: i, y: 0 }))
+    signals.measure({ points: path(2), token: 'orc' })
+    await vi.advanceTimersByTimeAsync(50)
+    signals.measure({ points: path(3), token: 'orc' })
+    signals.measure({ points: path(4), token: 'orc', end: true }) // replaces the one before, unsent
+    finish({})
+    await vi.advanceTimersByTimeAsync(50)
+    finish({})
+    await vi.advanceTimersByTimeAsync(50)
+    const [first, last] = sent()
+    expect(post).toHaveBeenCalledTimes(2)
+    expect(first).toMatchObject({ kind: 'ruler', token: 'orc', end: false, points: path(2) })
+    expect(last).toMatchObject({ kind: 'ruler', stroke: first.stroke, end: true, points: path(4) })
+    expect(signals.layer.idle()).toBe(true)
+
+    signals.measure({ points: path(2) }) // a new one
+    await vi.advanceTimersByTimeAsync(50)
+    expect(sent()[2].stroke).not.toBe(first.stroke)
+  })
+
   it('shows a roll over a token', async () => {
     mountWith()
     signals.roll('orc', { label: 'Bite', formula: '2d6', total: 9 })
