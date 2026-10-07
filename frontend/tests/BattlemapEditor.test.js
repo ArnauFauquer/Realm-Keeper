@@ -343,18 +343,77 @@ describe('BattlemapEditor', () => {
     })
   })
 
-  it('shows the map on the screen, and stops', async () => {
-    const wrapper = mountEditor()
-    const button = wrapper.find('.screen-toggle')
-    expect(button.attributes('aria-label')).toBe('Show on the screen')
-    await button.trigger('click')
-    await flushPromises()
-    expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
-    expect(button.attributes('aria-label')).toBe('Stop showing on the screen')
-    expect(button.attributes('aria-pressed')).toBe('true')
-    await button.trigger('click')
-    await flushPromises()
-    expect(post).toHaveBeenLastCalledWith('/api/screen/clear', {})
+  describe('the table screen', () => {
+    // In its modal, the editor's Send to screen and Go live are the header's.
+    async function mountInModal(props = {}) {
+      const { provideDocumentScreen } = await import('@/composables/useDocumentScreen')
+      const { defineComponent, h } = await import('vue')
+      let controls = null
+      const Modal = defineComponent({
+        setup() {
+          controls = provideDocumentScreen()
+          return () => h(BattlemapEditor, { battlemapId: 'cave', canInteract: true, ...props })
+        }
+      })
+      const wrapper = mount(Modal)
+      return { wrapper, screen: () => controls.value }
+    }
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+    it('hands the header its buttons, and takes them back when it goes', async () => {
+      const { wrapper, screen } = await mountInModal()
+      expect(screen().canSend.value).toBe(true)
+      expect(screen().liveHint).toContain('zoomed and panned')
+      expect(wrapper.find('.screen-toggle').exists()).toBe(false) // nothing of the sort on the map itself
+      wrapper.unmount()
+      expect(screen()).toBeNull()
+      fake.doc.value.image_url = null
+      const { screen: bare } = await mountInModal()
+      expect(bare().canSend.value).toBe(false) // no image: nothing to show
+    })
+
+    it('sends the whole map to the screen', async () => {
+      const { screen } = await mountInModal()
+      await screen().send()
+      expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
+      expect(screen().sending.value).toBe(true) // "Sent!"
+      expect(screen().live.value).toBe(false)
+    })
+
+    it('live, the screen follows the view here as it is zoomed and panned', async () => {
+      const { wrapper, screen } = await mountInModal()
+      const rect = (x) => ({ x, y: 0, width: 700, height: 500 })
+      canvas(wrapper).vm.$emit('view', rect(10)) // not live: nothing sent
+      await wait(120)
+      expect(post).not.toHaveBeenCalled()
+
+      await screen().toggle()
+      expect(screen().live.value).toBe(true)
+      expect(post).toHaveBeenCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
+      await wait(120)
+      expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap/view', { battlemap_id: 'cave', view: rect(10) })
+
+      // A pan: only the newest view goes, a moment later.
+      canvas(wrapper).vm.$emit('view', rect(20))
+      canvas(wrapper).vm.$emit('view', rect(30))
+      await wait(120)
+      expect(post.mock.calls.filter(([url]) => url.endsWith('/view')).map(([, body]) => body.view?.x)).toEqual([10, 30])
+
+      await screen().toggle()
+      expect(screen().live.value).toBe(false)
+      canvas(wrapper).vm.$emit('view', rect(40))
+      await wait(120)
+      expect(post).toHaveBeenCalledTimes(3)
+    })
+
+    it('stops following once something else is on the screen', async () => {
+      const { wrapper, screen } = await mountInModal()
+      await screen().toggle()
+      post.mockResolvedValue({ status: 'ignored' })
+      canvas(wrapper).vm.$emit('view', { x: 0, y: 0, width: 10, height: 10 })
+      await wait(120)
+      expect(screen().live.value).toBe(false)
+    })
   })
 
   describe('moving tokens', () => {
@@ -412,7 +471,6 @@ describe('BattlemapEditor', () => {
     const wrapper = mountEditor({ canInteract: false })
     expect(canvas(wrapper).props('editable')).toBe(false)
     expect(wrapper.find('button[aria-label="Add a token"]').exists()).toBe(false)
-    expect(wrapper.find('.screen-toggle').exists()).toBe(false)
     expect(wrapper.find('.setup-btn').exists()).toBe(false)
     expect(fetchAll).not.toHaveBeenCalled()
     await wrapper.findAll('.token-row')[0].trigger('click')

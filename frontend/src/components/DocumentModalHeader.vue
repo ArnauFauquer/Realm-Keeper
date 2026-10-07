@@ -37,7 +37,7 @@
         :class="{ 'rk-btn--primary': live }"
         :disabled="!canSendToScreen"
         :aria-pressed="live"
-        :title="live ? 'Stop mirroring edits on the screen' : 'Show your edits on the screen as you make them'"
+        :title="live ? 'Stop mirroring on the screen' : (liveHint || 'Show your edits on the screen as you make them')"
         @click="$emit('toggle-live')"
       >
         <span class="mdi mdi-broadcast"></span>
@@ -84,6 +84,9 @@ defineProps({
   // (charts, vistas) show a "Go live" toggle; `live` is whether it's on.
   liveSupported: { type: Boolean, default: false },
   live: { type: Boolean, default: false },
+  // What going live does, when it is not mirroring edits (a battlemap: the
+  // screen follows your view).
+  liveHint: { type: String, default: null },
   // Text the editor view's Copy button puts on the clipboard (e.g. a
   // `chart:<id>` embed reference); no button when omitted.
   copyText: { type: String, default: null }

@@ -318,6 +318,30 @@ describe('DocumentModal — a live document', () => {
     expect(buttonByText(wrapper, 'Go live')).toBeUndefined()
   })
 
+  it("shows the screen buttons its editor brings, the same as everyone's", async () => {
+    const { useDocumentScreen } = await import('@/composables/useDocumentScreen')
+    const { defineComponent, h, ref: r } = await import('vue')
+    const own = { live: r(false), sending: r(false), canSend: r(true), send: vi.fn(), toggle: vi.fn(), liveHint: 'The screen follows your view' }
+    const Editor = defineComponent({ setup() { useDocumentScreen(own); return () => h('div', 'map') } })
+    const wrapper = mount(DocumentModal, {
+      props: { kind: DOC_TYPES.battlemap, modal, api, canEdit: true },
+      slots: { editor: () => h(Editor) }
+    })
+    await openOn(wrapper, 'cave')
+    await buttonByText(wrapper, 'Send to screen').trigger('click')
+    expect(own.send).toHaveBeenCalled()
+    const live = buttonByText(wrapper, 'Go live')
+    expect(live.attributes('title')).toBe('The screen follows your view')
+    await live.trigger('click')
+    expect(own.toggle).toHaveBeenCalled()
+    own.live.value = true
+    own.sending.value = true
+    await nextTick()
+    expect(buttonByText(wrapper, 'Live').attributes('aria-pressed')).toBe('true')
+    expect(buttonByText(wrapper, 'Sent!')).toBeDefined()
+    expect(post).not.toHaveBeenCalled() // the editor sends it, not the modal
+  })
+
   it('takes its name from the live document, and follows a rename', async () => {
     liveDocs.fight = ref({ id: 'fight', rev: 1, name: 'The big fight' })
     const { wrapper } = mountModal(DOC_TYPES.encounter)

@@ -5,6 +5,11 @@ projection (`update_battlemap`, see battlemap_projection.py); from then on every
 change to the map, to the encounter its tokens stand for, or to the characters'
 counters sends a fresh projection, a moment later and at most once per
 COALESCE seconds, so dragging a token doesn't flood them.
+
+Each projection carries the `view`: the part of the map the screens frame
+(x, y, width, height, in the image's pixels), or None for all of it. It
+follows the view of whoever went live with the map (set_view), and showing a
+map starts it on the whole of it.
 """
 import asyncio
 import logging
@@ -30,6 +35,7 @@ class BattlemapScreen:
         # sent once a newer one is on its way: it could reach the screens
         # after it, and show the hidden token again.
         self._generations: Dict[str, int] = {}
+        self._view: Optional[Dict[str, float]] = None
 
     async def _fresh_projection(self, battlemap_id: str) -> Optional[Dict[str, Any]]:
         """The map's projection, or None if a newer one was asked for meanwhile."""
@@ -72,10 +78,25 @@ class BattlemapScreen:
                 break
         else:
             projection = await self.projection(battlemap_id)
+        self._view = None
         await self.manager.broadcast(
             {"type": "display_battlemap", "battlemap_id": battlemap_id},
-            {"type": "update_battlemap", **projection},
+            {"type": "update_battlemap", **projection, "view": None},
         )
+
+    async def set_view(self, battlemap_id: str, view: Optional[Dict[str, float]]) -> bool:
+        """Frames `view` of the map on the screens (None: all of it), if the
+        map is the one they show. True if it was sent."""
+        if self.displayed() != battlemap_id:
+            return False
+        self._view = view
+        # The map as last sent, framed anew: no need to project it again.
+        draft = self.manager.live_draft
+        if draft and draft.get("type") == "update_battlemap" and draft.get("battlemap_id") == battlemap_id:
+            await self.manager.broadcast({**draft, "view": view})
+        else:
+            self._schedule()
+        return True
 
     async def relay_signal(self, battlemap: Dict[str, Any], signal: Dict[str, Any]) -> bool:
         """Shows a signal (a ping, the pointer, a roll over a token) on the
@@ -130,6 +151,6 @@ class BattlemapScreen:
         try:
             projection = await self._fresh_projection(displayed)
             if projection is not None and self.displayed() == displayed:
-                await self.manager.broadcast({"type": "update_battlemap", **projection})
+                await self.manager.broadcast({"type": "update_battlemap", **projection, "view": self._view})
         except Exception:
             logger.exception("Could not update the battlemap on the screens")

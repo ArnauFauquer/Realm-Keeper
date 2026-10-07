@@ -27,6 +27,7 @@
           @point="signals.point"
           @release="signals.release"
           @measure="signals.measure"
+          @view="onView"
         >
           <template #empty-actions>
             <button v-if="canInteract" type="button" class="rk-btn rk-btn--primary" @click="openLibrary('map')">
@@ -45,19 +46,6 @@
 
         <div class="stage-status">
           <LiveBadge />
-          <button
-            v-if="canInteract"
-            type="button"
-            class="screen-toggle"
-            :class="{ on: onScreen }"
-            :aria-pressed="onScreen"
-            :aria-label="onScreen ? 'Stop showing on the screen' : 'Show on the screen'"
-            :title="onScreen ? 'The table screen shows this map: click to stop' : 'Show this map on the table screen'"
-            @click="toggleScreen"
-          >
-            <span class="mdi" :class="onScreen ? 'mdi-monitor-eye' : 'mdi-monitor-share'"></span>
-            {{ onScreen ? 'On the screen' : 'Show on screen' }}
-          </button>
         </div>
       </div>
 
@@ -320,6 +308,8 @@ import { battlemapsApi, encountersApi } from '@/api/docs'
 import { AREA_COLORS, TOKEN_COLORS } from '@/utils/palette'
 import { useLibraryPicker } from '@/composables/useLibraryPicker'
 import { screenApi } from '@/api/screen'
+import { useFlash } from '@/composables/useFlash'
+import { useDocumentScreen } from '@/composables/useDocumentScreen'
 import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
 import { useLiveDocument } from '@/composables/useLiveDocument'
 import LiveBadge from './LiveBadge.vue'
@@ -405,7 +395,6 @@ const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPi
   else if (target === 'token' && openedToken.value) patchToken({ image_url: item.image_url })
 })
 const encounters = ref([])
-const onScreen = ref(false)
 
 // The encounters to choose from, once signed in (the session check may still
 // be on its way when the editor opens).
@@ -653,13 +642,72 @@ window.addEventListener('keydown', onKeydown)
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
 
-async function toggleScreen() {
-  const wasShowing = onScreen.value
-  const done = await attempt(
-    wasShowing ? screenApi.clear() : screenApi.battlemap(id)
-  )
-  if (done) onScreen.value = !wasShowing
+// ── the table screen ───────────────────────────────────────────────────
+// The modal's header has Send to screen and Go live, as for every document
+// (useDocumentScreen). Sending shows the whole map; live, the screen frames
+// what this view shows, following it as it is zoomed and panned.
+
+const VIEW_PUSH_MS = 80
+const screenLive = ref(false)
+const { on: screenSent, flash: flashSent } = useFlash()
+let shownView = null // the part of the map in view here: null for all of it
+let viewTimer = null
+let viewInflight = null
+let viewDirty = false
+
+function onView(rect) {
+  shownView = rect
+  if (screenLive.value) scheduleView()
 }
+
+// A pan sends a view on every pointer move: the screen gets the newest one, a
+// few times a second, one at a time.
+function scheduleView() {
+  viewDirty = true
+  if (viewTimer || viewInflight) return
+  viewTimer = setTimeout(pushView, VIEW_PUSH_MS)
+}
+
+async function pushView() {
+  viewTimer = null
+  if (!screenLive.value || !viewDirty) return
+  viewDirty = false
+  viewInflight = screenApi.battlemapView(id, shownView)
+    .then((res) => {
+      // Something else is on the screen now: there is nothing to follow.
+      if (res?.status === 'ignored') screenLive.value = false
+    })
+    .catch(() => {})
+  await viewInflight
+  viewInflight = null
+  if (viewDirty) scheduleView()
+}
+
+async function sendToScreen() {
+  if (!(await attempt(screenApi.battlemap(id)))) return
+  flashSent()
+  if (screenLive.value) scheduleView()
+}
+
+async function toggleScreenLive() {
+  if (screenLive.value) {
+    screenLive.value = false
+    return
+  }
+  screenLive.value = true
+  if (await attempt(screenApi.battlemap(id))) scheduleView()
+  else screenLive.value = false
+}
+
+useDocumentScreen({
+  live: screenLive,
+  sending: screenSent,
+  canSend: computed(() => props.canInteract && !!doc.value?.image_url),
+  send: sendToScreen,
+  toggle: toggleScreenLive,
+  liveHint: 'Show the map on the screen, zoomed and panned as you see it'
+})
+onBeforeUnmount(() => clearTimeout(viewTimer))
 </script>
 
 <style scoped>
@@ -680,8 +728,7 @@ async function toggleScreen() {
   min-height: 0;
 }
 
-/* What is going on with the map as a whole: whether it is live, and whether
-   the table screen shows it. */
+/* Whether the map is live: changes reach everyone as they are made. */
 .stage-status {
   position: absolute;
   top: var(--space-3);
@@ -689,55 +736,14 @@ async function toggleScreen() {
   z-index: var(--z-raised);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  min-height: var(--control-sm);
+  padding: 0 var(--space-3);
   background: var(--surface-chrome);
   border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-full);
   box-shadow: var(--shadow-md);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-}
-
-.stage-status:not(:has(.screen-toggle)) {
-  padding-right: var(--space-3);
-}
-
-.screen-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-height: var(--control-md);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
-}
-
-.screen-toggle .mdi {
-  font-size: 1.1rem;
-}
-
-.screen-toggle:hover {
-  border-color: var(--accent);
-  background: var(--hover-tint);
-}
-
-.screen-toggle:active {
-  transform: translateY(1px);
-}
-
-.screen-toggle.on {
-  border-color: var(--accent-strong);
-  background: var(--accent-strong);
-  color: var(--accent-contrast);
 }
 
 .panel {
@@ -1142,15 +1148,4 @@ async function toggleScreen() {
   }
 }
 
-@media (max-width: 600px) {
-  .screen-toggle {
-    padding: 0 var(--space-2);
-    font-size: 0;
-    gap: 0;
-  }
-
-  .screen-toggle .mdi {
-    font-size: 1.2rem;
-  }
-}
 </style>

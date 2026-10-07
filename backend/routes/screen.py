@@ -377,6 +377,33 @@ async def display_battlemap(body: BattlemapShowRequest, user: dict = Depends(req
     return {"status": "success"}
 
 
+class MapView(BaseModel):
+    """The part of a battlemap framed on the screens, in its image's pixels."""
+    x: float = Field(ge=-1e6, le=1e6)
+    y: float = Field(ge=-1e6, le=1e6)
+    width: float = Field(gt=0, le=1e6)
+    height: float = Field(gt=0, le=1e6)
+
+
+class BattlemapViewRequest(BaseModel):
+    battlemap_id: str
+    # None: the whole map.
+    view: Optional[MapView] = None
+
+
+@router.post("/api/screen/battlemap/view")
+async def frame_battlemap(body: BattlemapViewRequest, user: dict = Depends(require_auth)):
+    """
+    Frames the part of the battlemap the GM is looking at on the screens, so
+    they zoom and pan with the GM's view while the GM is live with it.
+    Ignored unless this battlemap is the one being shown.
+    """
+    view = body.view.model_dump() if body.view else None
+    if not await battlemap_screen.set_view(body.battlemap_id.strip("/"), view):
+        return {"status": "ignored"}
+    return {"status": "success"}
+
+
 @router.post("/api/screen/constellation")
 async def display_constellation(body: ConstellationRequest, user: dict = Depends(require_auth)):
     """

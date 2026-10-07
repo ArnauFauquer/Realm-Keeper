@@ -5,12 +5,18 @@ import { mount } from '@vue/test-utils'
 
 // jsdom has no SVG geometry (d3.pointer needs it), so the viewport stands in
 // with a map as big as its image and a pointer that reads straight off the event.
+const viewport = vi.hoisted(() => ({ onView: null }))
 vi.mock('@/composables/useMapViewport', () => ({
-  useMapViewport: () => ({
-    naturalWidth: ref(1400),
-    naturalHeight: ref(1050),
-    pointer: (event) => ({ x: event.clientX, y: event.clientY })
-  })
+  useMapViewport: (options) => {
+    viewport.onView = options.onView
+    return {
+      naturalWidth: ref(1400),
+      naturalHeight: ref(1050),
+      pointer: (event) => ({ x: event.clientX, y: event.clientY }),
+      fit: () => {},
+      zoomBy: () => {}
+    }
+  }
 }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
@@ -53,6 +59,25 @@ describe('BattlemapCanvas', () => {
     expect(tokens[0].attributes('transform')).toBe('translate(175, 245)') // cell (2,3) + half a cell
     expect(tokens[1].attributes('transform')).toBe('translate(525, 525)') // 3 cells wide, from (6,6)
     expect(Number(tokens[1].find('.token-body').attributes('r'))).toBeGreaterThan(Number(tokens[0].find('.token-body').attributes('r')))
+  })
+
+  it('says what part of the map is in view once zoomed, within the image, or null for all of it', () => {
+    const wrapper = mountCanvas()
+    viewport.onView({ x: -50, y: 100, width: 700, height: 500 })
+    viewport.onView({ x: -10, y: -10, width: 2000, height: 2000 })
+    viewport.onView(null)
+    expect(wrapper.emitted('view')).toEqual([[{ x: 0, y: 100, width: 650, height: 500 }], [null], [null]])
+  })
+
+  it('on a screen, frames the part of the map it is told to, gliding there', async () => {
+    const view = { x: 140, y: 70, width: 700, height: 420 }
+    const wrapper = mountCanvas({ editable: false, zoomable: false, view })
+    expect(wrapper.find('svg').attributes('viewBox')).toBe('140 70 700 420')
+    expect(wrapper.find('.zoom').exists()).toBe(false)
+    await wrapper.setProps({ view: null })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(wrapper.find('svg').attributes('viewBox')).toBe('0 0 1400 1050') // all of it again
+    expect(mountCanvas({ view }).find('svg').attributes('viewBox')).toBe('0 0 1400 1050') // the table zooms itself
   })
 
   it('leaves the grid out when it has none, or is not shown', () => {
