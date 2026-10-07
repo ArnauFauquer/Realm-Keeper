@@ -207,13 +207,17 @@ def test_a_screen_that_stopped_answering_holds_nobody_up():
 class FakeManager:
     def __init__(self):
         self.current_state = None
+        self.live_draft = None
         self.sent = []
 
     async def broadcast(self, *messages):
         for message in messages:
             self.sent.append(message)
-            if message["type"] not in screen.LIVE_UPDATE_TYPES:
+            if message["type"] in screen.LIVE_UPDATE_TYPES:
+                self.live_draft = message
+            else:
                 self.current_state = message
+                self.live_draft = None
 
 
 def add_token(hub, **token):
@@ -287,6 +291,34 @@ def test_the_screens_follow_changes_to_the_map_a_moment_later_and_not_one_by_one
         await asyncio.sleep(0.2)
         assert [m["type"] for m in manager.sent] == ["update_battlemap"]   # coalesced
         assert manager.sent[0]["tokens"][0]["x"] == 4
+
+    asyncio.run(scenario())
+
+
+def test_the_screens_frame_the_view_of_whoever_is_live_with_the_map(world):
+    manager = FakeManager()
+    shown = BattlemapScreen(world, manager)
+    world.add_listener(shown.on_event)
+    view = {"x": 70.0, "y": 140.0, "width": 350.0, "height": 210.0}
+
+    async def scenario():
+        await add_token(world, id="a", name="Orc", x=1, y=1)
+        assert await shown.set_view("cave", view) is False   # not on the screens: nothing to frame
+        await shown.show("cave")
+        assert manager.sent[-1]["view"] is None                 # shown whole
+        manager.sent.clear()
+
+        assert await shown.set_view("cave", view) is True
+        assert manager.sent == [{**manager.sent[0], "type": "update_battlemap", "view": view}]
+        assert [t["id"] for t in manager.sent[0]["tokens"]] == ["a"]   # the map as it was, framed anew
+        assert await shown.set_view("elsewhere", None) is False
+
+        # The map changing keeps the frame; showing it again is the whole of it.
+        await world.mutate("battlemap", "cave", lambda d: doc_commands.patch_item(d, BATTLEMAP, "tokens", "a", {"x": 3}))
+        await asyncio.sleep(0.2)
+        assert manager.sent[-1]["tokens"][0]["x"] == 3 and manager.sent[-1]["view"] == view
+        await shown.show("cave")
+        assert manager.sent[-1]["view"] is None
 
     asyncio.run(scenario())
 
@@ -480,6 +512,26 @@ def test_a_screen_that_connects_later_gets_the_map_as_it_is(gm, client):
     with client.websocket_connect("/ws/screen") as socket:
         assert socket.receive_json()["type"] == "display_battlemap"
         assert socket.receive_json()["tokens"][0]["x"] == 9
+
+
+def test_the_view_framed_on_the_screens_over_http(gm, client):
+    base = f"/api/battlemaps/{gm.post('/api/battlemaps', json={'name': 'Framed cave'}).json()['id']}"
+    gm.post(f"{base}/tokens", json={"items": [{"id": "orc", "name": "Orc", "x": 1, "y": 1}]})
+    view = {"x": 10.0, "y": 20.0, "width": 300.0, "height": 200.0}
+    framed = {"battlemap_id": "framed-cave", "view": view}
+    assert gm.post("/api/screen/battlemap/view", json=framed).json() == {"status": "ignored"}   # not shown yet
+    gm.post("/api/screen/battlemap", json={"battlemap_id": "framed-cave"})
+    assert gm.post("/api/screen/battlemap/view", json=framed).json() == {"status": "success"}
+    assert gm.post("/api/screen/battlemap/view", json={**framed, "view": {**view, "width": 0}}).status_code == 422
+
+    # A screen that connects later is framed the same.
+    _paired(client)
+    with client.websocket_connect("/ws/screen") as socket:
+        assert socket.receive_json()["type"] == "display_battlemap"
+        assert socket.receive_json()["view"] == view
+
+    client.cookies.clear()
+    assert client.post("/api/screen/battlemap/view", json=framed).status_code == 401
 
 
 def test_a_character_moved_is_followed_by_its_encounters_and_tokens(gm):

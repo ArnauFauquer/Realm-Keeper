@@ -8,7 +8,7 @@
         v-if="ruler.token && !ruler.ended && tokenById(ruler.token)"
         :token="tokenById(ruler.token)"
         :cell="grid.size"
-        :clip-id="`ghost-${uid}-${ruler.key}`"
+        :clip-id="ghostClipId(ruler.key)"
         ghost
         :transform="`translate(${px(ruler.points.at(-1).x, ruler.points.at(-1).y).x}, ${px(ruler.points.at(-1).x, ruler.points.at(-1).y).y})`"
       />
@@ -92,6 +92,11 @@ const props = defineProps({
 
 const EMPTY = Object.freeze({ pings: [], strokes: [], rolls: [], rulers: [] })
 const uid = Math.random().toString(36).slice(2, 8)
+// A ruler's key carries who measures ("Local User", with its spaces and bars),
+// and an id with those in it is no id a clip path can be found by: the token's
+// picture would show whole. Each such character is spelled out instead, so
+// the ids stay apart.
+const ghostClipId = (key) => `ghost-${uid}-${key.replace(/[^A-Za-z0-9_-]/g, (c) => `_${c.charCodeAt(0).toString(16)}`)}`
 const tokenById = (id) => props.tokens.find((t) => t.id === id) || null
 const frame = shallowRef(EMPTY)
 
@@ -201,7 +206,13 @@ onBeforeUnmount(() => {
 }
 
 /* It spreads even when the device asks for reduced motion (on Windows, with
-   "Animation effects" off): a ping is there to catch the eye, once, briefly. */
+   "Animation effects" off): a ping is there to catch the eye, once, briefly.
+   (styles/base.css cuts every animation short then, with !important.) */
+@media (prefers-reduced-motion: reduce) {
+  .ping-ring {
+    animation-duration: 1.2s !important;
+  }
+}
 
 .roll-back {
   fill: rgba(12, 13, 29, 0.92);

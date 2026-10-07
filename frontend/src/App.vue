@@ -32,6 +32,14 @@
 
     <DiceOverlay />
 
+    <!-- This tab runs an older build than the server's (left open across a
+         deploy): what it loads on demand is gone. Reloading brings it back. -->
+    <div v-if="stale && !$route.meta.fullscreen" class="app-update" role="status">
+      <span class="mdi mdi-update" aria-hidden="true"></span>
+      <span class="app-update-text">Realm Keeper was updated. Reload to get everything back.</span>
+      <button type="button" class="rk-btn rk-btn--primary rk-btn--sm" @click="reload">Reload</button>
+    </div>
+
     <!-- A failed sign-in comes back to a public page (every route is), where
          the login gate never shows: say what happened there instead. -->
     <div v-if="authError && !showLoginGate && !$route.meta.fullscreen" class="auth-error rk-alert" role="alert">
@@ -53,6 +61,13 @@ import DiceOverlay from './components/DiceOverlay.vue'
 import DiceToastStack from './components/DiceToastStack.vue'
 import LoginGate from './components/LoginGate.vue'
 import { useAuth } from './composables/useAuth'
+import { useAppUpdate, watchForUpdates } from './composables/useAppUpdate'
+
+// A screen (a TV nobody is sitting at) reloads by itself when it turns out to
+// be out of date, at most this often, so a build that is broken for good
+// can't keep it reloading.
+const SCREEN_RELOAD_GAP_MS = 60_000
+const SCREEN_RELOAD_KEY = 'realm-keeper-screen-reloaded-at'
 
 const AUTH_ERROR_MESSAGES = {
   not_allowed: "This account isn't authorized for this vault.",
@@ -67,7 +82,9 @@ export default {
   provide() { return { addTagFilter: this.addTagFilter } },
   setup() {
     const { user, checked, choosingProvider, checkAuth, login } = useAuth()
-    return { user, checked, choosingProvider, checkAuth, login }
+    watchForUpdates()
+    const { stale, reload } = useAppUpdate()
+    return { user, checked, choosingProvider, checkAuth, login, stale, reload }
   },
   data() {
     return {
@@ -77,6 +94,16 @@ export default {
   computed: {
     showLoginGate() {
       return !this.$route.meta.public && !this.user
+    }
+  },
+  watch: {
+    stale(isStale) {
+      if (!isStale || !this.$route.meta.fullscreen) return
+      let last = 0
+      try { last = Number(sessionStorage.getItem(SCREEN_RELOAD_KEY)) || 0 } catch { /* no storage: reload anyway */ }
+      if (Date.now() - last < SCREEN_RELOAD_GAP_MS) return
+      try { sessionStorage.setItem(SCREEN_RELOAD_KEY, String(Date.now())) } catch { /* as above */ }
+      this.reload()
     }
   },
   methods: {
@@ -164,6 +191,37 @@ export default {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: var(--shadow-lg);
+}
+
+.app-update {
+  position: fixed;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  width: min(calc(100vw - 2 * var(--space-4)), 440px);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-chrome);
+  border: 1px solid var(--accent-a45);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+}
+
+.app-update .mdi {
+  font-size: 1.2rem;
+  color: var(--accent-soft);
+}
+
+.app-update-text {
+  flex: 1;
+  min-width: 0;
 }
 
 .auth-error-text {

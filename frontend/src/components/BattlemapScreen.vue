@@ -8,6 +8,7 @@
     :zoomable="false"
     :reset-key="state.battlemap_id"
     :signals="signals"
+    :view="state.view || null"
   />
 </template>
 
@@ -36,7 +37,8 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 
 // The battlemap as /screen shows it: what the server projected for a screen
 // (hidden tokens left out, each token with the counters it shows), drawn by
-// the same canvas the table uses, with nothing to change and no zoom.
+// the same canvas the table uses, with nothing to change and no zoom of its
+// own: it frames what the GM who is live with it looks at (`state.view`).
 const props = defineProps({
   state: { type: Object, required: true },
   // The pings and pointers sent to the screen, over the map (utils/mapSignals.js).

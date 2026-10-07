@@ -51,7 +51,7 @@ vi.mock('@/components/EncounterAddPanel.vue', () => ({
 vi.mock('@/components/CombatantPlay.vue', () => ({
   default: {
     name: 'CombatantPlay',
-    props: ['combatant', 'counters', 'sheetState', 'canInteract'],
+    props: ['combatant', 'counters', 'sheetState', 'imageUrl', 'canInteract'],
     emits: ['adjust', 'patch', 'add-condition', 'remove-condition', 'rolled', 'edit-sheet'],
     template: '<div class="play">{{ combatant.name }}</div>'
   }
@@ -80,10 +80,17 @@ const ENCOUNTER = {
   ]
 }
 
-const mountEditor = (props = {}) => mount(BattlemapEditor, { props: { battlemapId: 'cave', canInteract: true, ...props } })
+const mountEditor = (props = {}, options = {}) => mount(BattlemapEditor, { props: { battlemapId: 'cave', canInteract: true, ...props }, ...options })
 const canvas = (wrapper) => wrapper.findComponent({ name: 'BattlemapCanvas' })
 const play = (wrapper) => wrapper.findComponent({ name: 'CombatantPlay' })
-const openTab = (wrapper, label) => wrapper.findAll('.tab').find((t) => t.text() === label).trigger('click')
+const settings = (wrapper) => wrapper.findComponent({ name: 'TokenSettings' })
+const names = (rows) => rows.map((r) => r.find('.row-name').text())
+const openSetup = (wrapper) => wrapper.find('.setup-btn').trigger('click')
+const withEncounter = () => {
+  encounter.value = ENCOUNTER
+  fake.doc.value.encounter = 'fight'
+  return mountEditor()
+}
 
 beforeEach(() => {
   fake.reset(battlemap())
@@ -115,152 +122,298 @@ describe('BattlemapEditor', () => {
     expect(tokens[1].meters).toEqual([{ name: 'HP', current: 20, max: 30, min: 0, color: null, style: null }])
   })
 
-  it('selects a token from the list and shows what can be changed about it', async () => {
-    const wrapper = mountEditor()
-    expect(wrapper.find('.inspector').exists()).toBe(false)
-    await wrapper.findAll('.token-row')[0].trigger('click')
-    expect(canvas(wrapper).props('selectedId')).toBe('t1')
-    expect(wrapper.find('.inspector input').element.value).toBe('Orc')
-    expect(wrapper.findAll('.token-row')[1].classes()).toContain('hidden')
+  describe('the panel', () => {
+    it('lists the tokens, and opens one picked from the list or on the map', async () => {
+      const wrapper = mountEditor()
+      expect(names(wrapper.findAll('.token-row'))).toEqual(['Orc', 'Dragon']) // no encounter: nobody stands for anyone
+      expect(wrapper.findAll('.token-row')[1].classes()).toContain('hidden')
+      expect(settings(wrapper).exists()).toBe(false)
+
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      expect(canvas(wrapper).props('selectedId')).toBe('t1')
+      expect(settings(wrapper).props('token').id).toBe('t1')
+
+      // A click on the bare map (to pan it, to ping) leaves it open.
+      canvas(wrapper).vm.$emit('select', null)
+      await flushPromises()
+      expect(canvas(wrapper).props('selectedId')).toBeNull()
+      expect(settings(wrapper).exists()).toBe(true)
+
+      await wrapper.find('.back').trigger('click')
+      expect(settings(wrapper).exists()).toBe(false)
+      canvas(wrapper).vm.$emit('select', 't2')
+      await flushPromises()
+      expect(settings(wrapper).props('token').id).toBe('t2')
+      canvas(wrapper).vm.$emit('open', 't1') // a double-click opens it as well
+      await flushPromises()
+      expect(settings(wrapper).props('token').id).toBe('t1')
+    })
+
+    it('goes back to the list when what is open is removed, by anyone', async () => {
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('select', 't1')
+      await flushPromises()
+      fake.doc.value = { ...fake.doc.value, tokens: fake.doc.value.tokens.slice(1) }
+      await flushPromises()
+      expect(settings(wrapper).exists()).toBe(false)
+      expect(names(wrapper.findAll('.token-row'))).toEqual(['Dragon'])
+    })
+
+    it('sets the map up behind Setup, out of the way of play', async () => {
+      const wrapper = mountEditor()
+      expect(wrapper.findComponent({ name: 'BattlemapSetup' }).exists()).toBe(false)
+      await openSetup(wrapper)
+      expect(wrapper.findComponent({ name: 'BattlemapSetup' }).exists()).toBe(true)
+      expect(wrapper.find('.token-row').exists()).toBe(false)
+      // A token picked on the map leaves the setup for it.
+      canvas(wrapper).vm.$emit('select', 't1')
+      await flushPromises()
+      expect(wrapper.findComponent({ name: 'BattlemapSetup' }).exists()).toBe(false)
+      expect(settings(wrapper).props('token').id).toBe('t1')
+    })
   })
 
-  it('changes a token: name, size, hidden, colour, image', async () => {
-    const wrapper = mountEditor()
-    await wrapper.findAll('.token-row')[0].trigger('click')
-    const inspector = wrapper.find('.inspector')
+  describe('tokens', () => {
+    it('changes one: name, size, colour, picture, and hides it from the screen', async () => {
+      const wrapper = mountEditor()
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      const panel = settings(wrapper)
 
-    const name = inspector.find('input')
-    name.element.value = ' Big Orc '
-    await name.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { name: 'Big Orc' })
+      const name = panel.find('input')
+      name.element.value = ' Big Orc '
+      await name.trigger('change')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { name: 'Big Orc' })
 
-    const size = inspector.find('input[type="number"]')
-    size.element.value = '99'
-    await size.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { size: 20 })
+      await panel.find('button[aria-label="Bigger"]').trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { size: 1.5 })
+      await panel.find('button[aria-label="Smaller"]').trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { size: 0.5 })
 
-    const hidden = inspector.find('input[type="checkbox"]')
-    hidden.element.checked = true
-    await hidden.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { hidden: true })
+      await panel.findAll('.swatch')[2].trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { color: '#f472b6' })
 
-    await inspector.findAll('.swatch')[2].trigger('click')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { color: '#f472b6' })
+      await wrapper.find('.visibility').trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { hidden: true })
 
-    await inspector.findAll('.row')[1].find('button').trigger('click') // Choose image
-    wrapper.findComponent({ name: 'ObservatoryModal' }).vm.$emit('select', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
+      await panel.findAll('button').find((b) => b.text().includes('Choose a picture')).trigger('click')
+      wrapper.findComponent({ name: 'ObservatoryModal' }).vm.$emit('select', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_url: '/api/observatory/images/1a2b3c4d-orc.png' })
+    })
+
+    it('frames its picture', async () => {
+      fake.doc.value.tokens[0].image_url = '/api/observatory/images/1a2b3c4d-orc.png'
+      const wrapper = mountEditor()
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      wrapper.findComponent({ name: 'TokenImageEditor' }).vm.$emit('change', { image_scale: 1.5, image_x: 0.1 })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_scale: 1.5, image_x: 0.1 })
+    })
+
+    it('removes one after asking', async () => {
+      const wrapper = mountEditor()
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
+      await settings(wrapper).find('.remove').trigger('click')
+      expect(commands.removeItem).not.toHaveBeenCalled()
+      confirm.mockReturnValue(true)
+      await settings(wrapper).find('.remove').trigger('click')
+      expect(commands.removeItem).toHaveBeenCalledWith('cave', 'tokens', 't1')
+      expect(canvas(wrapper).props('selectedId')).toBeNull()
+    })
+
+    it('adds one on a free cell, and opens it to be named', async () => {
+      commands.addItems.mockResolvedValue({ upsert: { tokens: [{ id: 't3', name: 'Token', x: 2, y: 1, size: 1 }] } })
+      const wrapper = mountEditor()
+      await wrapper.find('button[aria-label="Add a token"]').trigger('click')
+      const [, , items] = commands.addItems.mock.calls[0]
+      expect(items).toEqual([{ name: 'Token', x: 2, y: 1, size: 1 }]) // (1,1) is taken
+      fake.doc.value = { ...fake.doc.value, tokens: [...fake.doc.value.tokens, { ...items[0], id: 't3', hidden: false, bars: [] }] }
+      await flushPromises()
+      expect(canvas(wrapper).props('selectedId')).toBe('t3')
+      expect(settings(wrapper).props('token').id).toBe('t3')
+    })
+
+    it('links one to a combatant, the panel following it to their sheet', async () => {
+      encounter.value = ENCOUNTER
+      fake.doc.value.encounter = 'fight'
+      const wrapper = mountEditor()
+      expect(names(wrapper.findAll('.token-row'))).toEqual(['Orc']) // the Dragon's token is the Dragon's
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      const link = settings(wrapper).find('select')
+      link.element.value = 'c2'
+      await link.trigger('change')
+      await flushPromises()
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { combatant: 'c2', sheet: 'n#orc', bars: [], show_bars: false })
+      expect(play(wrapper).props('combatant').id).toBe('c2')
+    })
+
+    it("chooses the counters a combatant's token shows, one at a time", async () => {
+      encounter.value = ENCOUNTER
+      fake.doc.value.encounter = 'fight'
+      fake.doc.value.tokens[1].show_bars = false
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('select', 't2')
+      await flushPromises()
+      const chips = () => settings(wrapper).findAll('.chip')
+      expect(chips().map((c) => c.text())).toEqual(['HP', 'Fury'])
+      expect(chips().map((c) => c.attributes('aria-pressed'))).toEqual(['false', 'false']) // bars off: none shows
+
+      // The first one turns them on, alone.
+      await chips()[1].trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't2', { show_bars: true, bars: ['Fury'] })
+
+      fake.doc.value.tokens[1].show_bars = true
+      await flushPromises()
+      await chips()[1].trigger('click') // HP is in its list from before
+      expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { add: ['Fury'] })
+      await chips()[0].trigger('click')
+      expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { remove: ['HP'] })
+    })
   })
 
-  it('removes a token after asking', async () => {
-    const wrapper = mountEditor()
-    await wrapper.findAll('.token-row')[0].trigger('click')
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
-    await wrapper.find('.inspector .danger').trigger('click')
-    expect(commands.removeItem).not.toHaveBeenCalled()
-    confirm.mockReturnValue(true)
-    await wrapper.find('.inspector .danger').trigger('click')
-    expect(commands.removeItem).toHaveBeenCalledWith('cave', 'tokens', 't1')
+  describe('setting the map up', () => {
+    it('attaches an encounter', async () => {
+      const wrapper = mountEditor()
+      await flushPromises()
+      await openSetup(wrapper)
+      const select = wrapper.find('#setup-encounter')
+      expect([...select.element.options].map((o) => o.value)).toEqual(['', 'fight', 'goblins/cave'])
+      select.element.value = 'goblins/cave'
+      await select.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: 'goblins/cave' })
+      select.element.value = ''
+      await select.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: null })
+    })
+
+    it('changes the grid one setting at a time', async () => {
+      const wrapper = mountEditor()
+      await openSetup(wrapper)
+      const field = (label) => wrapper.findAll('.field').find((f) => f.text().startsWith(label)).find('input, select')
+
+      const size = field('Cell')
+      size.element.value = '100'
+      await size.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { size: 100 } })
+
+      const unit = field('Unit')
+      unit.element.value = ' ft '
+      await unit.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { unit: 'ft' } })
+
+      const distance = field('One cell is')
+      distance.element.value = '-3'
+      await distance.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { distance: 1 } }) // not positive: keeps what it was
+
+      await wrapper.findAll('[role="radio"]').find((b) => b.text() === 'Straight').trigger('click')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { measure: 'straight' } })
+      await wrapper.findAll('[role="radio"]').find((b) => b.text() === 'None').trigger('click')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { type: 'none' } })
+
+      const snap = wrapper.find('.switch input')
+      snap.element.checked = false
+      await snap.trigger('change')
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { snap: false } })
+    })
+
+    it('measures in range bands of its own', async () => {
+      fake.doc.value.grid = { ...GRID, measure: 'bands', bands: [] }
+      const wrapper = mountEditor()
+      await openSetup(wrapper)
+      const bands = [{ name: 'Near', max: 2 }, { name: 'Far', max: null }]
+      wrapper.findComponent({ name: 'RangeBandsEditor' }).vm.$emit('change', bands)
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { bands } })
+    })
+
+    it('changes the map image', async () => {
+      const wrapper = mountEditor()
+      await openSetup(wrapper)
+      await wrapper.find('.map-image').trigger('click')
+      wrapper.findComponent({ name: 'ObservatoryModal' }).vm.$emit('select', { image_url: '/api/observatory/images/1a2b3c4d-keep.png' })
+      expect(commands.patch).toHaveBeenLastCalledWith('cave', { image_url: '/api/observatory/images/1a2b3c4d-keep.png' })
+    })
+
+    it('shows what the server refused', async () => {
+      commands.patch.mockRejectedValue({ response: { data: { detail: 'Images must be assets from the asset library' } } })
+      const wrapper = mountEditor()
+      await openSetup(wrapper)
+      await wrapper.find('.switch input').trigger('change')
+      await flushPromises()
+      expect(wrapper.find('.rk-alert').text()).toContain('asset library')
+    })
   })
 
-  it('adds a token on a free cell', async () => {
-    const wrapper = mountEditor()
-    await wrapper.find('.toolbar button[aria-label="Add a token"]').trigger('click')
-    const [, , items] = commands.addItems.mock.calls[0]
-    expect(items).toEqual([{ name: 'Token', x: 2, y: 1, size: 1 }]) // (1,1) is taken
-  })
+  describe('the table screen', () => {
+    // In its modal, the editor's Send to screen and Go live are the header's.
+    async function mountInModal(props = {}) {
+      const { provideDocumentScreen } = await import('@/composables/useDocumentScreen')
+      const { defineComponent, h } = await import('vue')
+      let controls = null
+      const Modal = defineComponent({
+        setup() {
+          controls = provideDocumentScreen()
+          return () => h(BattlemapEditor, { battlemapId: 'cave', canInteract: true, ...props })
+        }
+      })
+      const wrapper = mount(Modal)
+      return { wrapper, screen: () => controls.value }
+    }
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-  it('attaches an encounter, and places the combatants that have no token yet', async () => {
-    encounter.value = ENCOUNTER
-    fake.doc.value.encounter = 'fight'
-    const wrapper = mountEditor()
-    await flushPromises()
-    await openTab(wrapper, 'Tokens') // (it opens on the sheets of its encounter)
-    const select = wrapper.find('.panel select')
-    expect([...select.element.options].map((o) => o.value)).toEqual(['', 'fight', 'goblins/cave'])
-    select.element.value = 'goblins/cave'
-    await select.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: 'goblins/cave' })
-    select.element.value = ''
-    await select.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: null })
+    it('hands the header its buttons, and takes them back when it goes', async () => {
+      const { wrapper, screen } = await mountInModal()
+      expect(screen().canSend.value).toBe(true)
+      expect(screen().liveHint).toContain('zoomed and panned')
+      expect(wrapper.find('.screen-toggle').exists()).toBe(false) // nothing of the sort on the map itself
+      wrapper.unmount()
+      expect(screen()).toBeNull()
+      fake.doc.value.image_url = null
+      const { screen: bare } = await mountInModal()
+      expect(bare().canSend.value).toBe(false) // no image: nothing to show
+    })
 
-    const place = wrapper.findAll('.panel > .tab-body > .rk-btn')[0]
-    expect(place.text()).toBe('Place 2 combatants') // c1 already has a token
-    await place.trigger('click')
-    const [, collection, items] = commands.addItems.mock.calls[0]
-    expect(collection).toBe('tokens')
-    expect(items.map((i) => [i.name, i.combatant, i.x, i.y])).toEqual([['Orc 2', 'c2', 2, 1], ['Aria', 'c3', 3, 1]])
-    expect(items[1]).toMatchObject({ sheet: 'aria', image_url: expect.stringContaining('aria.png'), color: '#34d399' })
-  })
+    it('sends the whole map to the screen', async () => {
+      const { screen } = await mountInModal()
+      await screen().send()
+      expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
+      expect(screen().sending.value).toBe(true) // "Sent!"
+      expect(screen().live.value).toBe(false)
+    })
 
-  it('links a token to a combatant and chooses which counters it shows', async () => {
-    encounter.value = ENCOUNTER
-    fake.doc.value.encounter = 'fight'
-    const wrapper = mountEditor()
-    await openTab(wrapper, 'Tokens')
-    await wrapper.findAll('.token-row')[1].trigger('click')
-    const inspector = wrapper.find('.inspector')
-    expect(inspector.text()).toContain('HP')
-    expect(inspector.text()).toContain('Fury')
+    it('live, the screen follows the view here as it is zoomed and panned', async () => {
+      const { wrapper, screen } = await mountInModal()
+      const rect = (x) => ({ x, y: 0, width: 700, height: 500 })
+      canvas(wrapper).vm.$emit('view', rect(10)) // not live: nothing sent
+      await wait(120)
+      expect(post).not.toHaveBeenCalled()
 
-    const fury = inspector.findAll('.check.indent input')[1]
-    fury.element.checked = true
-    await fury.trigger('change')
-    expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { add: ['Fury'] })
-    const hp = inspector.findAll('.check.indent input')[0]
-    hp.element.checked = false
-    await hp.trigger('change')
-    expect(commands.editList).toHaveBeenLastCalledWith('cave', 'tokens', 't2', 'bars', { remove: ['HP'] })
+      await screen().toggle()
+      expect(screen().live.value).toBe(true)
+      expect(post).toHaveBeenCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
+      await wait(120)
+      expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap/view', { battlemap_id: 'cave', view: rect(10) })
 
-    const link = inspector.find('select')
-    link.element.value = 'c2'
-    await link.trigger('change')
-    expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't2', { combatant: 'c2', sheet: 'n#orc', bars: [], show_bars: false })
-  })
+      // A pan: only the newest view goes, a moment later.
+      canvas(wrapper).vm.$emit('view', rect(20))
+      canvas(wrapper).vm.$emit('view', rect(30))
+      await wait(120)
+      expect(post.mock.calls.filter(([url]) => url.endsWith('/view')).map(([, body]) => body.view?.x)).toEqual([10, 30])
 
-  it('changes the grid one setting at a time', async () => {
-    const wrapper = mountEditor()
-    await openTab(wrapper, 'Map')
-    const field = (label) => wrapper.findAll('.field').find((f) => f.text().startsWith(label)).find('input, select')
+      await screen().toggle()
+      expect(screen().live.value).toBe(false)
+      canvas(wrapper).vm.$emit('view', rect(40))
+      await wait(120)
+      expect(post).toHaveBeenCalledTimes(3)
+    })
 
-    const size = field('Cell size')
-    size.element.value = '100'
-    await size.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { size: 100 } })
-
-    const unit = field('Unit')
-    unit.element.value = ' ft '
-    await unit.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { unit: 'ft' } })
-
-    const distance = field('One cell is')
-    distance.element.value = '-3'
-    await distance.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { distance: 1 } }) // not positive: keeps what it was
-
-    const measure = field('The ruler counts')
-    measure.element.value = 'straight'
-    await measure.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { measure: 'straight' } })
-
-    const snap = wrapper.find('.grid-fields input[type="checkbox"]')
-    snap.element.checked = false
-    await snap.trigger('change')
-    expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { snap: false } })
-  })
-
-  it('shows the map on the screen, and stops', async () => {
-    const wrapper = mountEditor()
-    const button = wrapper.find('.toolbar button[aria-label="Show on the screen"]')
-    await button.trigger('click')
-    await flushPromises()
-    expect(post).toHaveBeenLastCalledWith('/api/screen/battlemap', { battlemap_id: 'cave' })
-    const stop = wrapper.find('.toolbar button[aria-label="Stop showing on the screen"]')
-    expect(stop.exists()).toBe(true)
-    await stop.trigger('click')
-    await flushPromises()
-    expect(post).toHaveBeenLastCalledWith('/api/screen/clear', {})
+    it('stops following once something else is on the screen', async () => {
+      const { wrapper, screen } = await mountInModal()
+      await screen().toggle()
+      post.mockResolvedValue({ status: 'ignored' })
+      canvas(wrapper).vm.$emit('view', { x: 0, y: 0, width: 10, height: 10 })
+      await wait(120)
+      expect(screen().live.value).toBe(false)
+    })
   })
 
   describe('moving tokens', () => {
@@ -314,12 +467,15 @@ describe('BattlemapEditor', () => {
     })
   })
 
-  it('can be looked at, not changed, by someone signed out', () => {
+  it('can be looked at, not changed, by someone signed out', async () => {
     const wrapper = mountEditor({ canInteract: false })
     expect(canvas(wrapper).props('editable')).toBe(false)
-    expect(wrapper.find('.toolbar button[aria-label="Add a token"]').exists()).toBe(false)
-    expect(wrapper.find('.toolbar button[aria-label="Show on the screen"]').exists()).toBe(false)
+    expect(wrapper.find('button[aria-label="Add a token"]').exists()).toBe(false)
+    expect(wrapper.find('.setup-btn').exists()).toBe(false)
     expect(fetchAll).not.toHaveBeenCalled()
+    await wrapper.findAll('.token-row')[0].trigger('click')
+    expect(wrapper.find('.visibility').exists()).toBe(false)
+    expect(settings(wrapper).props('disabled')).toBe(true)
   })
 
   it('has its own words for loading, a missing map and a failure', () => {
@@ -332,41 +488,41 @@ describe('BattlemapEditor', () => {
     expect(mountEditor().text()).toContain('boom')
   })
 
-  it('shows what the server refused', async () => {
-    commands.patch.mockRejectedValue({ response: { data: { detail: 'Images must be assets from the asset library' } } })
-    const wrapper = mountEditor()
-    await openTab(wrapper, 'Map')
-    const snap = wrapper.find('.grid-fields input[type="checkbox"]')
-    await snap.trigger('change')
-    await flushPromises()
-    expect(wrapper.find('.rk-alert').text()).toContain('asset library')
-  })
-
   describe('playing sheets from the map', () => {
-    const withEncounter = () => {
-      encounter.value = ENCOUNTER
-      fake.doc.value.encounter = 'fight'
-      return mountEditor()
-    }
-
-    it('opens on the sheets of its encounter, everyone in it on the roster', () => {
+    it('lists everyone in its encounter, and who is not on the map yet', () => {
       const wrapper = withEncounter()
-      expect(wrapper.find('.tab.active').text()).toBe('Sheet')
-      const chips = wrapper.findAll('.roster-chip')
-      expect(chips.map((c) => c.text())).toEqual(['Dragon', 'Orc 2', 'Aria'])
-      expect(chips.map((c) => c.classes().includes('unplaced'))).toEqual([false, true, true]) // only c1 has a token
+      const rows = wrapper.findAll('.combatant-row')
+      expect(names(rows)).toEqual(['Dragon', 'Orc 2', 'Aria'])
+      expect(rows.map((r) => r.classes().includes('unplaced'))).toEqual([false, true, true]) // only c1 has a token
+      expect(rows[0].find('.row-counter').text()).toBe('20/30 HP')
+      expect(rows[1].find('.row-sub').text()).toBe('Not on the map')
       expect(play(wrapper).exists()).toBe(false) // nobody picked yet
+    })
+
+    it('places the combatants that have no token yet, all at once or one by one', async () => {
+      const wrapper = withEncounter()
+      const placeAll = wrapper.find('.place-all')
+      expect(placeAll.text()).toBe('Put 2 on the map')
+      await placeAll.trigger('click')
+      const [, collection, items] = commands.addItems.mock.calls[0]
+      expect(collection).toBe('tokens')
+      expect(items.map((i) => [i.name, i.combatant, i.x, i.y])).toEqual([['Orc 2', 'c2', 2, 1], ['Aria', 'c3', 3, 1]])
+      expect(items[1]).toMatchObject({ sheet: 'aria', image_url: expect.stringContaining('aria.png'), color: '#34d399' })
+
+      await wrapper.findAll('.combatant-row')[1].trigger('click')
+      await wrapper.find('.place-one').trigger('click')
+      expect(commands.addItems.mock.calls[1][2].map((i) => i.combatant)).toEqual(['c2'])
     })
 
     it('without an encounter, says how to get one and attaches it from there', async () => {
       const wrapper = mountEditor()
-      await openTab(wrapper, 'Sheet')
       await flushPromises()
-      expect(wrapper.find('.sheet-empty').exists()).toBe(true)
-      const select = wrapper.find('.sheet-empty select')
+      expect(wrapper.find('.encounter-cta').exists()).toBe(true)
+      const select = wrapper.find('.encounter-cta select')
       select.element.value = 'fight'
       await select.trigger('change')
       expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: 'fight' })
+      expect(mountEditor({ canInteract: false }).find('.encounter-cta').exists()).toBe(false)
     })
 
     it('plays whoever the selected token stands for, and selects the token of whoever is picked', async () => {
@@ -377,11 +533,15 @@ describe('BattlemapEditor', () => {
       expect(play(wrapper).props('counters').map((r) => r.name)).toEqual(['HP', 'Fury'])
       expect(fetchSheet).toHaveBeenCalledWith('adversary', 'n#dragon')
       expect(play(wrapper).props('sheetState')).toMatchObject({ status: 'ready' })
+      expect(settings(wrapper).props('token').id).toBe('t2') // its token, folded under the sheet
 
-      await wrapper.findAll('.roster-chip')[1].trigger('click') // Orc 2: not on the map
+      await wrapper.find('.back').trigger('click')
+      await wrapper.findAll('.combatant-row')[1].trigger('click') // Orc 2: not on the map
       expect(play(wrapper).props('combatant').id).toBe('c2')
-      expect(canvas(wrapper).props('selectedId')).toBe('t2') // no token of its own to select
-      await wrapper.findAll('.roster-chip')[0].trigger('click')
+      expect(canvas(wrapper).props('selectedId')).toBeNull() // no token of its own to select
+      expect(settings(wrapper).exists()).toBe(false)
+      await wrapper.find('.back').trigger('click')
+      await wrapper.findAll('.combatant-row')[0].trigger('click')
       expect(canvas(wrapper).props('selectedId')).toBe('t2')
     })
 
@@ -404,7 +564,7 @@ describe('BattlemapEditor', () => {
 
     it("a character's counters are its own", async () => {
       const wrapper = withEncounter()
-      await wrapper.findAll('.roster-chip')[2].trigger('click')
+      await wrapper.findAll('.combatant-row')[2].trigger('click')
       play(wrapper).vm.$emit('adjust', 'Hope', 1)
       expect(fake.characters.adjust).toHaveBeenLastCalledWith('aria', 'Hope', 1)
       expect(encounterCommands.adjust).not.toHaveBeenCalled()
@@ -419,25 +579,12 @@ describe('BattlemapEditor', () => {
       expect(signals.roll).toHaveBeenCalledWith('t2', roll)
 
       // The dice may land after someone else was picked: the roll is still the roller's.
-      await wrapper.findAll('.roster-chip')[1].trigger('click')
+      await wrapper.find('.back').trigger('click')
+      await wrapper.findAll('.combatant-row')[1].trigger('click')
       play(wrapper).vm.$emit('rolled', { ...roll, combatant: 'c1' })
       expect(signals.roll).toHaveBeenLastCalledWith('t2', roll)
       play(wrapper).vm.$emit('rolled', { ...roll, combatant: 'c2' }) // not on the map
       expect(signals.roll).toHaveBeenCalledTimes(2)
-    })
-
-    it('a token double-clicked shows its sheet, or the token itself when it stands for no one', async () => {
-      const wrapper = withEncounter()
-      await openTab(wrapper, 'Map')
-      canvas(wrapper).vm.$emit('open', 't2')
-      await flushPromises()
-      expect(wrapper.find('.tab.active').text()).toBe('Sheet')
-      expect(play(wrapper).props('combatant').id).toBe('c1')
-
-      canvas(wrapper).vm.$emit('open', 't1')
-      await flushPromises()
-      expect(wrapper.find('.tab.active').text()).toBe('Tokens')
-      expect(wrapper.find('.inspector input').element.value).toBe('Orc')
     })
 
     it("opens the sheet's own editor", async () => {
@@ -451,7 +598,7 @@ describe('BattlemapEditor', () => {
     })
   })
 
-  describe('pointing', () => {
+  describe('tools', () => {
     it('hands the canvas the signals, and passes on what it points at', () => {
       const wrapper = mountEditor()
       expect(canvas(wrapper).props('signals')).toBe(signals.layer)
@@ -473,31 +620,42 @@ describe('BattlemapEditor', () => {
       expect(canvas(wrapper).props('tool')).toBe('pointer')
       await press('r')
       expect(canvas(wrapper).props('tool')).toBe('ruler')
-      await press('v', wrapper.find('.inspector-head input').exists() ? wrapper.find('.inspector-head input').element : wrapper.find('select').element)
+      await wrapper.findAll('.token-row')[0].trigger('click')
+      await press('v', settings(wrapper).find('input').element)
       expect(canvas(wrapper).props('tool')).toBe('ruler')
       await press('V')
       expect(canvas(wrapper).props('tool')).toBe('select')
       wrapper.unmount()
     })
 
+    it('says how the tool in hand is used', async () => {
+      const wrapper = mountEditor()
+      expect(wrapper.find('.battlemap-tools .hint').exists()).toBe(false) // moving needs no words
+      await wrapper.find('.rail button[aria-label="Measure"]').trigger('click')
+      expect(canvas(wrapper).props('tool')).toBe('ruler')
+      expect(wrapper.find('.battlemap-tools .hint').text()).toContain('Drag to measure')
+    })
+
     it('has no pointer for someone signed out: everyone would see it', () => {
       const wrapper = mountEditor({ canInteract: false })
-      const tools = wrapper.findAll('.tool-group button').map((b) => b.attributes('aria-label'))
-      expect(tools).toEqual(['Select and move', 'Measure: Space adds a turn']) // no pointer, no areas
+      const tools = wrapper.findAll('.rail .tool').map((b) => b.attributes('aria-label'))
+      expect(tools).toEqual(['Move', 'Measure']) // no pointer, no areas
     })
   })
 
   describe('areas', () => {
     const AREA = { id: 'a1', shape: 'circle', x: 2, y: 2, size: 2, angle: 0, spread: 60, width: 1, color: '#f97316', label: '', hidden: false }
 
-    it('adds one drawn on the map, in the first area colour, and selects it', async () => {
+    it('adds one drawn on the map, in the first area colour, and opens it', async () => {
       commands.addItems.mockResolvedValue({ upsert: { areas: [{ ...AREA, id: 'new' }] } })
+      fake.doc.value.areas = [{ ...AREA, id: 'new' }]
       const wrapper = mountEditor()
       canvas(wrapper).vm.$emit('add-area', { shape: 'cone', x: 2, y: 2, size: 4, angle: 90 })
       await flushPromises()
       expect(commands.addItems).toHaveBeenCalledWith('cave', 'areas', [{ shape: 'cone', x: 2, y: 2, size: 4, angle: 90, color: '#f97316' }])
       expect(canvas(wrapper).props('selectedAreaId')).toBe('new')
       expect(canvas(wrapper).props('tool')).toBe('select') // ready to be moved, sized, turned
+      expect(wrapper.findComponent({ name: 'AreaInspector' }).exists()).toBe(true)
     })
 
     it('resizes and turns one as its reach handle says', async () => {
@@ -506,16 +664,17 @@ describe('BattlemapEditor', () => {
       expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { size: 6, angle: 90 })
     })
 
-    it('lists them, and changes, moves and removes the selected one', async () => {
+    it('lists them, and changes, hides, moves and removes the one opened', async () => {
       fake.doc.value.areas = [AREA]
       const wrapper = mountEditor()
-      await openTab(wrapper, 'Tokens')
       expect(wrapper.find('.area-size').text()).toBe('2 cell') // its reach, as the map counts it
-      canvas(wrapper).vm.$emit('select-area', 'a1')
-      await flushPromises()
+      await wrapper.find('.area-row').trigger('click')
+      expect(canvas(wrapper).props('selectedAreaId')).toBe('a1')
       const inspector = wrapper.findComponent({ name: 'AreaInspector' })
       inspector.vm.$emit('patch', { shape: 'line' })
       expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { shape: 'line' })
+      await wrapper.find('.visibility').trigger('click')
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { hidden: true })
       canvas(wrapper).vm.$emit('move-area', 'a1', { x: 5, y: 5.5 })
       expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { x: 5, y: 5.5 })
       inspector.vm.$emit('remove')
@@ -534,31 +693,13 @@ describe('BattlemapEditor', () => {
       expect(canvas(wrapper).props('selectedAreaId')).toBeNull()
     })
 
-    it('draws with the shape picked under the toolbar', async () => {
+    it('draws with the shape picked beside the area tool', async () => {
       const wrapper = mountEditor()
-      await wrapper.find('.toolbar button[aria-label="Draw an area"]').trigger('click')
-      await wrapper.find('button[aria-label="Line"]').trigger('click')
+      expect(wrapper.find('.flyout').exists()).toBe(false)
+      await wrapper.find('.rail button[aria-label="Draw an area"]').trigger('click')
+      await wrapper.find('.flyout button[aria-label="Line"]').trigger('click')
       expect(canvas(wrapper).props('tool')).toBe('area')
       expect(canvas(wrapper).props('areaShape')).toBe('line')
-    })
-  })
-
-  describe('setting the map up', () => {
-    it('frames a token\'s image', async () => {
-      fake.doc.value.tokens[0].image_url = '/api/observatory/images/1a2b3c4d-orc.png'
-      const wrapper = mountEditor()
-      await wrapper.findAll('.token-row')[0].trigger('click')
-      wrapper.findComponent({ name: 'TokenImageEditor' }).vm.$emit('change', { image_scale: 1.5, image_x: 0.1 })
-      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'tokens', 't1', { image_scale: 1.5, image_x: 0.1 })
-    })
-
-    it('measures in range bands of its own', async () => {
-      fake.doc.value.grid = { ...GRID, measure: 'bands', bands: [] }
-      const wrapper = mountEditor()
-      await openTab(wrapper, 'Map')
-      const bands = [{ name: 'Near', max: 2 }, { name: 'Far', max: null }]
-      wrapper.findComponent({ name: 'RangeBandsEditor' }).vm.$emit('change', bands)
-      expect(commands.patch).toHaveBeenLastCalledWith('cave', { grid: { bands } })
     })
   })
 
@@ -569,7 +710,7 @@ describe('BattlemapEditor', () => {
       encounterCommit.mockImplementation(async (command) => command)
       encounterCommands.addItems.mockResolvedValue({ upsert: { combatants: [{ id: 'n1', name: 'Bugboar', type: 'adversary', sheet: 'bugboar', resources: {} }] } })
       const wrapper = mountEditor()
-      await wrapper.find('.sheet-actions button').trigger('click')
+      await wrapper.find('.add-fight').trigger('click')
       const sheet = { ref: 'bugboar', name: 'Bugboar', type: 'adversary', resources: { HP: { max: 6 } } }
       wrapper.findComponent({ name: 'EncounterAddPanel' }).vm.$emit('add', sheet, 1)
       await flushPromises()
@@ -583,8 +724,7 @@ describe('BattlemapEditor', () => {
     it('gives a map without one an encounter of its own, next to it', async () => {
       createEncounter.mockResolvedValue({ id: 'cave-2', name: 'Cave' })
       const wrapper = mountEditor()
-      await openTab(wrapper, 'Sheet')
-      await wrapper.find('.sheet-empty .rk-btn').trigger('click')
+      await wrapper.find('.encounter-cta .rk-btn').trigger('click')
       await flushPromises()
       expect(createEncounter).toHaveBeenCalledWith('Cave', null, '')
       expect(commands.patch).toHaveBeenLastCalledWith('cave', { encounter: 'cave-2' })

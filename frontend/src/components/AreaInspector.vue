@@ -1,11 +1,9 @@
 <template>
   <section class="area-inspector" :aria-label="`Area: ${area.label || SHAPE_LABELS[area.shape]}`">
-    <header class="head">
+    <label class="field">
+      <span>Name</span>
       <input class="rk-input" maxlength="60" :value="area.label" :placeholder="SHAPE_LABELS[area.shape]" :disabled="disabled" aria-label="Area name" @change="emit('patch', { label: $event.target.value.trim() })" />
-      <button type="button" class="rk-icon-btn rk-icon-btn--sm danger" :disabled="disabled" aria-label="Remove area" title="Remove area" @click="emit('remove')">
-        <span class="mdi mdi-trash-can-outline"></span>
-      </button>
-    </header>
+    </label>
 
     <div class="shapes" role="group" aria-label="Shape">
       <button
@@ -58,10 +56,9 @@
       ></button>
     </div>
 
-    <label class="check">
-      <input type="checkbox" :checked="area.hidden" :disabled="disabled" @change="emit('patch', { hidden: $event.target.checked })" />
-      <span>Hidden from the screen</span>
-    </label>
+    <button v-if="!disabled" type="button" class="rk-btn rk-btn--sm rk-btn--ghost rk-btn--danger danger remove" @click="emit('remove')">
+      <span class="mdi mdi-trash-can-outline"></span> Remove the area
+    </button>
   </section>
 </template>
 
@@ -81,7 +78,8 @@ import { AREA_COLORS } from '@/utils/palette'
 import { areaMeasure } from '@/utils/battlemapGeometry'
 
 // One area of a battlemap (backend models/battlemap.py Area): its name, shape,
-// reach, direction, colour and whether the screen sees it. It changes
+// reach, direction and colour (whether the screen sees it is the panel's
+// header's, as for a token). It changes
 // nothing itself: `patch` (the fields to change) and `remove` are for the
 // map to apply.
 const props = defineProps({
@@ -105,20 +103,7 @@ function clamp(value, low, high, fallback) {
 .area-inspector {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-}
-
-.head {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.head input {
-  flex: 1;
+  gap: var(--space-4);
 }
 
 .shapes {
@@ -136,7 +121,8 @@ function clamp(value, low, high, fallback) {
   margin-left: auto;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
 }
 
 .row {
@@ -162,22 +148,19 @@ function clamp(value, low, high, fallback) {
 }
 
 .swatch {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.5rem;
+  height: 1.5rem;
   border: 2px solid transparent;
   border-radius: var(--radius-full);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.15);
   cursor: pointer;
 }
 
 .swatch.active {
-  border-color: #fff;
+  border-color: var(--text-primary);
 }
 
-.check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
+.remove {
+  align-self: flex-start;
 }
 </style>
