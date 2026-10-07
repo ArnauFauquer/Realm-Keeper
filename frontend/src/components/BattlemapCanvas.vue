@@ -12,7 +12,7 @@
         ref="svgRef"
         class="canvas-svg"
         :class="`tool-${tool}`"
-        :viewBox="`0 0 ${naturalWidth} ${naturalHeight}`"
+        :viewBox="viewBox"
         preserveAspectRatio="xMidYMid meet"
         @pointerdown="onBackgroundDown"
         @dblclick="onBackgroundDoubleClick"
@@ -124,6 +124,19 @@
       <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
         The map image could not be loaded. It may have been deleted from the Observatory.
       </CanvasEmptyState>
+      <!-- Zoom for whoever has no wheel or pinch to hand (a trackpad, a mouse
+           in the other hand). -->
+      <div v-if="naturalWidth && zoomable" class="zoom" role="group" aria-label="Zoom">
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Zoom out" title="Zoom out" @click="zoomBy(1 / ZOOM_STEP)">
+          <span class="mdi mdi-minus"></span>
+        </button>
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Fit the map" title="Fit the map" @click="fit">
+          <span class="mdi mdi-fit-to-screen-outline"></span>
+        </button>
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Zoom in" title="Zoom in" @click="zoomBy(ZOOM_STEP)">
+          <span class="mdi mdi-plus"></span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -171,7 +184,10 @@ const props = defineProps({
   zoomable: { type: Boolean, default: true },
   resetKey: { type: String, default: null },
   // What is pointed at on the map, drawn over it (a layer of utils/mapSignals.js).
-  signals: { type: Object, default: null }
+  signals: { type: Object, default: null },
+  // On /screen: the part of the map to frame ({ x, y, width, height } in the
+  // image's pixels), as the GM who is live with it sees it; null for all of it.
+  view: { type: Object, default: null }
 })
 
 // `move` (a token let go of: id, { x, y }), `select` (a token, or null),
@@ -180,10 +196,11 @@ const props = defineProps({
 // pointer dragged there), `release` (let go of), `measure` ({ points, token,
 // end }: the path being measured or moved along, for everyone to see),
 // `select-area`, `move-area` (id, { x, y }), `reshape-area` (id, { size,
-// angle }) and `add-area` (an area drawn).
+// angle }), `add-area` (an area drawn) and `view` (the part of the map in
+// view once zoomed or panned, in the image's pixels, or null for all of it).
 // Points are in cells.
 const emit = defineEmits([
-  'select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'reshape-area', 'add-area'
+  'select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'reshape-area', 'add-area', 'view'
 ])
 
 const DEFAULT_AREA_COLOR = '#f97316'
@@ -197,13 +214,69 @@ const svgRef = ref(null)
 const groupRef = ref(null)
 
 const resolvedImageUrl = computed(() => resolveUrl(props.imageUrl))
-const { naturalWidth, naturalHeight, imageStatus, pointer } = useMapViewport({
+const ZOOM_STEP = 1.4
+const { naturalWidth, naturalHeight, imageStatus, pointer, fit, zoomBy } = useMapViewport({
   svgRef,
   groupRef,
   imageUrl: () => props.imageUrl,
   zoomable: () => props.zoomable,
   canPan: () => props.tool === 'select',
-  resetKey: () => props.resetKey
+  resetKey: () => props.resetKey,
+  onView: (rect) => emit('view', rect && withinImage(rect))
+})
+
+// The part of the image in view: past its edges there is nothing to frame.
+// All of it is null.
+function withinImage({ x, y, width, height }) {
+  const w = naturalWidth.value
+  const h = naturalHeight.value
+  const left = Math.max(0, x)
+  const top = Math.max(0, y)
+  const right = Math.min(w, x + width)
+  const bottom = Math.min(h, y + height)
+  if (right <= left || bottom <= top) return null
+  if (left === 0 && top === 0 && right === w && bottom === h) return null
+  const round = (n) => Math.round(n * 10) / 10
+  return { x: round(left), y: round(top), width: round(right - left), height: round(bottom - top) }
+}
+
+// ── framing (the screen) ──────────────────────────────────────────────────
+// A new view is glided to, not jumped to, so the table can follow where the
+// GM went. It plays with reduced motion too: it says where the view went.
+
+const FRAME_MS = 280
+const framed = ref(null) // { x, y, width, height } shown now
+let frameRaf = null
+
+const wholeImage = () => ({ x: 0, y: 0, width: naturalWidth.value, height: naturalHeight.value })
+
+watch([() => props.view, naturalWidth], ([view]) => {
+  if (!naturalWidth.value) return
+  const to = view || wholeImage()
+  const from = framed.value
+  cancelAnimationFrame(frameRaf)
+  if (!from || typeof requestAnimationFrame === 'undefined') {
+    framed.value = to
+    return
+  }
+  const start = performance.now()
+  const step = () => {
+    const t = Math.min(1, (performance.now() - start) / FRAME_MS)
+    const e = 1 - (1 - t) ** 3
+    framed.value = {
+      x: from.x + (to.x - from.x) * e,
+      y: from.y + (to.y - from.y) * e,
+      width: from.width + (to.width - from.width) * e,
+      height: from.height + (to.height - from.height) * e
+    }
+    frameRaf = t < 1 ? requestAnimationFrame(step) : null
+  }
+  frameRaf = requestAnimationFrame(step)
+}, { immediate: true })
+
+const viewBox = computed(() => {
+  const f = props.zoomable ? null : framed.value
+  return f ? `${f.x} ${f.y} ${f.width} ${f.height}` : `0 0 ${naturalWidth.value} ${naturalHeight.value}`
 })
 
 // Sizes follow the cell, so a token keeps its look at any grid size.
@@ -524,6 +597,7 @@ function onBackgroundDown(event) {
 }
 
 onBeforeUnmount(() => {
+  cancelAnimationFrame(frameRaf)
   clearTimeout(releaseTimer)
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('keyup', onKey)
@@ -569,6 +643,20 @@ onBeforeUnmount(() => {
 
 .grid-rect {
   pointer-events: none;
+}
+
+.zoom {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-chrome);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Only the select tool picks things up; the others work on the bare map. */

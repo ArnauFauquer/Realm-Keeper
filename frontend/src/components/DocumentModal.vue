@@ -11,16 +11,17 @@
         :has-unsaved-changes="hasUnsavedChanges"
         :saving="saving"
         :save-error="saveError"
-        :show-send-to-screen="!!kind.screen"
-        :can-send-to-screen="!!activeDoc?.[kind.imageField]"
-        :sending-to-screen="sendingToScreen"
-        :live-supported="!!kind.screen"
-        :live="live"
+        :show-send-to-screen="headerScreen.show"
+        :can-send-to-screen="headerScreen.canSend"
+        :sending-to-screen="headerScreen.sending"
+        :live-supported="headerScreen.show"
+        :live="headerScreen.live"
+        :live-hint="headerScreen.liveHint"
         :copy-text="kind.embeddable && activeId ? docRefMarkdown(kind.type, activeId) : null"
         @back="backToObservatory"
         @save="saveNow"
-        @send-to-screen="sendToScreen"
-        @toggle-live="toggleLive(hasUnsavedChanges)"
+        @send-to-screen="onSendToScreen"
+        @toggle-live="onToggleLive"
         @close="closeModal"
       />
 
@@ -63,6 +64,7 @@ import { computed, ref, watch } from 'vue'
 import DocumentModalHeader from './DocumentModalHeader.vue'
 import { folderOf, useObservatoryModal } from '@/composables/useObservatoryModal'
 import { useLiveScreen } from '@/composables/useLiveScreen'
+import { provideDocumentScreen } from '@/composables/useDocumentScreen'
 import { useSyncedDocFollowing } from '@/composables/useSyncedDoc'
 import { useUnsavedChangesGuard } from '@/composables/useUnsavedChangesGuard'
 import { docRefMarkdown } from '@/utils/inlineRefs'
@@ -126,6 +128,19 @@ const screen = props.kind.screen
   ? useLiveScreen(props.kind.type, activeDoc, (doc) => screenPayload(props.kind, doc))
   : { live: ref(false), sending: ref(false), sendToScreen: () => {}, toggle: () => {}, stop: () => {} }
 const { live, sending: sendingToScreen, sendToScreen, toggle: toggleLive, stop: stopLive } = screen
+
+// A live editor (the battlemap's) brings its own Go live and Send to screen
+// (composables/useDocumentScreen.js); the header shows them the same way.
+const editorScreen = provideDocumentScreen()
+const headerScreen = computed(() => {
+  const own = editorScreen.value
+  if (own) {
+    return { show: true, canSend: own.canSend.value, sending: own.sending.value, live: own.live.value, liveHint: own.liveHint || null }
+  }
+  return { show: !!props.kind.screen, canSend: !!activeDoc.value?.[props.kind.imageField], sending: sendingToScreen.value, live: live.value, liveHint: null }
+})
+const onSendToScreen = () => (editorScreen.value ? editorScreen.value.send() : sendToScreen())
+const onToggleLive = () => (editorScreen.value ? editorScreen.value.toggle() : toggleLive(hasUnsavedChanges.value))
 
 const { confirmDiscard } = useUnsavedChangesGuard(
   hasUnsavedChanges, `You have unsaved changes to this ${props.kind.label}. Discard them?`

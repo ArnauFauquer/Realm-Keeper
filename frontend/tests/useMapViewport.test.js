@@ -2,16 +2,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createApp, defineComponent, h, nextTick, ref } from 'vue'
 
-const { zoom, filterFns, transforms } = vi.hoisted(() => {
+const { zoom, filterFns, transforms, scales } = vi.hoisted(() => {
   const filterFns = []
   const transforms = []
+  const scales = []
   const zoom = {
     scaleExtent: vi.fn(() => zoom),
     filter: vi.fn((fn) => { filterFns.push(fn); return zoom }),
     on: vi.fn(() => zoom),
-    transform: 'transform'
+    transform: 'transform',
+    scaleBy: 'scaleBy'
   }
-  return { zoom, filterFns, transforms }
+  return { zoom, filterFns, transforms, scales }
 })
 
 // d3-zoom and d3.pointer need real SVG geometry; the composable's own logic
@@ -22,6 +24,7 @@ vi.mock('d3', () => ({
   select: () => ({
     call: (fn, ...args) => {
       if (fn === zoom.transform) transforms.push(args[0])
+      if (fn === zoom.scaleBy) scales.push(args[0])
       return { on: vi.fn() }
     },
     attr: vi.fn()
@@ -73,6 +76,7 @@ beforeEach(() => {
   FakeImage.loaded = []
   filterFns.length = 0
   transforms.length = 0
+  scales.length = 0
   zoom.filter.mockClear()
 })
 
@@ -125,6 +129,18 @@ describe('useMapViewport', () => {
     await settle()
     resetKey.value = 'b'
     await settle()
+    expect(transforms).toEqual(['identity'])
+  })
+
+  it('zooms by a step, and fits the map again, for buttons', async () => {
+    setup()
+    result.zoomBy(2) // before the map has a size: nothing to zoom yet
+    expect(scales).toEqual([])
+    await settle()
+    result.zoomBy(2)
+    result.zoomBy(0.5)
+    result.fit()
+    expect(scales).toEqual([2, 0.5])
     expect(transforms).toEqual(['identity'])
   })
 

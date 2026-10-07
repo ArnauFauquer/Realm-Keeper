@@ -31,6 +31,8 @@ export const screenApi = {
   chart: (id) => show('chart', { chart_id: id }),
   vista: (id) => show('vista', { vista_id: id }),
   battlemap: (id) => show('battlemap', { battlemap_id: id }),
+  /** Frames part of the battlemap on screen ({ x, y, width, height } in its image's pixels), or all of it (null). */
+  battlemapView: (id, view) => post(`${base}/battlemap/view`, { battlemap_id: id, view }),
   /** Any kind the screen draws ("chart", "vista", "constellation"), with the body it takes. */
   show,
   /** Unsaved edits of what is on the screen, mirrored as they are made. */
