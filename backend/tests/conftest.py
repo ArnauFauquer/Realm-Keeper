@@ -56,7 +56,11 @@ class FakeS3:
     def get_object(self, Bucket, Key, Range=None):
         if Key not in self.objects:
             raise self._missing("GetObject")
-        return {"Body": _Body(self.objects[Key]), "ContentLength": len(self.objects[Key])}
+        data = self.objects[Key]
+        if Range:
+            first, last = Range[len("bytes="):].split("-")
+            data = data[int(first):int(last) + 1]
+        return {"Body": _Body(data), "ContentLength": len(data)}
 
     def put_object(self, Bucket, Key, Body, ContentType=None, **_):
         self.objects[Key] = Body if isinstance(Body, bytes) else Body.encode()

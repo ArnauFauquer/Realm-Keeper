@@ -1,0 +1,41 @@
+# Dex (https://dexidp.io): a small OpenID Connect provider, here with its own
+# list of users and passwords, so the table can sign in without any Google,
+# GitHub or Microsoft account. Dex can also put an LDAP server, GitHub,
+# GitLab... behind the same login: see its connectors.
+
+# The address both the browser and the app reach Dex at. Browsers send any
+# *.localhost to this machine, and docker-compose.yml gives Dex the same name
+# inside Docker's network. On a server, use its public URL instead.
+issuer: http://dex.localhost:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  skipApprovalScreen: true
+
+# The app is Dex's only client. The secret must match OIDC_CLIENT_SECRET
+# in docker-compose.yml, and the redirect URI the app's address.
+staticClients:
+  - id: realm-keeper
+    name: Realm Keeper
+    secret: change-this-client-secret
+    redirectURIs:
+      - http://localhost:8080/api/auth/callback
+
+# The users: one entry each. Make a password hash with
+#   docker run --rm httpd:2-alpine htpasswd -BnbC 10 "" 'the password' | tr -d ':\n'
+# and add each email to ALLOWED_EMAILS in docker-compose.yml too.
+enablePasswordDB: true
+staticPasswords:
+  - email: gm@example.com
+    username: gm
+    userID: 6f1c9a52-0d8e-4a8b-9b6c-1d2e3f4a5b6c
+    hash: "$2a$10$Onm4UuzCawBISGfNR3y4n.8fd4lo70Kyqx/j3xHiJICrfXN/a9NXa"   # gamemaster
+  - email: player@example.com
+    username: player
+    userID: 2b7d4e18-5c3a-4f6e-8a9d-0e1f2a3b4c5d
+    hash: "$2a$10$wL4D1R8Z8Z8i/oJisoBWYeUFWMkyd6h9RcIfhsbQyUqjjA5fLwKoK"   # player

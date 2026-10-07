@@ -18,7 +18,8 @@ router = APIRouter(prefix="/api", tags=["notes"])
 
 md_service_instance = MarkdownService(
     vault_path=str(settings.VAULT_PATH),
-    ignore_tag=settings.NOTE_TAG_IGNORE
+    ignore_tag=settings.NOTE_TAG_IGNORE,
+    git=settings.GIT_ENABLED,
 )
 
 
@@ -50,6 +51,13 @@ def get_all_notes(
     except Exception as e:
         logger.error(f"Error getting notes: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/home")
+def get_home(service: MarkdownService = Depends(get_markdown_service)):
+    """The note the app opens on (HOME_NOTE, or found in the vault); null
+    when the vault has no notes yet."""
+    return {"note": service.home_note(settings.HOME_NOTE)}
 
 
 @router.get("/note/{note_path:path}", response_model=Note)

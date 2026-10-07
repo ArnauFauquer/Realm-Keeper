@@ -1,7 +1,8 @@
-"""S3-compatible object storage client (Ceph Rook RGW) for the audio player,
-and the bucket helpers the Observatory's store uses (services/doc_backend.py).
+"""The S3 client and bucket helpers the S3 store uses (services/doc_backend.py),
+and what every store shares: how it is laid out, and the files it takes.
 
-How the bucket is laid out: one top-level prefix per kind of thing.
+How a store (the bucket, or the folder of STORAGE_LOCAL_PATH) is laid out: one
+top-level prefix per kind of thing.
 
     player/<album>/<track>              audio, one folder per album
     observatory/<folders>/<file>        every document and the images they
@@ -11,7 +12,7 @@ A track's key, as the player and the notes see it, is "<album>/<track>"; the
 `player/` in front of it is where it is stored, nobody else's business."""
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from typing import BinaryIO, Iterable, Iterator, Optional
+from typing import Iterable, Iterator
 
 import boto3
 from botocore.client import Config
@@ -64,7 +65,8 @@ def _client():
             if _shared_client is None:
                 _shared_client = boto3.session.Session().client(
                     "s3",
-                    endpoint_url=settings.S3_ENDPOINT_URL,
+                    # None (not ""): AWS itself, found by region.
+                    endpoint_url=settings.S3_ENDPOINT_URL or None,
                     aws_access_key_id=settings.S3_ACCESS_KEY,
                     aws_secret_access_key=settings.S3_SECRET_KEY,
                     region_name=settings.S3_REGION,
@@ -117,17 +119,6 @@ def _sanitize_segment(name: str) -> str:
     return name
 
 
-def _validate_key(key: str) -> None:
-    """Validate a (possibly multi-segment) object key: every segment must be
-    a safe path component. A second check on the stored key a track is
-    streamed from, beyond the album/file shape `_split_key` checks."""
-    parts = (key or "").split("/")
-    if not parts or not all(parts):
-        raise StorageError(f"Invalid key: {key!r}")
-    for part in parts:
-        _sanitize_segment(part)
-
-
 def _extension(filename: str) -> str:
     return filename[filename.rfind("."):].lower() if "." in filename else ""
 
@@ -138,115 +129,6 @@ def content_type_for(key: str) -> str:
     objects uploaded before this check may have taken from the client."""
     ext = _extension(key)
     return AUDIO_CONTENT_TYPES.get(ext) or IMAGE_CONTENT_TYPES.get(ext) or "application/octet-stream"
-
-
-def _split_key(key: str) -> tuple[str, str]:
-    """A track's key, "<album>/<file>", as its album and file name."""
-    parts = key.split("/")
-    if len(parts) != 2:
-        raise StorageError(f"Invalid track key: {key!r}")
-    return _sanitize_segment(parts[0]), _sanitize_segment(parts[1])
-
-
-def _track_key(album: str, filename: str) -> str:
-    """Where a track is stored. Whatever a track's key says, it can only name
-    something under `player/`: nothing else in the bucket is reachable by it."""
-    return f"{PLAYER_PREFIX}{album}/{filename}"
-
-
-def list_albums() -> list[str]:
-    client = _client()
-    albums = []
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=PLAYER_PREFIX, Delimiter="/"):
-        for prefix in page.get("CommonPrefixes", []):
-            albums.append(prefix["Prefix"][len(PLAYER_PREFIX):].rstrip("/"))
-    return sorted(albums, key=str.lower)
-
-
-def create_album(name: str) -> None:
-    name = _sanitize_segment(name)
-    client = _client()
-    client.put_object(Bucket=settings.S3_BUCKET_NAME, Key=f"{PLAYER_PREFIX}{name}/.keep", Body=b"")
-
-
-def rename_album(old_name: str, new_name: str) -> None:
-    old_name = _sanitize_segment(old_name)
-    new_name = _sanitize_segment(new_name)
-    if old_name == new_name:
-        return
-    _move_prefix(
-        f"{PLAYER_PREFIX}{old_name}/", f"{PLAYER_PREFIX}{new_name}/",
-        not_found_label=f"Album not found: {old_name}",
-        exists_label=f"An album named '{new_name}' already exists",
-    )
-
-
-def delete_album(name: str) -> None:
-    name = _sanitize_segment(name)
-    client = _client()
-    prefix = f"{PLAYER_PREFIX}{name}/"
-    paginator = client.get_paginator("list_objects_v2")
-    keys = []
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        keys.extend(obj["Key"] for obj in page.get("Contents", []))
-    delete_keys(client, keys)
-
-
-def list_tracks(album: str) -> list[dict]:
-    album = _sanitize_segment(album)
-    client = _client()
-    prefix = f"{PLAYER_PREFIX}{album}/"
-    tracks = []
-    paginator = client.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-        for obj in page.get("Contents", []):
-            filename = obj["Key"][len(prefix):]
-            if not filename or filename == ".keep":
-                continue
-            tracks.append({
-                "key": f"{album}/{filename}",
-                "name": filename,
-                "size": obj["Size"],
-                "last_modified": obj["LastModified"].isoformat(),
-            })
-    tracks.sort(key=lambda t: t["name"].lower())
-    return tracks
-
-
-def upload_track(album: str, filename: str, file_obj: BinaryIO, content_type: Optional[str]) -> dict:
-    album = _sanitize_segment(album)
-    filename = _sanitize_segment(filename)
-    ext = _extension(filename)
-    if ext not in ALLOWED_AUDIO_EXTENSIONS:
-        raise StorageError(f"Unsupported audio file type: {ext or filename}")
-    client = _client()
-    client.upload_fileobj(
-        file_obj, settings.S3_BUCKET_NAME, _track_key(album, filename),
-        ExtraArgs={"ContentType": AUDIO_CONTENT_TYPES[ext]},
-    )
-    return {"key": f"{album}/{filename}", "name": filename}
-
-
-def delete_track(key: str) -> None:
-    album, filename = _split_key(key)
-    client = _client()
-    client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=_track_key(album, filename))
-
-
-def rename_track(key: str, new_name: str) -> dict:
-    """Renames a single track's filename, keeping it in the same album. S3
-    has no rename, so this copies to a new key then deletes the original
-    (via _move_object) — the same technique move_track uses to change an
-    object's folder instead of its filename."""
-    album, filename = _split_key(key)
-    new_name = _sanitize_segment(new_name)
-    ext = _extension(new_name)
-    if ext not in ALLOWED_AUDIO_EXTENSIONS:
-        raise StorageError(f"Unsupported audio file type: {ext or new_name}")
-
-    _move_object(_track_key(album, filename), _track_key(album, new_name))
-    return {"key": f"{album}/{new_name}", "name": new_name}
 
 
 def _move_prefix(old_prefix: str, new_prefix: str, not_found_label: str, exists_label: str) -> None:
@@ -293,27 +175,3 @@ def _move_object(old_key: str, new_key: str) -> None:
         Key=new_key,
     )
     client.delete_object(Bucket=settings.S3_BUCKET_NAME, Key=old_key)
-
-
-def move_track(key: str, dest_album: str) -> dict:
-    """Moves a single track (by its "album/filename" key) into
-    `dest_album`, keeping its filename. Used for drag-and-drop between
-    albums in the player."""
-    album, filename = _split_key(key)
-    dest_album = _sanitize_segment(dest_album)
-    _move_object(_track_key(album, filename), _track_key(dest_album, filename))
-    return {"key": f"{dest_album}/{filename}"}
-
-
-def get_track_stream(key: str, range_header: Optional[str] = None) -> dict:
-    album, filename = _split_key(key)
-    return _get_object_stream(_track_key(album, filename), range_header)
-
-
-def _get_object_stream(key: str, range_header: Optional[str] = None) -> dict:
-    _validate_key(key)
-    client = _client()
-    kwargs = {"Bucket": settings.S3_BUCKET_NAME, "Key": key}
-    if range_header:
-        kwargs["Range"] = range_header
-    return client.get_object(**kwargs)

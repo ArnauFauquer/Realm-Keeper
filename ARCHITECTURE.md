@@ -8,11 +8,13 @@ API and the live sockets; a Vue 3 app renders everything.
 
 Two ideas shape most of the code:
 
-- **No database, two durable stores.** Notes live in a Git repository (the
-  vault). Everything else — charts, vistas, characters, adversaries, encounters,
-  battlemaps, images, audio — lives in S3-compatible object storage.
-  A pod's disk is throwaway (`/vault` is an `emptyDir` clone), so nothing that
-  matters is kept only there.
+- **No database, two durable stores.** Notes live in the vault: a folder, or a
+  Git repository (`GIT_ENABLED`). Everything else — charts, vistas, characters,
+  adversaries, encounters, battlemaps, images, audio — lives in one store
+  (`DocBackend`): S3-compatible object storage, or a folder laid out the same
+  way (`STORAGE_BACKEND`). In Kubernetes a pod's disk is throwaway (`/vault` is
+  an `emptyDir` clone), so there it is Git and S3; with Docker Compose both can
+  be volumes.
 - **Nothing is specific to a game system.** Counters have names the sheet's
   author chose, a fight has no rounds, turns or initiative (how a fight is
   ordered is a rule of the system being played), and a map's cell is worth
@@ -67,8 +69,9 @@ when first needed and again when asked for a uid it doesn't know (at most every
 two seconds). The image route serves images only: a document beside them is read
 through its own kind's routes, a track through the player's.
 
-Without an S3 endpoint the tree goes to `DOCS_LOCAL_PATH` instead, as folders
-(local development and tests).
+With `STORAGE_BACKEND=local` the same tree is folders under
+`STORAGE_LOCAL_PATH`: the player and the Observatory only ever see a
+`DocBackend`, never which store it is.
 
 `backend/scripts/migrate_to_observatory.py` moves a bucket that has the previous
 layout (one prefix per kind, `<kind>s/<folders>/<slug>/<kind>.json`, and the
@@ -82,7 +85,10 @@ this layout.
 ### Notes
 
 - **`MarkdownService`** reads, parses and caches the vault's notes (a 5-minute
-  cache that a Git pull invalidates). `follow_moved_documents` rewrites the
+  cache that a Git pull invalidates, or, without Git, the vault watch: a
+  fingerprint of every note's size and mtime, checked every
+  `VAULT_WATCH_INTERVAL` seconds, so an edit made in Obsidian on the same folder
+  shows within seconds). `follow_moved_documents` rewrites the
   notes' links to documents that moved (`` `chart:old` `` → `` `chart:new` ``),
   in one commit.
 - **`MarkdownParser`** extracts frontmatter and tags, converts wiki-links, and
@@ -96,7 +102,8 @@ this layout.
   the file write included. A pull rebases our own unpushed commits (after a
   failed push) and aborts a rebase that conflicts, so the vault is never left
   mid-rebase; a git that times out is killed, its `index.lock` removed, and
-  reported. This is the only code that talks to Git.
+  reported. This is the only code that talks to Git. With `GIT_ENABLED` off
+  none of it runs: a save writes the file and that is all.
 - **Saving a note** sends the `sha` of the content the editor loaded
   (`GET /api/note-raw` returns it): if the note has changed since (another
   GM, an Obsidian edit that a pull brought in), the save is a 409 and nothing
@@ -187,7 +194,7 @@ They are written once.
 | Piece                | File                         | What it is                                                                 |
 | -------------------- | ---------------------------- | -------------------------------------------------------------------------- |
 | `DocType`            | `services/doc_type.py`       | Declarative spec of a kind: prefix, models, locked fields, which fields may hold images, image routes, live or not, a `prepare` hook |
-| `DocBackend`         | `services/doc_backend.py`    | Text (`get/put`) and files (`put_file/open`), `exists/delete/move`, and prefixes (`list_keys/delete_prefix/move_prefix`); S3 or a local folder |
+| `DocBackend`         | `services/doc_backend.py`    | Text (`get/put`) and files (`put_file/open/open_range/size`), `exists/delete/move`, and prefixes (`list_keys/list_files/delete_prefix/move_prefix`); S3 or a local folder. The player's `PlayerLibrary` (`services/player_library.py`) keeps its albums in the same store |
 | `DocCollection`      | `services/doc_collection.py` | Create (unique slug), save, rename, move, delete, add (an import) one kind's documents |
 | `Observatory`        | `services/observatory.py`    | The shared tree: a folder's contents (every kind and the images), folders, images by uid, the zip backup |
 | `make_doc_router`    | `routes/doc_router.py`       | Every HTTP route of a kind, generated from its `DocType`; an `on_moved` hook |

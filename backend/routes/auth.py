@@ -1,9 +1,12 @@
-from authlib.integrations.starlette_client import OAuth
+"""Signing in: through any OpenID Connect provider, GitHub or Google (see
+services/auth_providers.py), then a signed session cookie — no user database.
+Whoever signs in must have a verified email on ALLOWED_EMAILS."""
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 
 from config.logging import get_logger
 from config.settings import settings
+from services.auth_providers import PROVIDERS, provider_by_id
 from services.auth_service import (
     SESSION_COOKIE_NAME,
     SESSION_MAX_AGE,
@@ -16,14 +19,9 @@ from services.auth_service import (
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
-oauth = OAuth()
-oauth.register(
-    name="google",
-    client_id=settings.GOOGLE_CLIENT_ID,
-    client_secret=settings.GOOGLE_CLIENT_SECRET,
-    server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-    client_kwargs={"scope": "openid email profile"},
-)
+# Which provider a sign-in under way went to, in the short-lived handshake
+# session (SessionMiddleware): every provider comes back to the one callback.
+PROVIDER_SESSION_KEY = "rk_auth_provider"
 
 
 def get_session_user(request: Request) -> dict | None:
@@ -51,39 +49,62 @@ async def require_auth(request: Request) -> dict:
     return user
 
 
+def _back_to_app(error: str | None = None) -> RedirectResponse:
+    return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error={error}" if error else settings.FRONTEND_URL)
+
+
+@router.get("/providers")
+async def providers():
+    """What the sign-in screen offers: a button per provider configured."""
+    return {
+        "enabled": settings.ENABLE_AUTH,
+        "providers": [{"id": p.id, "name": p.name} for p in PROVIDERS] if settings.ENABLE_AUTH else [],
+    }
+
+
 @router.get("/login")
-async def login(request: Request):
+async def login(request: Request, provider: str | None = None):
+    """Off to the provider to sign in: the one named, or the first configured
+    (a plain /login, as before there was more than Google)."""
+    chosen = provider_by_id(provider) if provider else (PROVIDERS[0] if PROVIDERS else None)
+    if chosen is None:
+        logger.warning(f"Sign-in with an unknown or unconfigured provider: {provider!r}")
+        return _back_to_app("no_provider")
+    request.session[PROVIDER_SESSION_KEY] = chosen.id
     redirect_uri = str(request.url_for("auth_callback"))
-    return await oauth.google.authorize_redirect(request, redirect_uri)
+    try:
+        return await chosen.client.authorize_redirect(request, redirect_uri)
+    except Exception as e:
+        # Its configuration couldn't be fetched (a wrong issuer URL, the
+        # provider down): say so in the log, not as a 500 to the player.
+        logger.error(f"Could not start a {chosen.name} sign-in: {e}")
+        return _back_to_app("provider_unreachable")
 
 
 @router.get("/callback", name="auth_callback")
 async def callback(request: Request):
+    chosen = provider_by_id(request.session.pop(PROVIDER_SESSION_KEY, None) or "")
+    if chosen is None:
+        return _back_to_app("login_failed")
     try:
-        token = await oauth.google.authorize_access_token(request)
-    except Exception as e:
-        logger.warning(f"Google OAuth callback failed: {e}")
-        return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=login_failed")
-
-    userinfo = token.get("userinfo") or {}
-    email = userinfo.get("email", "")
-    name = userinfo.get("name", "")
+        identity = await chosen.identify(request)
+    except Exception as e:   # OAuthError, a provider unreachable, a bad answer
+        logger.warning(f"{chosen.name} sign-in callback failed: {e}")
+        return _back_to_app("login_failed")
 
     # An unverified address is just a claim — never match it against the
-    # allowlist.
-    if userinfo.get("email_verified") is not True:
-        logger.warning(f"Rejected login attempt for {email!r} (email not verified)")
-        return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
+    # allowlist. A provider can vouch for several; the first allowed is used.
+    email = next((e for e in identity.verified_emails if is_email_allowed(e)), None)
+    if email is None:
+        claimed = ", ".join(identity.verified_emails) or "no verified email"
+        logger.warning(f"Rejected {chosen.name} sign-in for {claimed} (not on the allowlist)")
+        return _back_to_app("not_allowed")
 
-    if not is_email_allowed(email):
-        logger.warning(f"Rejected login attempt for {email!r} (not on allowlist)")
-        return RedirectResponse(f"{settings.FRONTEND_URL}/?auth_error=not_allowed")
-
-    logger.info(f"Login successful: {email}")
-    response = RedirectResponse(settings.FRONTEND_URL)
+    logger.info(f"Login successful: {email} ({chosen.name})")
+    response = _back_to_app()
     response.set_cookie(
         SESSION_COOKIE_NAME,
-        create_session_token(email, name),
+        create_session_token(email, identity.name),
         max_age=SESSION_MAX_AGE,
         httponly=True,
         secure=settings.SESSION_COOKIE_SECURE,

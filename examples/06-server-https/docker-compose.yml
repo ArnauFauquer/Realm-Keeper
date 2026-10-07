@@ -1,0 +1,97 @@
+# Everything, on a server of your own: HTTPS by Caddy, notes in git, files in
+# MinIO, and a login through any OpenID Connect provider (Keycloak, Authentik,
+# Authelia, Microsoft Entra ID, Auth0, Zitadel, GitLab, Pocket ID...). Swap any
+# part for a simpler one from the other examples.
+#
+#   cp .env.example .env   # and fill it in
+#   docker compose up -d   ->   https://<DOMAIN>
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - backend
+
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?Set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASSWORD} &&
+      mc mb -p local/$${BUCKET} &&
+      mc version enable local/$${BUCKET}
+      "
+    environment:
+      MINIO_USER: ${S3_ACCESS_KEY}
+      MINIO_PASSWORD: ${S3_SECRET_KEY}
+      BUCKET: realm-keeper
+
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      FRONTEND_URL: https://${DOMAIN}
+      CORS_ALLOWED_ORIGINS: https://${DOMAIN}
+      NOTE_TAG_IGNORE: ${NOTE_TAG_IGNORE:-draft}
+
+      VAULT_PATH: /vault
+      REPO_URL: ${REPO_URL:?Set REPO_URL in .env}
+
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET_NAME: realm-keeper
+      S3_REGION: us-east-1
+
+      ENABLE_AUTH: "true"
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?Set OIDC_ISSUER_URL in .env}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID in .env}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_NAME: ${OIDC_NAME:-SSO}
+      OIDC_REQUIRE_VERIFIED_EMAIL: ${OIDC_REQUIRE_VERIFIED_EMAIL:-true}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:?Set ALLOWED_EMAILS in .env}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY in .env}
+    volumes:
+      - vault:/vault
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
+  minio-data:
+  vault:

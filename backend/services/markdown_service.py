@@ -14,6 +14,11 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+# The home page, when HOME_NOTE doesn't name one: the first of these the vault
+# has at its top (any case). "RealmKeeper" first, the home page before it
+# could be chosen.
+HOME_NOTE_CANDIDATES = ("RealmKeeper", "index", "Home", "README", "Welcome")
+
 
 class NoteSaveError(Exception):
     """Raised when writing a note to disk or to git fails."""
@@ -33,9 +38,12 @@ def content_sha(text: str) -> str:
 
 
 class MarkdownService:
-    def __init__(self, vault_path: str, ignore_tag: Optional[str] = None):
+    def __init__(self, vault_path: str, ignore_tag: Optional[str] = None, git: bool = True):
         self.vault_path = Path(vault_path)
         self.ignore_tag = ignore_tag
+        # Whether what the app writes is committed and pushed (GIT_ENABLED),
+        # or only written to disk.
+        self.git = git
         self.parser = MarkdownParser(vault_path=self.vault_path)
 
         self._cache: Dict[str, tuple] = {}
@@ -55,6 +63,30 @@ class MarkdownService:
     def under_git_lock(self, fn: Callable[[], T]) -> T:
         with self._git_lock:
             return fn()
+
+    def _commit(self, rel_paths: List[str], message: str, author_name: str, author_email: str) -> None:
+        """Commits and pushes what was just written, if the vault is in git.
+        Raises NoteSaveError."""
+        if not self.git:
+            return
+        try:
+            commit_and_push(self.vault_path, self._git_lock, rel_paths, message=message,
+                            author_name=author_name, author_email=author_email)
+        except GitCommitError as e:
+            raise NoteSaveError(str(e))
+
+    def fingerprint(self) -> str:
+        """What the vault's notes are, by name, size and time written: changes
+        when anything outside the app (Obsidian on a shared folder) writes,
+        adds, moves or deletes one. Cheap: a stat of each, no reading."""
+        digest = hashlib.sha1()
+        for path in sorted(self.parser.iter_note_files()):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue   # deleted while listed
+            digest.update(f"{path}\0{stat.st_size}\0{stat.st_mtime_ns}\n".encode("utf-8", "surrogateescape"))
+        return digest.hexdigest()
 
     @staticmethod
     def check_note_id(note_id: str) -> str:
@@ -117,8 +149,8 @@ class MarkdownService:
         self, note_id: str, content: str, author_name: str, author_email: str,
         base_sha: Optional[str] = None,
     ) -> Tuple[bool, str]:
-        """Writes a note's raw markdown to disk and commits + pushes it to
-        the vault's git repo. Returns whether this created a new note, and
+        """Writes a note's raw markdown to disk and, with git on, commits +
+        pushes it to the vault's git repo. Returns whether this created a new note, and
         the saved content's sha. Raises NoteSaveError on git failure.
 
         `base_sha` is the content the editor started from (`content_sha`):
@@ -141,13 +173,7 @@ class MarkdownService:
 
             verb = "Update" if exists else "Create"
             try:
-                commit_and_push(
-                    self.vault_path, self._git_lock, [rel_path],
-                    message=f"{verb} note: {note_id}",
-                    author_name=author_name, author_email=author_email,
-                )
-            except GitCommitError as e:
-                raise NoteSaveError(str(e))
+                self._commit([rel_path], f"{verb} note: {note_id}", author_name, author_email)
             finally:
                 # What is served is what is on disk, saved or not.
                 self.invalidate_cache()
@@ -189,10 +215,7 @@ class MarkdownService:
         what = next(iter(moves.items())) if len(moves) == 1 else None
         message = f"Follow moved {kind}: {what[0]} -> {what[1]}" if what else f"Follow {len(moves)} moved {kind}s"
         try:
-            commit_and_push(self.vault_path, self._git_lock, rel_paths, message=message,
-                            author_name=author_name, author_email=author_email)
-        except GitCommitError as e:
-            raise NoteSaveError(str(e))
+            self._commit(rel_paths, message, author_name, author_email)
         finally:
             self.invalidate_cache()
         return [Path(rel).with_suffix('').as_posix() for rel in rel_paths]
@@ -315,6 +338,22 @@ class MarkdownService:
             self._all_notes_cache = None
             self.parser.invalidate_index()
     
+    def home_note(self, configured: str = "") -> Optional[str]:
+        """The note the app opens on: `configured` (HOME_NOTE) if the vault
+        has it, else the first of HOME_NOTE_CANDIDATES at the vault's top,
+        else its first note at the top, else any. None for an empty vault."""
+        visible = {n.id: n for n in self._all_notes()}
+        if not visible:
+            return None
+        if configured in visible:
+            return configured
+        by_name = {note_id.lower(): note_id for note_id in visible if "/" not in note_id}
+        for candidate in HOME_NOTE_CANDIDATES:
+            if candidate.lower() in by_name:
+                return by_name[candidate.lower()]
+        top = sorted(by_name.values(), key=str.lower)
+        return top[0] if top else sorted(visible, key=str.lower)[0]
+
     def get_all_tags(self) -> List[str]:
         tags = set()
         

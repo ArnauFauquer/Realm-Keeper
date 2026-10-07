@@ -4,10 +4,12 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and pre-create the logs dir with correct ownership
+# Create a non-root user and pre-create the logs dir with correct ownership.
+# /vault and /data are where docker-compose.yml mounts the notes and the
+# local store: a named volume starts with the ownership of its mount point.
 RUN useradd -m -u 1000 appuser && \
-    mkdir -p /app/logs && \
-    chown -R appuser:appuser /app
+    mkdir -p /app/logs /vault /data && \
+    chown -R appuser:appuser /app /vault /data
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt

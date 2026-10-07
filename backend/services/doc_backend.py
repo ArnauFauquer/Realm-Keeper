@@ -1,11 +1,12 @@
-"""Where the Observatory's files live: the documents (charts, vistas,
-encounters, battlemaps, characters, adversaries), as JSON text, and the images
-they draw. One small interface, two stores:
+"""Where everything but the notes lives: the Observatory's documents (charts,
+vistas, encounters, battlemaps, characters, adversaries), as JSON text, the
+images they draw, and the player's audio. One small interface, two stores,
+chosen by STORAGE_BACKEND:
 
-- S3 (the bucket the app already uses for audio and images), which survives a
+- S3 (any S3-compatible bucket: MinIO, Ceph RGW, AWS...), which survives a
   redeploy and needs no lock or commit: a write is one PUT.
-- A directory on disk, for running without object storage (local development,
-  tests).
+- A directory on disk (a Docker volume, or a folder when developing), laid out
+  as the bucket is, so a store can be copied from one to the other as files.
 
 Keys look like "observatory/goblins/cave-ambush.encounter.json"; a prefix
 is a key ending in "/". Both stores treat a prefix as a directory: listing,
@@ -16,13 +17,20 @@ import shutil
 import tempfile
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import BinaryIO, Iterator, List, Optional, Tuple
+from datetime import datetime, timezone
+from typing import BinaryIO, Iterator, List, NamedTuple, Optional, Tuple
 
 from botocore.exceptions import ClientError
 
 from config.settings import settings
 from services import storage_service
 from services.storage_service import StorageError
+
+
+class StoredFile(NamedTuple):
+    key: str
+    size: int
+    modified: datetime
 
 
 class DocBackendError(ValueError):
@@ -47,7 +55,16 @@ class DocBackend(ABC):
         """The bytes stored at `key`, in chunks, and how many there are; or None."""
 
     @abstractmethod
-    def exists(self, key: str) -> bool: ...
+    def open_range(self, key: str, start: int, end: int) -> Optional[Iterator[bytes]]:
+        """Bytes `start` to `end` (both included) of the file at `key`, in
+        chunks; or None. For a track the player seeks in."""
+
+    @abstractmethod
+    def size(self, key: str) -> Optional[int]:
+        """How many bytes the file at `key` has, or None if there is none."""
+
+    def exists(self, key: str) -> bool:
+        return self.size(key) is not None
 
     @abstractmethod
     def delete(self, key: str) -> None: ...
@@ -57,9 +74,14 @@ class DocBackend(ABC):
         """Raises DocBackendError if there is nothing at `old_key` or
         something already at `new_key`."""
 
-    @abstractmethod
     def list_keys(self, prefix: str) -> List[str]:
         """Every key under `prefix`, at any depth."""
+        return [f.key for f in self.list_files(prefix)]
+
+    @abstractmethod
+    def list_files(self, prefix: str) -> List[StoredFile]:
+        """Every file under `prefix`, at any depth, with its size and when it
+        was last written; sorted by key."""
 
     @abstractmethod
     def delete_prefix(self, prefix: str) -> None: ...
@@ -118,8 +140,23 @@ class LocalDocBackend(DocBackend):
                     yield chunk
         return chunks(), path.stat().st_size
 
-    def exists(self, key: str) -> bool:
-        return self._path(key).is_file()
+    def open_range(self, key: str, start: int, end: int) -> Optional[Iterator[bytes]]:
+        path = self._path(key)
+        if not path.is_file():
+            return None
+
+        def chunks() -> Iterator[bytes]:
+            with path.open("rb") as f:
+                f.seek(start)
+                left = end - start + 1
+                while left > 0 and (chunk := f.read(min(64 * 1024, left))):
+                    left -= len(chunk)
+                    yield chunk
+        return chunks()
+
+    def size(self, key: str) -> Optional[int]:
+        path = self._path(key)
+        return path.stat().st_size if path.is_file() else None
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
@@ -133,14 +170,24 @@ class LocalDocBackend(DocBackend):
         new.parent.mkdir(parents=True, exist_ok=True)
         old.rename(new)
 
-    def list_keys(self, prefix: str) -> List[str]:
+    def _files(self, prefix: str) -> Iterator[Path]:
         base = self._path(prefix)
-        if not base.is_dir():
-            return []
-        return sorted(
-            p.relative_to(self.root).as_posix()
-            for p in base.rglob("*") if p.is_file() and not p.name.startswith(".tmp-")
-        )
+        if base.is_dir():
+            yield from (p for p in base.rglob("*") if p.is_file() and not p.name.startswith(".tmp-"))
+
+    def list_keys(self, prefix: str) -> List[str]:
+        # Without list_files' stat of each: the Observatory lists every key often.
+        return sorted(p.relative_to(self.root).as_posix() for p in self._files(prefix))
+
+    def list_files(self, prefix: str) -> List[StoredFile]:
+        files = []
+        for p in self._files(prefix):
+            stat = p.stat()
+            files.append(StoredFile(
+                p.relative_to(self.root).as_posix(), stat.st_size,
+                datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
+            ))
+        return sorted(files)
 
     def delete_prefix(self, prefix: str) -> None:
         base = self._path(prefix)
@@ -200,15 +247,27 @@ class S3DocBackend(DocBackend):
 
         return storage_service.stream_body(obj["Body"]), obj["ContentLength"]
 
-    def exists(self, key: str) -> bool:
+    def open_range(self, key: str, start: int, end: int) -> Optional[Iterator[bytes]]:
         _check_key(key)
         try:
-            storage_service._client().head_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+            obj = storage_service._client().get_object(
+                Bucket=settings.S3_BUCKET_NAME, Key=key, Range=f"bytes={start}-{end}",
+            )
         except ClientError as e:
             if storage_service.is_missing(e):
-                return False
+                return None
             raise
-        return True
+        return storage_service.stream_body(obj["Body"])
+
+    def size(self, key: str) -> Optional[int]:
+        _check_key(key)
+        try:
+            head = storage_service._client().head_object(Bucket=settings.S3_BUCKET_NAME, Key=key)
+        except ClientError as e:
+            if storage_service.is_missing(e):
+                return None
+            raise
+        return head["ContentLength"]
 
     def delete(self, key: str) -> None:
         _check_key(key)
@@ -223,13 +282,13 @@ class S3DocBackend(DocBackend):
             raise DocBackendError("Something already exists there")
         storage_service._move_object(old_key, new_key)
 
-    def list_keys(self, prefix: str) -> List[str]:
+    def list_files(self, prefix: str) -> List[StoredFile]:
         _check_key(prefix)
-        keys: List[str] = []
+        files: List[StoredFile] = []
         paginator = storage_service._client().get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=settings.S3_BUCKET_NAME, Prefix=prefix):
-            keys.extend(obj["Key"] for obj in page.get("Contents", []))
-        return sorted(keys)
+            files.extend(StoredFile(obj["Key"], obj["Size"], obj["LastModified"]) for obj in page.get("Contents", []))
+        return sorted(files)
 
     def delete_prefix(self, prefix: str) -> None:
         try:
@@ -247,7 +306,7 @@ class S3DocBackend(DocBackend):
 
 
 def default_doc_backend() -> DocBackend:
-    """S3 when the app has an endpoint configured, otherwise a local folder."""
-    if settings.S3_ENDPOINT_URL:
+    """The store STORAGE_BACKEND names: the bucket, or a local folder."""
+    if settings.STORAGE_BACKEND == "s3":
         return S3DocBackend()
-    return LocalDocBackend(settings.DOCS_LOCAL_PATH)
+    return LocalDocBackend(settings.STORAGE_LOCAL_PATH)

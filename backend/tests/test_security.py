@@ -76,25 +76,32 @@ def test_the_image_endpoint_serves_only_images(client):
         client.cookies.clear()
 
 
-def test_track_keys_cannot_reach_beyond_the_player(monkeypatch):
+def test_track_keys_cannot_reach_beyond_the_player(tmp_path):
     """Whatever a track key says, it names something under player/: not an
     image, not a document."""
-    reached = []
-    monkeypatch.setattr(storage_service, "_get_object_stream", lambda key, range_header=None: reached.append(key))
-    storage_service.get_track_stream("observatory/map.png")
-    storage_service.get_track_stream("charts/chart.json")
-    assert reached == ["player/observatory/map.png", "player/charts/chart.json"]
+    from services.doc_backend import LocalDocBackend
+    from services.player_library import PlayerLibrary
+
+    store = LocalDocBackend(tmp_path)
+    store.put("observatory/map.png", "image")
+    store.put("player/observatory/map.png", "track")
+    library = PlayerLibrary(store)
+    assert b"".join(library.open_track("observatory/map.png")["chunks"]) == b"track"
+    assert library.open_track("charts/chart.json") is None
     for key in ("../x/y.mp3", "a/../y.mp3", "a/b/c.mp3", "chart.json", "/a.mp3"):
         with pytest.raises(storage_service.StorageError):
-            storage_service.get_track_stream(key)
+            library.open_track(key)
 
 
 def test_a_track_streams_from_under_the_player(fake_s3):
     """The real path, unmocked: a track key reaches its object (and nothing
     the key checks need along the way has gone missing)."""
+    from services.doc_backend import S3DocBackend
+    from services.player_library import PlayerLibrary
+
     fake_s3.objects["player/Efectos/puerta.mp3"] = b"mp3 bytes"
-    response = storage_service.get_track_stream("Efectos/puerta.mp3")
-    assert response["Body"].read() == b"mp3 bytes"
+    track = PlayerLibrary(S3DocBackend()).open_track("Efectos/puerta.mp3")
+    assert b"".join(track["chunks"]) == b"mp3 bytes"
 
 
 def test_served_content_type_ignores_uploaded_metadata():

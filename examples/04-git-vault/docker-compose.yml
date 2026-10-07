@@ -1,0 +1,35 @@
+# Notes in a git repository: the app clones it, pulls it every few minutes,
+# and commits and pushes every note saved in the app. Keep editing the same
+# repository in Obsidian (with the Obsidian Git plugin) and both stay in step.
+# Everything else in a Docker volume. No login: see 03 or 05 to add one.
+#
+#   cp .env.example .env   # and set REPO_URL
+#   docker compose up -d   ->   http://localhost:8080
+services:
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      ENABLE_AUTH: "false"
+      VAULT_PATH: /vault
+      REPO_URL: ${REPO_URL:?Set REPO_URL in .env to your notes repository}
+      GIT_SYNC_INTERVAL: ${GIT_SYNC_INTERVAL:-300}
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data
+      FRONTEND_URL: http://localhost:${RK_PORT:-8080}
+    volumes:
+      # The clone, kept across restarts (a restart pulls rather than clones).
+      - vault:/vault
+      - data:/data
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${RK_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  vault:
+  data:
