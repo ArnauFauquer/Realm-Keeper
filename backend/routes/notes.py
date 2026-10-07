@@ -18,7 +18,8 @@ router = APIRouter(prefix="/api", tags=["notes"])
 
 md_service_instance = MarkdownService(
     vault_path=str(settings.VAULT_PATH),
-    ignore_tag=settings.NOTE_TAG_IGNORE
+    ignore_tag=settings.NOTE_TAG_IGNORE,
+    git=settings.GIT_ENABLED,
 )
 
 

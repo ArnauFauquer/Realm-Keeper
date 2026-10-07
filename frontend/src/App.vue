@@ -8,7 +8,13 @@
       <div class="rk-spinner rk-spinner--lg" role="status" aria-label="Checking session"></div>
     </div>
 
-    <LoginGate v-else-if="showLoginGate" :error="authError" @login="login" />
+    <LoginGate
+      v-else-if="showLoginGate || choosingProvider"
+      :error="authError"
+      :dismissible="!showLoginGate"
+      @login="login"
+      @close="choosingProvider = false"
+    />
 
     <template v-else>
       <div class="main-container">
@@ -49,7 +55,9 @@ import LoginGate from './components/LoginGate.vue'
 import { useAuth } from './composables/useAuth'
 
 const AUTH_ERROR_MESSAGES = {
-  not_allowed: "This Google account isn't authorized for this vault.",
+  not_allowed: "This account isn't authorized for this vault.",
+  no_provider: "That sign-in method isn't set up on this server.",
+  provider_unreachable: "The sign-in provider couldn't be reached. Please try again later.",
   login_failed: 'Sign-in failed. Please try again.'
 }
 
@@ -58,8 +66,8 @@ export default {
   components: { NotesSidebar, NebulaBackground, DiceFab, DicePanel, DiceOverlay, DiceToastStack, LoginGate },
   provide() { return { addTagFilter: this.addTagFilter } },
   setup() {
-    const { user, checked, checkAuth, login } = useAuth()
-    return { user, checked, checkAuth, login }
+    const { user, checked, choosingProvider, checkAuth, login } = useAuth()
+    return { user, checked, choosingProvider, checkAuth, login }
   },
   data() {
     return {

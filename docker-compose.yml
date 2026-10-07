@@ -1,5 +1,17 @@
+# Everything is optional except the app itself:
+#
+#   docker compose up --build
+#     The notes are the folder VAULT_DIR (an Obsidian vault, say), read and
+#     written as plain files; documents, images and audio go to a volume.
+#
+#   Notes in git: set REPO_URL (and GIT_ENABLED, on by default with it).
+#   Files in S3:  set COMPOSE_PROFILES=s3 and STORAGE_BACKEND=s3 to also run
+#                 MinIO here, or point S3_ENDPOINT_URL at a bucket you have.
+#   Login:        ENABLE_AUTH=false runs it open; otherwise configure a
+#                 provider (OIDC_*, GITHUB_*, GOOGLE_*), see .env.example.
 services:
   minio:
+    profiles: ["s3"]
     image: quay.io/minio/minio:latest
     container_name: realm-keeper-minio
     restart: unless-stopped
@@ -19,6 +31,7 @@ services:
       retries: 5
 
   minio-init:
+    profiles: ["s3"]
     image: quay.io/minio/mc:latest
     container_name: realm-keeper-minio-init
     depends_on:
@@ -42,16 +55,29 @@ services:
       # could forge.
       - "127.0.0.1:8000:8000"
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
+      - VAULT_PATH=/vault
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+      - STORAGE_LOCAL_PATH=/data
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin123}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-realm-keeper-audio}
       - S3_REGION=${S3_REGION:-us-east-1}
+    volumes:
+      # A host folder (your Obsidian vault: VAULT_DIR=/path/to/vault), or a
+      # named volume holding the git clone when VAULT_DIR is unset. The
+      # container runs as UID 1000, which must be able to write it.
+      - ${VAULT_DIR:-vault}:/vault
+      # Documents, images and audio when STORAGE_BACKEND=local.
+      - ${DATA_DIR:-data}:/data
     depends_on:
       minio-init:
         condition: service_completed_successfully
+        # Only there with the s3 profile.
+        required: false
   frontend:
     build:
       context: ./frontend
@@ -69,3 +95,5 @@ services:
 
 volumes:
   minio-data:
+  vault:
+  data:

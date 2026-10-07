@@ -8,7 +8,11 @@ from services.auth_service import SESSION_COOKIE_NAME, create_session_token
 from services.doc_backend import S3DocBackend
 
 
-def test_a_track_streams_whole_and_its_connection_is_released(fake_s3):
+def test_a_track_streams_whole_and_its_connection_is_released(fake_s3, monkeypatch):
+    from routes import player
+    from services.player_library import PlayerLibrary
+
+    monkeypatch.setattr(player, "library", PlayerLibrary(S3DocBackend()))
     song = bytes(range(256)) * 1000   # several chunks
     fake_s3.objects["player/Album/song.mp3"] = song
     with TestClient(app) as client:

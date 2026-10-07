@@ -4,11 +4,25 @@ import secrets
 from pathlib import Path
 from typing import List
 
+
+def _flag(name: str, default: bool) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    return default if not value else value in ("1", "true", "yes", "on")
+
+
 class Settings:
     VAULT_PATH: Path = Path(os.getenv("VAULT_PATH", "./vault"))
     NOTE_TAG_IGNORE: str = os.getenv("NOTE_TAG_IGNORE", "private")
     REPO_URL: str = os.getenv("REPO_URL", "")
+    # Whether the vault is a git repository the app pulls and pushes. On by
+    # default when there is a REPO_URL to clone. Off, the vault is a plain
+    # folder (say an Obsidian vault mounted as a volume): a note saved in the
+    # app is only written to disk, and what changes there from outside is
+    # picked up every VAULT_WATCH_INTERVAL seconds. On without a REPO_URL, the
+    # vault must already be a clone, whose own remote is pulled and pushed.
+    GIT_ENABLED: bool = _flag("GIT_ENABLED", bool(REPO_URL))
     GIT_SYNC_INTERVAL: int = int(os.getenv("GIT_SYNC_INTERVAL", "300"))
+    VAULT_WATCH_INTERVAL: int = int(os.getenv("VAULT_WATCH_INTERVAL", "10"))
 
     CORS_ALLOWED_ORIGINS: List[str] = [
         origin.strip()
@@ -27,16 +41,37 @@ class Settings:
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "")
     S3_BUCKET_NAME: str = os.getenv("S3_BUCKET_NAME", "realm-keeper-audio")
     S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
-    # Where JSON documents (encounters, battlemaps...) are kept when there is
-    # no S3 endpoint to keep them in. Created on first write.
-    DOCS_LOCAL_PATH: Path = Path(os.getenv("DOCS_LOCAL_PATH", "./docs-data"))
+    # Where the documents, the images and the audio are kept: "s3" (any
+    # S3-compatible bucket: MinIO, Ceph RGW, AWS...) or "local" (a folder,
+    # STORAGE_LOCAL_PATH, the same tree as the bucket's). Defaults to S3 when
+    # an endpoint is set, as before the choice existed.
+    STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "s3" if S3_ENDPOINT_URL else "local").strip().lower()
+    # DOCS_LOCAL_PATH is its earlier name, from when only documents went there.
+    STORAGE_LOCAL_PATH: Path = Path(os.getenv("STORAGE_LOCAL_PATH") or os.getenv("DOCS_LOCAL_PATH") or "./data")
 
+    # Sign-in. Any OpenID Connect provider (Microsoft Entra ID, Keycloak,
+    # Authentik, Authelia, Auth0, Okta, Zitadel, GitLab, Pocket ID...) by its
+    # issuer URL; GitHub, which speaks plain OAuth rather than OIDC; and Google
+    # by its own two variables, as before. Every one configured gets a button.
+    OIDC_ISSUER_URL: str = os.getenv("OIDC_ISSUER_URL", "").strip()
+    OIDC_CLIENT_ID: str = os.getenv("OIDC_CLIENT_ID", "")
+    OIDC_CLIENT_SECRET: str = os.getenv("OIDC_CLIENT_SECRET", "")
+    OIDC_SCOPES: str = os.getenv("OIDC_SCOPES", "openid email profile")
+    # The provider's name on the sign-in button ("Sign in with <name>").
+    OIDC_NAME: str = os.getenv("OIDC_NAME", "").strip() or "SSO"
+    # An email the provider hasn't verified is only a claim, never matched
+    # against ALLOWED_EMAILS. Turn off only for a provider that never sends
+    # `email_verified` and where only its admins can set an address (a
+    # single-tenant Entra ID, your own Keycloak).
+    OIDC_REQUIRE_VERIFIED_EMAIL: bool = _flag("OIDC_REQUIRE_VERIFIED_EMAIL", True)
+    GITHUB_CLIENT_ID: str = os.getenv("GITHUB_CLIENT_ID", "")
+    GITHUB_CLIENT_SECRET: str = os.getenv("GITHUB_CLIENT_SECRET", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    # Set to false to run without Google OAuth — e.g. self-hosting solo with
-    # no need to gate access, or local dev without OAuth credentials set up.
+    # Set to false to run without a login — e.g. self-hosting solo with no
+    # need to gate access, or local dev without a provider set up.
     # require_auth then lets every request through as a fixed local user.
-    ENABLE_AUTH: bool = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+    ENABLE_AUTH: bool = _flag("ENABLE_AUTH", True)
     # Falls back to a random key generated at process startup if unset, so
     # auth still works locally without configuration — but every restart
     # invalidates existing sessions until a real value is set (required in
@@ -56,6 +91,8 @@ class Settings:
     ).lower() == "true"
 
     def __init__(self):
+        if self.STORAGE_BACKEND not in ("s3", "local"):
+            raise ValueError(f"STORAGE_BACKEND must be 's3' or 'local', not {self.STORAGE_BACKEND!r}")
         self._validate_paths()
 
     def _validate_paths(self) -> None:

@@ -6,9 +6,12 @@ the tools you reach for at the table: interactive maps, perspective scenes,
 a 3D dice roller, a music player, and a second screen to show things to your
 players.
 
-There is no database. Notes live as files in a Git repository; everything else
-(charts, vistas, characters, adversaries, encounters, battlemaps, images and
-audio) lives in S3-compatible object storage.
+There is no database, and every moving part is optional. Notes are Markdown
+files: a folder (point it at your Obsidian vault) or a Git repository the app
+pulls and pushes. Everything else (charts, vistas, characters, adversaries,
+encounters, battlemaps, images and audio) is files in a folder or in any
+S3-compatible bucket. Login is off, or any OpenID Connect provider, GitHub or
+Google.
 
 ## Features
 
@@ -22,7 +25,8 @@ audio) lives in S3-compatible object storage.
   in the Observatory: documents of every kind and images, by name, folder,
   subtitle or tag. Tag filtering and a folder tree sidebar.
 - Constellation: an interactive map of every note and link (D3 force layout on canvas).
-- In-browser note editing, committed and pushed back to the vault's Git repo.
+- In-browser note editing, written back to the vault (and committed and pushed,
+  when the vault is a Git repository).
 - Notes tagged with `NOTE_TAG_IGNORE` (e.g. `draft`) are hidden from the app.
 
 **Inline actions in notes** — inline code spans become interactive:
@@ -242,8 +246,11 @@ deleted from the UI.
   a reader who isn't signed in sees "Sign in to see this character" in their place.
 - Everything else — charts, vistas, characters, adversaries, encounters,
   battlemaps, the Observatory's images,
-  the music player, writing and screen control — requires Google login, limited
-  to an allow-list of emails. Sessions are signed cookies, no user database.
+  the music player, writing and screen control — requires a login, limited to
+  an allow-list of emails. Sign in with any OpenID Connect provider (Microsoft
+  Entra ID, Keycloak, Authentik, Authelia, Auth0, Okta, Zitadel, GitLab...),
+  GitHub or Google; each one configured gets a button. Sessions are signed
+  cookies, no user database.
 - A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
   only what is on it right now: the chart or vista last sent and the images it
   draws, the image sent with "display media", or the images of the battlemap
@@ -254,30 +261,40 @@ deleted from the UI.
 
 | Data                      | Where                                                       |
 | ------------------------- | ----------------------------------------------------------- |
-| Notes                     | `.md` files in the vault (a Git repository)                 |
-| Audio (the player)        | `player/<album>/<track>` in the bucket                      |
-| Documents                 | `observatory/<folders>/<slug>.<kind>.json` in the bucket    |
-| Images                    | `observatory/<folders>/<uid>-<name>` in the bucket          |
+| Notes                     | `.md` files in the vault (a folder, or a Git repository)    |
+| Audio (the player)        | `player/<album>/<track>` in the store                       |
+| Documents                 | `observatory/<folders>/<slug>.<kind>.json` in the store     |
+| Images                    | `observatory/<folders>/<uid>-<name>` in the store           |
 
 where `<kind>` is `chart`, `vista`, `encounter`, `battlemap`, `character` or
-`adversary`. The bucket is any S3-compatible store (MinIO, Ceph RGW, AWS S3, …)
-with those two top-level prefixes and nothing else at the top. A document's id is
+`adversary`. The store is a folder (`STORAGE_BACKEND=local`, at
+`STORAGE_LOCAL_PATH`) or any S3-compatible bucket (`STORAGE_BACKEND=s3`: MinIO,
+Ceph RGW, AWS S3…), laid out the same way, with those two top-level prefixes and
+nothing else at the top: moving from one to the other is copying the files
+(`aws s3 sync <folder> s3://<bucket>`, or `mc mirror`). A document's id is
 its folders and slug (`Hijos del Fango/Acto 2/emboscada`), which is how a note
 links to it; an image is served at `/api/observatory/images/<uid>-<name>`.
 
-The backend clones `REPO_URL` on startup, pulls every `GIT_SYNC_INTERVAL`
-seconds, and commits and pushes every edit made to a note in the app. You can
-keep editing the same vault in Obsidian — both sides stay in sync through Git.
+**The vault, two ways:**
+- **A folder** (the default, without `REPO_URL`): your Obsidian vault mounted as
+  a volume, say. A note saved in the app is written to its file, nothing more,
+  and what Obsidian (or anything else) changes there shows in the app within
+  `VAULT_WATCH_INTERVAL` seconds. Keep it backed up however you already do
+  (Obsidian Sync, Syncthing, the Obsidian Git plugin...).
+- **A Git repository** (`REPO_URL`, or `GIT_ENABLED=true`): the backend clones
+  it on startup, pulls every `GIT_SYNC_INTERVAL` seconds, and commits and pushes
+  every edit made to a note in the app. You can keep editing the same vault in
+  Obsidian — both sides stay in sync through Git. Works where the app has no
+  disk that lasts (a Kubernetes `emptyDir`).
 
-Everything else is not in Git: the vault is a throwaway clone that a redeploy
-replaces, and a map or a fight changes while people play. Those documents are
-JSON objects in the bucket, one `PUT` per save, with no lock and no commit.
+Everything else is not in the vault: a map or a fight changes while people play.
+Those documents are JSON files in the store, one write per save, with no lock and
+no commit.
 Charts, vistas and adversaries are edited whole and saved with a button;
 encounters, battlemaps and characters are *live*: held in memory while someone
 is using them and written a couple of seconds after the last change (and when the app shuts
-down). Without an S3 endpoint the documents and images go to `DOCS_LOCAL_PATH`
-instead (the same `observatory/` tree, as folders), for local development. Don't redeploy in the middle of a session: the new pod would
-load the last saved copy.
+down). Don't redeploy in the middle of a session: the new pod would load the
+last saved copy.
 
 **Coming from a vault that kept charts and vistas in Git** (`_charts/` and
 `_vistas/`, how earlier versions stored them): on its first start the backend
@@ -330,7 +347,7 @@ Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
 
 ## Quick start (Docker Compose)
 
-Requirements: Docker with Compose.
+Requirements: Docker with Compose 2.24 or later.
 
 ```bash
 cp .env.example .env
@@ -339,23 +356,68 @@ docker compose up --build
 
 - App: http://localhost:5173
 - API docs: http://localhost:8000/docs
-- MinIO console: http://localhost:9001 (`minioadmin` / `minioadmin123`)
 
-Compose starts a local MinIO and creates the bucket for you. For a first try
-without setting up Google OAuth, add `ENABLE_AUTH=false` to `.env`.
+As it comes, `.env.example` runs the simplest setup: no login, notes in a folder,
+and documents, images and audio in a Docker volume. Pick what you need from there:
 
-### Using your own vault
+**Your Obsidian vault.** Set `VAULT_DIR` to its folder. The app reads and writes
+the `.md` files in place; Obsidian's own folders (`.obsidian`, `.trash`) are
+left alone. The container runs as UID 1000, which must be able to write the
+folder (on Linux, usually your own user).
 
-Point `REPO_URL` at a Git repository containing your notes. For a private
-GitHub repo, create a personal access token with `repo` scope (write access
-is needed for in-app edits) and embed it in the URL:
+```env
+VAULT_DIR=/home/me/Obsidian/My Campaign
+```
+
+**A vault in Git instead.** Leave `VAULT_DIR` empty and set `REPO_URL` (a named
+volume keeps the clone). For a private GitHub repo, use a personal access token
+with write access (in-app edits are pushed):
 
 ```env
 REPO_URL=https://<TOKEN>@github.com/<user>/<notes-repo>.git
 ```
 
-Without `REPO_URL`, the backend reads whatever is in its `VAULT_PATH`
-(`backend/vault/` when running locally).
+**Files in S3.** `STORAGE_BACKEND=s3` with your bucket's `S3_*` settings, or
+also run a MinIO here with the `s3` profile:
+
+```env
+COMPOSE_PROFILES=s3
+STORAGE_BACKEND=s3
+```
+
+(MinIO console: http://localhost:9001, `minioadmin` / `minioadmin123`.)
+
+**A login.** `ENABLE_AUTH=true`, `ALLOWED_EMAILS`, a `SESSION_SECRET_KEY`, and
+at least one provider. Register `<your app>/api/auth/callback` as the redirect
+URI with each provider; it is the same for all of them.
+
+```env
+# Any OpenID Connect provider, by its issuer URL
+OIDC_ISSUER_URL=https://login.microsoftonline.com/<tenant-id>/v2.0
+OIDC_CLIENT_ID=...
+OIDC_CLIENT_SECRET=...
+OIDC_NAME=Microsoft
+# GitHub (an OAuth App), which isn't OIDC
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+# Google
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+```
+
+| Provider           | `OIDC_ISSUER_URL`                                            |
+| ------------------ | ------------------------------------------------------------ |
+| Microsoft Entra ID | `https://login.microsoftonline.com/<tenant-id>/v2.0`         |
+| Keycloak           | `https://<host>/realms/<realm>`                              |
+| Authentik          | `https://<host>/application/o/<app-slug>/`                   |
+| Authelia           | `https://<host>`                                             |
+| Auth0              | `https://<tenant>.auth0.com/`                                |
+| GitLab             | `https://gitlab.com`                                         |
+
+Only an email the provider has verified (`email_verified`) is matched against
+`ALLOWED_EMAILS`. Entra ID doesn't send that claim: with a single-tenant issuer,
+where only your admins set addresses, `OIDC_REQUIRE_VERIFIED_EMAIL=false` lets it
+in. Never turn it off with a provider where anyone can sign up with any address.
 
 ## Configuration
 
@@ -364,17 +426,28 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 
 | Variable                | Default                  | Description                                                      |
 | ----------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `VAULT_PATH`            | `./vault`                | Where the vault is read from / cloned to (`/vault` in Compose)    |
+| `VAULT_DIR`             | a named volume           | Compose only: the host folder mounted as the vault                |
 | `REPO_URL`              | —                        | Git repository holding the vault                                  |
-| `VAULT_PATH`            | `./vault`                | Where the vault is cloned / read from                             |
+| `GIT_ENABLED`           | on if `REPO_URL` is set  | Pull, commit and push the vault; off, it is a plain folder        |
 | `GIT_SYNC_INTERVAL`     | `300`                    | Seconds between pulls (`0` disables periodic sync)                |
+| `VAULT_WATCH_INTERVAL`  | `10`                     | Without Git: seconds between checks for notes changed on disk (`0` disables) |
 | `NOTE_TAG_IGNORE`       | `private`                | Notes with this tag are hidden                                    |
-| `S3_ENDPOINT_URL`       | —                        | S3-compatible endpoint                                            |
+| `STORAGE_BACKEND`       | `s3` if `S3_ENDPOINT_URL` is set, else `local` | Where documents, images and audio go               |
+| `STORAGE_LOCAL_PATH`    | `./data` (`/data` in Compose) | The folder for `local` (formerly `DOCS_LOCAL_PATH`, still read) |
+| `DATA_DIR`              | a named volume           | Compose only: a host folder for `/data` instead                   |
+| `S3_ENDPOINT_URL`       | —                        | S3-compatible endpoint (empty with `s3`: AWS itself)              |
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
 | `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
 | `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
-| `DOCS_LOCAL_PATH`       | `./docs-data`            | Where charts, vistas, characters, adversaries, encounters and battlemaps are kept when there is no `S3_ENDPOINT_URL` |
 | `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | Google OAuth client (redirect URI: `<backend>/api/auth/callback`) |
+| `OIDC_ISSUER_URL`       | —                        | Any OpenID Connect provider's issuer (or its discovery URL)       |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | —        | Its client                                                        |
+| `OIDC_NAME`             | `SSO`                    | The provider's name on its button                                 |
+| `OIDC_SCOPES`           | `openid email profile`   | Scopes asked for                                                  |
+| `OIDC_REQUIRE_VERIFIED_EMAIL` | `true`             | Only match emails the provider says it verified                  |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | —    | A GitHub OAuth App                                                |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | A Google OAuth client                                             |
 | `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
 | `SESSION_SECRET_KEY`    | random per start         | Signs session cookies — set it in production                      |
 | `SESSION_COOKIE_SECURE` | `false`                  | `true` when served over HTTPS                                     |

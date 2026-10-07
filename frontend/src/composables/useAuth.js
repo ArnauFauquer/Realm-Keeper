@@ -1,10 +1,15 @@
 import { ref } from 'vue'
-import { getCurrentUser, logout as apiLogout, loginUrl } from '@/api/auth'
+import { getAuthProviders, getCurrentUser, logout as apiLogout, loginUrl } from '@/api/auth'
 
 // Module-level (singleton): one shared auth state for the whole app.
 const user = ref(null)
 const loading = ref(true)
 const checked = ref(false)
+// The sign-in providers the backend has, once asked (null until then).
+const providers = ref(null)
+// Someone asked to sign in from a public page and there is more than one
+// provider: the login gate opens to let them pick.
+const choosingProvider = ref(false)
 
 async function checkAuth() {
   loading.value = true
@@ -18,8 +23,29 @@ async function checkAuth() {
   }
 }
 
-function login() {
-  window.location.href = loginUrl()
+async function loadProviders() {
+  if (providers.value) return providers.value
+  try {
+    providers.value = (await getAuthProviders()).providers || []
+  } catch (e) {
+    // An older backend without the list: its one provider, Google.
+    providers.value = [{ id: 'google', name: 'Google' }]
+  }
+  return providers.value
+}
+
+// To the provider named; without one (the sidebar's "Sign in"), straight to
+// the only provider there is, or to the gate to pick one of several.
+async function login(provider) {
+  if (typeof provider !== 'string') {
+    const list = await loadProviders()
+    if (list.length > 1) {
+      choosingProvider.value = true
+      return
+    }
+    provider = list[0]?.id
+  }
+  window.location.href = loginUrl(provider)
 }
 
 async function logout() {
@@ -46,5 +72,5 @@ async function clearCachedApiResponses() {
 }
 
 export function useAuth() {
-  return { user, loading, checked, checkAuth, login, logout }
+  return { user, loading, checked, providers, choosingProvider, checkAuth, loadProviders, login, logout }
 }

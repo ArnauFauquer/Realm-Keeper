@@ -28,15 +28,17 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Add `ENABLE_AUTH=false` to `.env` to skip Google OAuth while developing.
+`.env.example` runs without a login (`ENABLE_AUTH=false`), Git or S3: notes in
+a folder, everything else in a Docker volume.
 
 To work on one side with hot reload, see
 [Development without Docker](README.md#development-without-docker) in the
-README. You'll still need an S3-compatible bucket for images and audio; the
-MinIO service from `docker-compose.yml` works on its own:
+README. Images and audio go to a folder (`STORAGE_LOCAL_PATH`) unless you set
+`STORAGE_BACKEND=s3`; to work against S3, the MinIO service from
+`docker-compose.yml` works on its own:
 
 ```bash
-docker compose up minio minio-init
+docker compose --profile s3 up minio minio-init
 ```
 
 ## Making changes
