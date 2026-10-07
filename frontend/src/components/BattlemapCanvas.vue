@@ -124,6 +124,19 @@
       <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
         The map image could not be loaded. It may have been deleted from the Observatory.
       </CanvasEmptyState>
+      <!-- Zoom for whoever has no wheel or pinch to hand (a trackpad, a mouse
+           in the other hand). -->
+      <div v-if="naturalWidth && zoomable" class="zoom" role="group" aria-label="Zoom">
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Zoom out" title="Zoom out" @click="zoomBy(1 / ZOOM_STEP)">
+          <span class="mdi mdi-minus"></span>
+        </button>
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Fit the map" title="Fit the map" @click="fit">
+          <span class="mdi mdi-fit-to-screen-outline"></span>
+        </button>
+        <button type="button" class="rk-icon-btn rk-icon-btn--sm" aria-label="Zoom in" title="Zoom in" @click="zoomBy(ZOOM_STEP)">
+          <span class="mdi mdi-plus"></span>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -197,7 +210,8 @@ const svgRef = ref(null)
 const groupRef = ref(null)
 
 const resolvedImageUrl = computed(() => resolveUrl(props.imageUrl))
-const { naturalWidth, naturalHeight, imageStatus, pointer } = useMapViewport({
+const ZOOM_STEP = 1.4
+const { naturalWidth, naturalHeight, imageStatus, pointer, fit, zoomBy } = useMapViewport({
   svgRef,
   groupRef,
   imageUrl: () => props.imageUrl,
@@ -569,6 +583,20 @@ onBeforeUnmount(() => {
 
 .grid-rect {
   pointer-events: none;
+}
+
+.zoom {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface-chrome);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 /* Only the select tool picks things up; the others work on the bare map. */

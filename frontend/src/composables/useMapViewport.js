@@ -13,6 +13,7 @@ import { useImageSize } from '@/composables/useImageSize'
  * (whether a drag may pan: only when it isn't doing something else) and
  * `resetKey()`, whose change puts the view back to its start (another map).
  * `imageStatus` is useImageSize's: 'error' when the image can't be loaded.
+ * `fit()` and `zoomBy(factor)` are for buttons that zoom.
  */
 export function useMapViewport({ svgRef, groupRef, imageUrl, zoomable = () => true, canPan = () => true, resetKey = () => null }) {
   const { width: naturalWidth, height: naturalHeight, status: imageStatus } = useImageSize(imageUrl)
@@ -36,11 +37,21 @@ export function useMapViewport({ svgRef, groupRef, imageUrl, zoomable = () => tr
     }
   })
 
-  watch(resetKey, () => {
+  /** The whole map in view again, as it opened. */
+  function fit() {
     if (zoomBehavior && svgRef.value) {
       d3.select(svgRef.value).call(zoomBehavior.transform, d3.zoomIdentity)
     }
-  })
+  }
+
+  /** Closer in (`factor` > 1) or further out, about the middle of the view. */
+  function zoomBy(factor) {
+    if (zoomBehavior && svgRef.value) {
+      d3.select(svgRef.value).call(zoomBehavior.scaleBy, factor)
+    }
+  }
+
+  watch(resetKey, fit)
 
   /** The point of the map (in image pixels) under a pointer event, or null. */
   function pointer(event) {
@@ -49,5 +60,5 @@ export function useMapViewport({ svgRef, groupRef, imageUrl, zoomable = () => tr
     return { x, y }
   }
 
-  return { naturalWidth, naturalHeight, imageStatus, pointer }
+  return { naturalWidth, naturalHeight, imageStatus, pointer, fit, zoomBy }
 }

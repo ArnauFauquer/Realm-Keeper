@@ -97,8 +97,8 @@ describe('AreaInspector', () => {
     const wrapper = mountInspector()
     expect(wrapper.find('.measure').text()).toBe('20 ft')
     const labels = wrapper.findAll('.field span').map((s) => s.text())
-    expect(labels).toEqual(['Length (cells)', 'Direction (°)', 'Opening (°)'])
-    expect(mountInspector({ ...AREA, shape: 'circle' }).findAll('.field span').map((s) => s.text())).toEqual(['Radius (cells)'])
+    expect(labels).toEqual(['Name', 'Length (cells)', 'Direction (°)', 'Opening (°)'])
+    expect(mountInspector({ ...AREA, shape: 'circle' }).findAll('.field span').map((s) => s.text())).toEqual(['Name', 'Radius (cells)'])
   })
 
   it('asks for its changes, within bounds', async () => {
@@ -114,9 +114,11 @@ describe('AreaInspector', () => {
     expect(wrapper.emitted('patch')[2]).toEqual([{ spread: 360 }])
     await wrapper.find('.swatch').trigger('click')
     expect(wrapper.emitted('patch')[3]).toEqual([{ color: '#f97316' }])
-    await wrapper.find('input[type="checkbox"]').setValue(true)
-    expect(wrapper.emitted('patch')[4]).toEqual([{ hidden: true }])
-    await wrapper.find('.danger').trigger('click')
+    const name = wrapper.find('input[aria-label="Area name"]')
+    name.element.value = ' Fire '
+    await name.trigger('change')
+    expect(wrapper.emitted('patch')[4]).toEqual([{ label: 'Fire' }])
+    await wrapper.find('.remove').trigger('click')
     expect(wrapper.emitted('remove')).toHaveLength(1)
   })
 })

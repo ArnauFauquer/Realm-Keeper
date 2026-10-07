@@ -4,55 +4,6 @@
 
     <template v-else-if="doc">
       <div class="stage">
-        <div class="toolbars">
-        <div class="toolbar">
-          <div class="tool-group" role="group" aria-label="Tools">
-            <button
-              v-for="t in visibleTools"
-              :key="t.value"
-              type="button"
-              class="tool rk-icon-btn"
-              :class="{ active: tool === t.value }"
-              :aria-pressed="tool === t.value"
-              :title="`${t.label} (${t.key.toUpperCase()})`"
-              :aria-label="t.label"
-              :aria-keyshortcuts="t.key"
-              @click="tool = t.value"
-            >
-              <span class="mdi" :class="t.icon"></span>
-            </button>
-          </div>
-          <template v-if="canInteract">
-            <span class="tool-sep" aria-hidden="true"></span>
-            <div class="tool-group" role="group" aria-label="Map">
-              <button type="button" class="tool rk-icon-btn" title="Add a token" aria-label="Add a token" @click="addToken">
-                <span class="mdi mdi-account-plus-outline"></span>
-              </button>
-              <button type="button" class="tool rk-icon-btn" :class="{ active: onScreen }" :aria-pressed="onScreen" :title="onScreen ? 'Showing on the screen: click to stop' : 'Show on the screen'" :aria-label="onScreen ? 'Stop showing on the screen' : 'Show on the screen'" @click="toggleScreen">
-                <span class="mdi mdi-monitor-share"></span>
-              </button>
-            </div>
-          </template>
-          <LiveBadge />
-        </div>
-        <!-- What the area tool draws. -->
-        <div v-if="tool === 'area'" class="toolbar" role="group" aria-label="Area shape">
-          <button
-            v-for="s in AREA_SHAPES"
-            :key="s.value"
-            type="button"
-            class="tool rk-icon-btn"
-            :class="{ active: areaShape === s.value }"
-            :aria-pressed="areaShape === s.value"
-            :title="`${s.label}: drag from where it starts`"
-            :aria-label="s.label"
-            @click="areaShape = s.value"
-          >
-            <span class="mdi" :class="s.icon"></span>
-          </button>
-        </div>
-        </div>
-
         <BattlemapCanvas
           :image-url="doc.image_url"
           :grid="doc.grid"
@@ -71,7 +22,7 @@
           @move-area="moveArea"
           @reshape-area="moveArea"
           @add-area="addArea"
-          @open="openToken"
+          @open="selectToken"
           @ping="signals.ping"
           @point="signals.point"
           @release="signals.release"
@@ -83,74 +34,89 @@
             </button>
           </template>
         </BattlemapCanvas>
+
+        <BattlemapTools
+          v-if="doc.image_url"
+          v-model:tool="tool"
+          v-model:area-shape="areaShape"
+          :tools="visibleTools"
+          :shapes="AREA_SHAPES"
+        />
+
+        <div class="stage-status">
+          <LiveBadge />
+          <button
+            v-if="canInteract"
+            type="button"
+            class="screen-toggle"
+            :class="{ on: onScreen }"
+            :aria-pressed="onScreen"
+            :aria-label="onScreen ? 'Stop showing on the screen' : 'Show on the screen'"
+            :title="onScreen ? 'The table screen shows this map: click to stop' : 'Show this map on the table screen'"
+            @click="toggleScreen"
+          >
+            <span class="mdi" :class="onScreen ? 'mdi-monitor-eye' : 'mdi-monitor-share'"></span>
+            {{ onScreen ? 'On the screen' : 'Show on screen' }}
+          </button>
+        </div>
       </div>
 
-      <aside class="panel">
-        <div v-if="actionError" class="rk-alert" role="alert">
-          <span class="mdi mdi-alert-circle-outline"></span>
-          <span>{{ actionError }}</span>
-        </div>
-
-        <div class="tabs" role="tablist">
-          <button v-for="t in TABS" :key="t.value" type="button" role="tab" class="tab" :class="{ active: tab === t.value }" :aria-selected="tab === t.value" @click="tab = t.value">{{ t.label }}</button>
-        </div>
-
-        <!-- Sheet: whoever the selected token stands for, played from here -->
-        <div v-if="tab === 'sheet'" class="tab-body">
-          <div v-if="!encounter" class="sheet-empty">
-            <span class="mdi mdi-card-account-details-outline" aria-hidden="true"></span>
-            <p>Attach an encounter to play its sheets here: rolls, counters and conditions, for everyone at once.</p>
-            <label class="field">
-              <span>Encounter</span>
-              <select class="rk-input" :value="doc.encounter || ''" :disabled="!canInteract" @change="setEncounter($event.target.value)">
-                <option value="">None</option>
-                <option v-for="e in encounters" :key="e.id" :value="e.id">{{ e.id.includes('/') ? e.id : e.name }}</option>
-              </select>
-            </label>
-            <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm" :disabled="creatingEncounter" @click="createEncounter">
-              <span class="mdi mdi-plus"></span> New encounter for this map
+      <aside class="panel" aria-label="Map panel">
+        <!-- Setting the map up: once, before it is played on. -->
+        <template v-if="view === 'setup'">
+          <header class="panel-head">
+            <button type="button" class="back" @click="view = 'main'">
+              <span class="mdi mdi-chevron-left"></span> Back
             </button>
+            <h2 class="panel-title">Map setup</h2>
+          </header>
+          <div v-if="actionError" class="rk-alert" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>{{ actionError }}</span>
+          </div>
+          <BattlemapSetup
+            :map="doc"
+            :encounters="encounters"
+            :creating-encounter="creatingEncounter"
+            :disabled="!canInteract"
+            @patch-grid="patchGrid"
+            @set-encounter="setEncounter"
+            @create-encounter="createEncounter"
+            @choose-image="openLibrary('map')"
+          />
+        </template>
+
+        <!-- One of them, opened: whoever a token stands for, a token, an area. -->
+        <template v-else-if="opened">
+          <header class="panel-head">
+            <button type="button" class="back" @click="closeDetail">
+              <span class="mdi mdi-chevron-left"></span> Everyone
+            </button>
+            <button
+              v-if="hideable && canInteract"
+              type="button"
+              class="rk-btn rk-btn--sm rk-btn--ghost visibility"
+              :class="{ off: hideable.hidden }"
+              :aria-pressed="!!hideable.hidden"
+              :title="hideable.hidden ? 'Only the table sees it: click to show it on the screen' : 'Seen on the screen: click to hide it from the players'"
+              @click="toggleHidden"
+            >
+              <span class="mdi" :class="hideable.hidden ? 'mdi-eye-off-outline' : 'mdi-eye-outline'"></span>
+              {{ hideable.hidden ? 'Hidden' : 'Visible' }}
+            </button>
+          </header>
+          <div v-if="actionError" class="rk-alert" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>{{ actionError }}</span>
           </div>
 
-          <template v-else>
-            <ul v-if="encounter.combatants.length" class="roster" aria-label="Combatants">
-              <li v-for="c in encounter.combatants" :key="c.id">
-                <button
-                  type="button"
-                  class="roster-chip"
-                  :class="{ active: c.id === focusId, defeated: c.defeated, unplaced: !tokenOf(c) }"
-                  :aria-pressed="c.id === focusId"
-                  :title="tokenOf(c) ? c.name : `${c.name} (not on the map)`"
-                  @click="focusCombatant(c)"
-                >
-                  <span class="token-dot" :style="{ background: tokenOf(c)?.color || (c.type === 'character' ? CHARACTER_COLOR : DEFAULT_COLOR) }"></span>
-                  <span class="roster-name">{{ c.name }}</span>
-                </button>
-              </li>
-            </ul>
-            <p v-else class="hint">Nobody is in this encounter yet.</p>
-
-            <div v-if="canInteract" class="sheet-actions" role="group" aria-label="Encounter">
-              <button type="button" class="rk-btn rk-btn--sm" :aria-expanded="adding" @click="adding = !adding">
-                <span class="mdi" :class="adding ? 'mdi-close' : 'mdi-account-multiple-plus-outline'"></span> {{ adding ? 'Close' : 'Add to the fight' }}
-              </button>
-              <button v-if="focused && tokenOf(focused)" type="button" class="rk-btn rk-btn--sm" :title="`${focused.name}'s token: image, size, colour`" @click="editToken(tokenOf(focused))">
-                <span class="mdi mdi-image-edit-outline"></span> Token
-              </button>
-            </div>
-            <EncounterAddPanel
-              v-if="adding && canInteract"
-              :present-characters="presentCharacters"
-              @add="addFromSheet"
-              @add-custom="addCustom"
-            />
-
+          <template v-if="opened.kind === 'combatant'">
             <CombatantPlay
-              v-if="focused"
               :key="focused.id"
               :combatant="focused"
               :counters="countersOf(focused)"
               :sheet-state="sheetOf(focused)"
+              :image-url="openedToken?.image_url || null"
               :can-interact="canInteract"
               @adjust="(name, by) => adjust(focused, name, by)"
               @patch="(fields) => patchCombatant(focused, fields)"
@@ -159,206 +125,177 @@
               @rolled="onRolled"
               @edit-sheet="editSheet(focused)"
             />
-            <p v-else-if="selected" class="hint">
-              {{ selected.name || 'This token' }} stands for no one.
-              <button v-if="canInteract" type="button" class="link-btn" @click="tab = 'tokens'">Link it to a combatant</button>
-            </p>
-            <p v-else-if="encounter.combatants.length" class="hint">Pick someone above, or double-click a token on the map.</p>
+            <details v-if="openedToken" class="token-section">
+              <summary>
+                <span class="mdi mdi-chevron-right" aria-hidden="true"></span>
+                Token on the map
+              </summary>
+              <TokenSettings
+                :token="openedToken"
+                :counters="barNames"
+                :combatants="encounter.combatants"
+                :disabled="!canInteract"
+                @patch="patchToken"
+                @toggle-bar="toggleBar"
+                @link="linkCombatant"
+                @choose-image="openLibrary('token')"
+                @remove="removeToken"
+              />
+            </details>
+            <button v-else-if="canInteract" type="button" class="rk-btn rk-btn--sm place-one" @click="place([focused])">
+              <span class="mdi mdi-map-marker-plus-outline"></span> Put {{ focused.name }} on the map
+            </button>
           </template>
-        </div>
 
-        <!-- Tokens -->
-        <div v-else-if="tab === 'tokens'" class="tab-body">
-          <label class="field">
-            <span>Encounter</span>
-            <select class="rk-input" :value="doc.encounter || ''" :disabled="!canInteract" @change="setEncounter($event.target.value)">
-              <option value="">None</option>
-              <option v-for="e in encounters" :key="e.id" :value="e.id">{{ e.id.includes('/') ? e.id : e.name }}</option>
-            </select>
-          </label>
-          <button v-if="canInteract && encounter" type="button" class="rk-btn rk-btn--sm" :disabled="!unplaced.length" @click="placeCombatants">
-            <span class="mdi mdi-account-multiple-plus-outline"></span>
-            {{ unplaced.length ? `Place ${unplaced.length} combatant${unplaced.length > 1 ? 's' : ''}` : 'Everyone is on the map' }}
-          </button>
-
-          <p v-if="!doc.tokens.length" class="hint">No tokens yet. Add one, or attach an encounter and place its combatants.</p>
-          <ul class="token-list">
-            <li v-for="t in doc.tokens" :key="t.id">
-              <button type="button" class="token-row" :class="{ active: t.id === selectedId, hidden: t.hidden }" @click="selectedId = t.id">
-                <span class="token-dot" :style="{ background: t.color || DEFAULT_COLOR }"></span>
-                <span class="token-name">{{ t.name || 'Unnamed' }}</span>
-                <span v-if="t.hidden" class="mdi mdi-eye-off-outline" title="Hidden from the screen"></span>
-              </button>
-            </li>
-          </ul>
-
-          <section v-if="selected" class="inspector">
-            <header class="inspector-head">
-              <input class="rk-input" :value="selected.name" :disabled="!canInteract" aria-label="Token name" @change="patchToken({ name: $event.target.value.trim() })" />
-              <button type="button" class="rk-icon-btn rk-icon-btn--sm danger" :disabled="!canInteract" aria-label="Remove token" title="Remove token" @click="removeToken">
-                <span class="mdi mdi-trash-can-outline"></span>
-              </button>
-            </header>
-
-            <div class="row">
-              <label class="field">
-                <span>Size (cells)</span>
-                <input class="rk-input" type="number" min="0.5" max="20" step="0.5" :value="selected.size" :disabled="!canInteract" @change="patchToken({ size: clamp($event.target.value, 0.5, 20) })" />
-              </label>
-              <label class="check">
-                <input type="checkbox" :checked="selected.hidden" :disabled="!canInteract" @change="patchToken({ hidden: $event.target.checked })" />
-                <span>Hidden from the screen</span>
-              </label>
+          <template v-else-if="opened.kind === 'token'">
+            <div class="detail-head">
+              <span class="avatar avatar--lg" :style="{ '--avatar': openedToken.color || DEFAULT_COLOR }">
+                <img v-if="openedToken.image_url" :src="resolveUrl(openedToken.image_url)" alt="" />
+                <template v-else>{{ initials(openedToken.name) }}</template>
+              </span>
+              <div class="detail-title">
+                <h3 class="detail-name">{{ openedToken.name || 'Unnamed token' }}</h3>
+                <p class="detail-sub">Stands for no one</p>
+              </div>
             </div>
-
-            <div class="swatches" role="group" aria-label="Token colour">
-              <button v-for="c in COLORS" :key="c" type="button" class="swatch" :class="{ active: selected.color === c }" :style="{ background: c }" :aria-label="`Colour ${c}`" :disabled="!canInteract" @click="patchToken({ color: c })"></button>
-            </div>
-
-            <div class="row">
-              <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('token')">
-                <span class="mdi mdi-folder-multiple-image"></span> {{ selected.image_url ? 'Change image' : 'Choose image' }}
-              </button>
-              <button v-if="selected.image_url" type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="patchToken({ image_url: null })">Remove image</button>
-            </div>
-
-            <TokenImageEditor
-              v-if="selected.image_url"
-              :image-url="selected.image_url"
-              :scale="selected.image_scale ?? 1"
-              :x="selected.image_x ?? 0"
-              :y="selected.image_y ?? 0"
-              :rotation="selected.rotation ?? 0"
-              :color="selected.color"
+            <TokenSettings
+              :token="openedToken"
+              :combatants="encounter?.combatants || null"
               :disabled="!canInteract"
-              @change="patchToken"
+              @patch="patchToken"
+              @link="linkCombatant"
+              @choose-image="openLibrary('token')"
+              @remove="removeToken"
             />
+          </template>
 
-            <label v-if="encounter" class="field">
-              <span>Stands for</span>
-              <select class="rk-input" :value="selected.combatant || ''" :disabled="!canInteract" @change="linkCombatant($event.target.value)">
-                <option value="">No one</option>
-                <option v-for="c in encounter.combatants" :key="c.id" :value="c.id">{{ c.name }}</option>
-              </select>
-            </label>
-
-            <button v-if="focusedOfSelected" type="button" class="rk-btn rk-btn--sm" @click="tab = 'sheet'">
-              <span class="mdi mdi-card-account-details-outline"></span> Play {{ focusedOfSelected.name }}'s sheet
-            </button>
-
-            <div v-if="selected.combatant" class="counters">
-              <label class="check">
-                <input type="checkbox" :checked="selected.show_bars" :disabled="!canInteract" @change="patchToken({ show_bars: $event.target.checked })" />
-                <span>Show counters on the token</span>
-              </label>
-              <label v-for="name in options" :key="name" class="check indent">
-                <input type="checkbox" :checked="selected.bars.includes(name)" :disabled="!canInteract" @change="toggleBar(name, $event.target.checked)" />
-                <span>{{ name }}</span>
-              </label>
-              <p v-if="!options.length" class="hint">It has no counters.</p>
-            </div>
-          </section>
-
-          <div class="areas-head">
-            <h3 class="section-title">Areas</h3>
-            <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm" :class="{ active: tool === 'area' }" @click="tool = 'area'">
-              <span class="mdi mdi-shape-outline"></span> Draw
-            </button>
-          </div>
-          <p v-if="!(doc.areas || []).length" class="hint">Spell reaches, zones, hazards: pick the area tool (A) and drag from where it starts.</p>
-          <ul class="token-list">
-            <li v-for="a in doc.areas || []" :key="a.id">
-              <button type="button" class="token-row" :class="{ active: a.id === selectedAreaId, hidden: a.hidden }" @click="selectArea(a.id)">
-                <span class="mdi" :class="AREA_ICONS[a.shape]" :style="{ color: a.color || AREA_COLORS[0] }"></span>
-                <span class="token-name">{{ a.label || AREA_LABELS[a.shape] }}</span>
-                <span class="area-size">{{ areaMeasure(doc.grid, a) }}</span>
-                <span v-if="a.hidden" class="mdi mdi-eye-off-outline" title="Hidden from the screen"></span>
-              </button>
-            </li>
-          </ul>
           <AreaInspector
-            v-if="selectedArea"
-            :area="selectedArea"
+            v-else
+            :area="openedArea"
             :grid="doc.grid"
             :disabled="!canInteract"
             @patch="patchArea"
             @remove="removeArea"
           />
-        </div>
+        </template>
 
-        <!-- Map -->
-        <div v-else class="tab-body">
-          <div class="row">
-            <button type="button" class="rk-btn rk-btn--sm" :disabled="!canInteract" @click="openLibrary('map')">
-              <span class="mdi mdi-folder-multiple-image"></span> {{ doc.image_url ? 'Change map image' : 'Choose map image' }}
+        <!-- Everyone and everything on the map. -->
+        <template v-else>
+          <header class="panel-head">
+            <h2 class="panel-title">On the map</h2>
+            <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm rk-btn--ghost setup-btn" title="Image, encounter, grid and distances" @click="view = 'setup'">
+              <span class="mdi mdi-cog-outline"></span> Setup
             </button>
+          </header>
+          <div v-if="actionError" class="rk-alert" role="alert">
+            <span class="mdi mdi-alert-circle-outline"></span>
+            <span>{{ actionError }}</span>
           </div>
 
-          <fieldset class="grid-fields" :disabled="!canInteract">
-            <legend>Grid</legend>
-            <label class="field">
-              <span>Type</span>
-              <select class="rk-input" :value="doc.grid.type" @change="patchGrid({ type: $event.target.value })">
-                <option value="square">Square</option>
-                <option value="none">None</option>
-              </select>
-            </label>
-            <div class="row">
-              <label class="field">
-                <span>Cell size (px)</span>
-                <input class="rk-input" type="number" min="4" max="2000" :value="doc.grid.size" @change="patchGrid({ size: clamp($event.target.value, 4, 2000) })" />
-              </label>
-              <label class="field">
-                <span>Offset X</span>
-                <input class="rk-input" type="number" :value="doc.grid.offset_x" @change="patchGrid({ offset_x: num($event.target.value) })" />
-              </label>
-              <label class="field">
-                <span>Offset Y</span>
-                <input class="rk-input" type="number" :value="doc.grid.offset_y" @change="patchGrid({ offset_y: num($event.target.value) })" />
-              </label>
+          <div v-if="!encounter && canInteract" class="encounter-cta">
+            <span class="mdi mdi-sword-cross" aria-hidden="true"></span>
+            <div class="encounter-cta-body">
+              <p class="encounter-cta-title">Play the fight from here</p>
+              <p>Link an encounter to roll and track counters and conditions on the map, for everyone at once.</p>
+              <div class="encounter-cta-actions">
+                <select class="rk-input" :value="doc.encounter || ''" aria-label="Encounter" @change="setEncounter($event.target.value)">
+                  <option value="">Link an encounter…</option>
+                  <option v-for="e in encounters" :key="e.id" :value="e.id">{{ e.id.includes('/') ? e.id : e.name }}</option>
+                </select>
+                <button type="button" class="rk-btn rk-btn--sm" :disabled="creatingEncounter" @click="createEncounter">
+                  <span class="mdi mdi-plus"></span> New
+                </button>
+              </div>
             </div>
-            <div class="row">
-              <label class="check"><input type="checkbox" :checked="doc.grid.snap" @change="patchGrid({ snap: $event.target.checked })" /><span>Snap tokens to cells</span></label>
-              <label class="check"><input type="checkbox" :checked="doc.grid.visible" @change="patchGrid({ visible: $event.target.checked })" /><span>Show the lines</span></label>
-            </div>
-            <label class="field">
-              <span>Line opacity</span>
-              <input type="range" min="0" max="1" step="0.05" :value="doc.grid.opacity" @change="patchGrid({ opacity: Number($event.target.value) })" />
-            </label>
-          </fieldset>
+          </div>
 
-          <fieldset class="grid-fields" :disabled="!canInteract">
-            <legend>Distance</legend>
-            <div class="row">
-              <label class="field">
-                <span>One cell is</span>
-                <input class="rk-input" type="number" min="0.01" step="any" :value="doc.grid.distance" @change="patchGrid({ distance: positive($event.target.value, doc.grid.distance) })" />
-              </label>
-              <label class="field">
-                <span>Unit</span>
-                <input class="rk-input" maxlength="20" :value="doc.grid.unit" @change="patchGrid({ unit: $event.target.value.trim() || 'cell' })" />
-              </label>
+          <section v-if="encounter" class="group" aria-labelledby="group-fight">
+            <div class="group-head">
+              <h3 id="group-fight" class="group-title">In the fight <span class="count">{{ encounter.combatants.length }}</span></h3>
+              <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm rk-btn--ghost add-fight" :aria-expanded="adding" @click="adding = !adding">
+                <span class="mdi" :class="adding ? 'mdi-check' : 'mdi-plus'"></span> {{ adding ? 'Done' : 'Add' }}
+              </button>
             </div>
-            <label class="field">
-              <span>The ruler counts</span>
-              <select class="rk-input" :value="doc.grid.measure" @change="patchGrid({ measure: $event.target.value })">
-                <option value="grid">Cells (a diagonal is one)</option>
-                <option value="straight">The straight line</option>
-                <option value="bands">Range bands (by name)</option>
-              </select>
-            </label>
-            <RangeBandsEditor
-              v-if="doc.grid.measure === 'bands'"
-              :bands="doc.grid.bands || []"
-              :unit="doc.grid.unit"
-              :disabled="!canInteract"
-              @change="(bands) => patchGrid({ bands })"
+            <EncounterAddPanel
+              v-if="adding && canInteract"
+              :present-characters="presentCharacters"
+              @add="addFromSheet"
+              @add-custom="addCustom"
             />
-            <p v-if="doc.grid.measure === 'bands' && doc.grid.snap" class="hint">
-              For free movement, turn off <em>Snap tokens to cells</em> above.
-            </p>
-          </fieldset>
-        </div>
+            <ul v-if="encounter.combatants.length" class="rows">
+              <li v-for="c in encounter.combatants" :key="c.id">
+                <button
+                  type="button"
+                  class="row combatant-row"
+                  :class="{ active: c.id === focusId, defeated: c.defeated, unplaced: !tokenOf(c) }"
+                  @click="focusCombatant(c)"
+                >
+                  <span class="avatar" :style="{ '--avatar': tokenOf(c)?.color || (c.type === 'character' ? CHARACTER_COLOR : DEFAULT_COLOR) }">
+                    <img v-if="portraitOf(c)" :src="portraitOf(c)" alt="" />
+                    <template v-else>{{ initials(c.name) }}</template>
+                  </span>
+                  <span class="row-main">
+                    <span class="row-name">{{ c.name }}</span>
+                    <span class="row-sub">{{ c.defeated ? 'Defeated' : !tokenOf(c) ? 'Not on the map' : c.type === 'character' ? 'Character' : 'Adversary' }}</span>
+                  </span>
+                  <span v-if="tokenOf(c)?.hidden" class="mdi mdi-eye-off-outline row-flag" title="Hidden from the screen"></span>
+                  <span v-if="leadCounter(c)" class="row-counter" :title="leadCounter(c).name">
+                    {{ leadCounter(c).current }}<small>/{{ leadCounter(c).max }} {{ leadCounter(c).name }}</small>
+                  </span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="hint">Nobody yet. Add characters and adversaries to play their sheets from here.</p>
+            <button v-if="canInteract && unplaced.length && encounter.combatants.length" type="button" class="rk-btn rk-btn--sm place-all" @click="placeCombatants">
+              <span class="mdi mdi-map-marker-multiple-outline"></span>
+              Put {{ unplaced.length }} on the map
+            </button>
+          </section>
+
+          <section v-if="freeTokens.length || canInteract" class="group" aria-labelledby="group-tokens">
+            <div class="group-head">
+              <h3 id="group-tokens" class="group-title">{{ encounter ? 'Other tokens' : 'Tokens' }} <span v-if="freeTokens.length" class="count">{{ freeTokens.length }}</span></h3>
+              <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm rk-btn--ghost" aria-label="Add a token" @click="addToken">
+                <span class="mdi mdi-plus"></span> Add
+              </button>
+            </div>
+            <ul v-if="freeTokens.length" class="rows">
+              <li v-for="t in freeTokens" :key="t.id">
+                <button type="button" class="row token-row" :class="{ active: t.id === selectedId, hidden: t.hidden }" @click="selectToken(t.id)">
+                  <span class="avatar" :style="{ '--avatar': t.color || DEFAULT_COLOR }">
+                    <img v-if="t.image_url" :src="resolveUrl(t.image_url)" alt="" />
+                    <template v-else>{{ initials(t.name) }}</template>
+                  </span>
+                  <span class="row-main"><span class="row-name">{{ t.name || 'Unnamed' }}</span></span>
+                  <span v-if="t.hidden" class="mdi mdi-eye-off-outline row-flag" title="Hidden from the screen"></span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="hint">Markers, objects, anyone without a sheet.</p>
+          </section>
+
+          <section v-if="(doc.areas || []).length || canInteract" class="group" aria-labelledby="group-areas">
+            <div class="group-head">
+              <h3 id="group-areas" class="group-title">Areas <span v-if="(doc.areas || []).length" class="count">{{ doc.areas.length }}</span></h3>
+              <button v-if="canInteract" type="button" class="rk-btn rk-btn--sm rk-btn--ghost" :class="{ active: tool === 'area' }" @click="tool = 'area'">
+                <span class="mdi mdi-shape-outline"></span> Draw
+              </button>
+            </div>
+            <ul v-if="(doc.areas || []).length" class="rows">
+              <li v-for="a in doc.areas" :key="a.id">
+                <button type="button" class="row area-row" :class="{ active: a.id === selectedAreaId, hidden: a.hidden }" @click="selectArea(a.id)">
+                  <span class="avatar avatar--shape" :style="{ '--avatar': a.color || AREA_COLORS[0] }">
+                    <span class="mdi" :class="AREA_ICONS[a.shape]"></span>
+                  </span>
+                  <span class="row-main"><span class="row-name">{{ a.label || AREA_LABELS[a.shape] }}</span></span>
+                  <span v-if="a.hidden" class="mdi mdi-eye-off-outline row-flag" title="Hidden from the screen"></span>
+                  <span class="row-counter area-size">{{ areaMeasure(doc.grid, a) }}</span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="hint">Spell reaches, zones, hazards. Pick Draw, then drag on the map.</p>
+          </section>
+        </template>
       </aside>
 
       <ObservatoryModal
@@ -375,6 +312,8 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import BattlemapCanvas from './BattlemapCanvas.vue'
+import BattlemapTools from './BattlemapTools.vue'
+import BattlemapSetup from './BattlemapSetup.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { battlemapsApi, encountersApi } from '@/api/docs'
@@ -387,12 +326,12 @@ import LiveBadge from './LiveBadge.vue'
 import LiveDocumentState from './LiveDocumentState.vue'
 import { useCharacters } from '@/composables/useCharacters'
 import { barOptions, metersFor } from '@/utils/battlemapMeters'
-import { areaMeasure, freeCells } from '@/utils/battlemapGeometry'
+import { areaMeasure, freeCells, initials } from '@/utils/battlemapGeometry'
 import { combatantsFromSheet, customCombatant } from '@/utils/encounter'
+import { resolveUrl } from '@/utils/resolveUrl'
 import CombatantPlay from './CombatantPlay.vue'
 import EncounterAddPanel from './EncounterAddPanel.vue'
-import TokenImageEditor from './TokenImageEditor.vue'
-import RangeBandsEditor from './RangeBandsEditor.vue'
+import TokenSettings from './TokenSettings.vue'
 import AreaInspector, { AREA_SHAPES } from './AreaInspector.vue'
 import { useCombatantActions, useCombatantSheets } from '@/composables/useCombatantActions'
 import { useMapSignals } from '@/composables/useMapSignals'
@@ -402,6 +341,12 @@ import { useDocModal } from '@/composables/useDocModal'
 // moved, areas laid, rulers measured and its combatants played. Nothing here
 // saves; each action is a command (api/docs.js) and the server announces its
 // result. What the screen shows is made by the server.
+//
+// The map takes the room; beside it, one panel that is about one thing at a
+// time: everyone on the map (the default), one of them opened (a click on its
+// token or its row: whoever it stands for, played from their sheet, or the
+// token itself, or an area), or the map's setup (behind Setup, as it is done
+// once, not during play).
 const props = defineProps({
   battlemapId: { type: String, required: true },
   canInteract: { type: Boolean, default: false }
@@ -429,38 +374,38 @@ const { sheetOf, load: loadSheet } = useCombatantSheets(characters)
 // Pings, the pointer and rolls over tokens: everyone's, shown on the map.
 const signals = useMapSignals(id, { canSend: () => props.canInteract })
 
-const TABS = [{ value: 'sheet', label: 'Sheet' }, { value: 'tokens', label: 'Tokens' }, { value: 'map', label: 'Map' }]
+// Each tool says how it is used (BattlemapTools shows it while it is in hand).
 const TOOLS = [
-  { value: 'select', label: 'Select and move', icon: 'mdi-cursor-default', key: 'v' },
-  { value: 'ruler', label: 'Measure: Space adds a turn', icon: 'mdi-ruler', key: 'r' },
-  { value: 'area', label: 'Draw an area', icon: 'mdi-shape-outline', key: 'a', signedIn: true },
+  { value: 'select', label: 'Move', icon: 'mdi-cursor-default', key: 'v' },
+  { value: 'ruler', label: 'Measure', icon: 'mdi-ruler', key: 'r', hint: 'Drag to measure. Space or a second finger adds a turn, Backspace takes it back.' },
+  { value: 'area', label: 'Draw an area', icon: 'mdi-shape-outline', key: 'a', signedIn: true, hint: 'Drag from where the area starts. Pick its shape beside the tool.' },
   // Seen by everyone on the map and on the screen: for the signed in only.
-  { value: 'pointer', label: 'Point: tap to ping, drag for the laser', icon: 'mdi-laser-pointer', key: 'p', signedIn: true }
+  { value: 'pointer', label: 'Point', icon: 'mdi-laser-pointer', key: 'p', signedIn: true, hint: 'Click to ping, drag for a laser everyone sees.' }
 ]
-const COLORS = TOKEN_COLORS
-const DEFAULT_COLOR = COLORS[0]
+const DEFAULT_COLOR = TOKEN_COLORS[0]
 const CHARACTER_COLOR = '#34d399'
 const AREA_ICONS = Object.fromEntries(AREA_SHAPES.map((s) => [s.value, s.icon]))
 const AREA_LABELS = Object.fromEntries(AREA_SHAPES.map((s) => [s.value, s.label]))
 
-const tab = ref('tokens')
 const tool = ref('select')
 const selectedId = ref(null)
 const selectedAreaId = ref(null)
 const areaShape = ref('circle')
 const adding = ref(false)
 const creatingEncounter = ref(false)
-// Whose sheet the Sheet tab plays: the selected token's combatant, or one
-// picked from the roster (who may not be on the map at all).
-const focusId = ref(null)
+// 'main' (everyone, or one of them opened) or 'setup'.
+const view = ref('main')
+// What the panel has open: { kind: 'combatant' | 'token' | 'area', id }. It
+// stays open when the map is clicked (to pan it, to ping), until another is
+// opened or Everyone goes back to the list.
+const detail = ref(null)
 const visibleTools = computed(() => TOOLS.filter((t) => !t.signedIn || props.canInteract))
 const { libraryOpen, openLibrary, closeLibrary, onLibrarySelect } = useLibraryPicker((item, target) => {
   if (target === 'map') send(commands.patch(id, { image_url: item.image_url }))
-  else if (target === 'token' && selected.value) patchToken({ image_url: item.image_url })
+  else if (target === 'token' && openedToken.value) patchToken({ image_url: item.image_url })
 })
 const encounters = ref([])
 const onScreen = ref(false)
-
 
 // The encounters to choose from, once signed in (the session check may still
 // be on its way when the editor opens).
@@ -471,60 +416,71 @@ watch(() => props.canInteract, (signedIn) => {
 const viewTokens = computed(() =>
   (doc.value?.tokens || []).map((token) => ({ ...token, meters: metersFor(token, encounter.value, characters.docs.value) }))
 )
-const selected = computed(() => doc.value?.tokens.find((t) => t.id === selectedId.value) || null)
-const options = computed(() => (selected.value ? barOptions(selected.value, encounter.value, characters.docs.value) : []))
-const selectedArea = computed(() => doc.value?.areas?.find((a) => a.id === selectedAreaId.value) || null)
 const presentCharacters = computed(() => (encounter.value?.combatants || []).filter((c) => c.type === 'character').map((c) => c.sheet))
-const focused = computed(() => encounter.value?.combatants.find((c) => c.id === focusId.value) || null)
+const combatantOf = (token) => (token?.combatant && encounter.value?.combatants.find((c) => c.id === token.combatant)) || null
 const tokenOf = (c) => doc.value?.tokens.find((t) => t.combatant === c.id) || null
-// The combatant the selected token stands for, if it is in the encounter.
-const focusedOfSelected = computed(() =>
-  (selected.value?.combatant && encounter.value?.combatants.find((c) => c.id === selected.value.combatant)) || null
-)
+// Tokens that stand for no one in the encounter: listed on their own.
+const freeTokens = computed(() => (doc.value?.tokens || []).filter((t) => !combatantOf(t)))
+const unplaced = computed(() => (encounter.value?.combatants || []).filter((c) => !tokenOf(c)))
 
-// The map opens on its sheets when it has an encounter to play, on its tokens otherwise.
-const stopFirstTab = watch(doc, (loaded) => {
-  if (!loaded) return
-  tab.value = loaded.encounter ? 'sheet' : 'tokens'
-  queueMicrotask(() => stopFirstTab())
-}, { immediate: true })
-
-// Selecting a token that stands for someone shows their sheet.
-watch(selectedId, () => {
-  if (focusedOfSelected.value) focusId.value = focusedOfSelected.value.id
+const focusId = computed(() => (detail.value?.kind === 'combatant' ? detail.value.id : null))
+const focused = computed(() => (focusId.value && encounter.value?.combatants.find((c) => c.id === focusId.value)) || null)
+const openedToken = computed(() => {
+  const d = detail.value
+  if (d?.kind === 'token') return doc.value?.tokens.find((t) => t.id === d.id) || null
+  return focused.value ? tokenOf(focused.value) : null
 })
+const openedArea = computed(() => (detail.value?.kind === 'area' && doc.value?.areas?.find((a) => a.id === detail.value.id)) || null)
+// What is open, while it is still there (removed, by anyone: back to the list).
+const opened = computed(() => {
+  const d = detail.value
+  if (d?.kind === 'combatant') return focused.value ? d : null
+  if (d?.kind === 'token') return openedToken.value ? d : null
+  if (d?.kind === 'area') return openedArea.value ? d : null
+  return null
+})
+// What the panel's eye shows or hides from the screen.
+const hideable = computed(() => (opened.value?.kind === 'area' ? openedArea.value : openedToken.value))
+const barNames = computed(() => (openedToken.value ? barOptions(openedToken.value, encounter.value, characters.docs.value) : []))
 
 watch(focused, (c) => { if (c) loadSheet(c) }, { immediate: true })
 
-// One thing selected at a time: a token, or an area.
+// The counter a row shows: the first one with a maximum (HP, most often).
+const leadCounter = (c) => countersOf(c).find((r) => r.max != null) || null
+function portraitOf(c) {
+  const image = tokenOf(c)?.image_url || c.image_url
+  return image ? resolveUrl(image) : null
+}
+
+// One thing selected on the map at a time, a token or an area; selecting one
+// opens it in the panel (a token, as whoever it stands for).
 function selectToken(tokenId) {
   selectedId.value = tokenId
-  if (tokenId) selectedAreaId.value = null
+  if (!tokenId) return
+  selectedAreaId.value = null
+  const combatant = combatantOf(doc.value?.tokens.find((t) => t.id === tokenId))
+  detail.value = combatant ? { kind: 'combatant', id: combatant.id } : { kind: 'token', id: tokenId }
+  view.value = 'main'
 }
 
 function selectArea(areaId) {
   selectedAreaId.value = areaId
   if (!areaId) return
   selectedId.value = null
-  tab.value = 'tokens'
-}
-
-function editToken(token) {
-  selectToken(token.id)
-  tab.value = 'tokens'
+  detail.value = { kind: 'area', id: areaId }
+  view.value = 'main'
 }
 
 function focusCombatant(c) {
-  focusId.value = c.id
-  const token = tokenOf(c)
-  if (token) selectedId.value = token.id
+  detail.value = { kind: 'combatant', id: c.id }
+  selectedId.value = tokenOf(c)?.id || null
+  selectedAreaId.value = null
 }
 
-// A token double-clicked: whoever it stands for, played; or, standing for no
-// one, the token itself.
-function openToken(tokenId) {
-  selectedId.value = tokenId
-  tab.value = focusedOfSelected.value ? 'sheet' : 'tokens'
+function closeDetail() {
+  detail.value = null
+  selectedId.value = null
+  selectedAreaId.value = null
 }
 
 // A roll from the sheet shows over its roller's token too, for everyone on
@@ -536,30 +492,31 @@ function onRolled({ combatant, ...roll }) {
 
 const editSheet = (c) => useDocModal(c.type || 'adversary').open(c.sheet)
 
-const unplaced = computed(() => {
-  const placed = new Set((doc.value?.tokens || []).map((t) => t.combatant).filter(Boolean))
-  return (encounter.value?.combatants || []).filter((c) => !placed.has(c.id))
-})
-
-const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0)
-const clamp = (value, low, high) => Math.min(high, Math.max(low, num(value)))
-const positive = (value, fallback) => (num(value) > 0 ? num(value) : fallback)
-
-
-const patchToken = (patch) => send(commands.patchItem(id, 'tokens', selected.value.id, patch))
+const patchToken = (fields) => send(commands.patchItem(id, 'tokens', openedToken.value.id, fields))
 const patchGrid = (patch) => send(commands.patch(id, { grid: patch }))
 const setEncounter = (encounterId) => send(commands.patch(id, { encounter: encounterId || null }))
 
-function addToken() {
+function toggleHidden() {
+  if (opened.value?.kind === 'area') patchArea({ hidden: !openedArea.value.hidden })
+  else patchToken({ hidden: !openedToken.value.hidden })
+}
+
+// A plain token on a free cell, opened to be named and dressed.
+async function addToken() {
   const [{ x, y }] = freeCells(1, doc.value.tokens)
-  send(commands.addItems(id, 'tokens', [{ name: 'Token', x, y, size: 1 }]))
+  let event = null
+  const added = await attempt((async () => {
+    event = await commit(commands.addItems(id, 'tokens', [{ name: 'Token', x, y, size: 1 }]))
+  })())
+  const created = added && event?.upsert?.tokens?.at(-1)
+  if (created) selectToken(created.id)
 }
 
 function removeToken() {
-  if (!window.confirm(`Remove ${selected.value.name || 'this token'} from the map?`)) return
-  const tokenId = selected.value.id
-  selectedId.value = null
-  send(commands.removeItem(id, 'tokens', tokenId))
+  const token = openedToken.value
+  if (!window.confirm(`Remove ${token.name || 'this token'} from the map?`)) return
+  if (selectedId.value === token.id) selectedId.value = null
+  send(commands.removeItem(id, 'tokens', token.id))
 }
 
 const placeCombatants = () => place(unplaced.value)
@@ -598,7 +555,8 @@ async function addToEncounter(combatants) {
 const addFromSheet = (sheet, count) => addToEncounter(combatantsFromSheet(sheet, count, encounter.value.combatants))
 const addCustom = (name) => addToEncounter([customCombatant(name)])
 
-// An encounter of its own for a map that has none, next to it.
+// An encounter of its own for a map that has none, next to it, ready to be
+// filled.
 async function createEncounter() {
   creatingEncounter.value = true
   try {
@@ -608,7 +566,10 @@ async function createEncounter() {
     })())
     if (!made) return
     encounters.value = [...encounters.value, created]
-    if (await setEncounter(created.id)) adding.value = true
+    if (await setEncounter(created.id)) {
+      adding.value = true
+      view.value = 'main'
+    }
   } finally {
     creatingEncounter.value = false
   }
@@ -630,23 +591,30 @@ async function addArea(area) {
 
 // Moved by its origin, or resized and turned by its reach handle.
 const moveArea = (areaId, fields) => send(commands.patchItem(id, 'areas', areaId, fields))
-const patchArea = (fields) => send(commands.patchItem(id, 'areas', selectedAreaId.value, fields))
+const patchArea = (fields) => send(commands.patchItem(id, 'areas', openedArea.value.id, fields))
 
 function removeArea() {
-  const areaId = selectedAreaId.value
+  const areaId = openedArea.value.id
   selectedAreaId.value = null
   send(commands.removeItem(id, 'areas', areaId))
 }
 
-function linkCombatant(combatantId) {
+// The opened token linked to someone else (or to no one): the panel follows
+// it, to their sheet or to the bare token.
+async function linkCombatant(combatantId) {
+  const token = openedToken.value
   const combatant = encounter.value?.combatants.find((c) => c.id === combatantId)
-  patchToken({ combatant: combatantId || null, sheet: combatant?.sheet || null, bars: [], show_bars: false })
+  const linked = await patchToken({ combatant: combatantId || null, sheet: combatant?.sheet || null, bars: [], show_bars: false })
+  if (linked) detail.value = combatant ? { kind: 'combatant', id: combatant.id } : { kind: 'token', id: token.id }
 }
 
 // One bar in or out, never the whole list, so two people changing the bars
-// at once both count.
-const toggleBar = (name, on) =>
-  send(commands.editList(id, 'tokens', selected.value.id, 'bars', on ? { add: [name] } : { remove: [name] }))
+// at once both count. The first one shown turns the bars on, alone.
+function toggleBar(name, on) {
+  const token = openedToken.value
+  if (on && !token.show_bars) return patchToken({ show_bars: true, bars: [name] })
+  return send(commands.editList(id, 'tokens', token.id, 'bars', on ? { add: [name] } : { remove: [name] }))
+}
 
 // A token moves where it is let go of (while it is dragged, everyone sees
 // the path it would take: signals.measure). Moves go out one at a time, the
@@ -674,7 +642,7 @@ function sendMove(tokenId, position) {
 
 const onMove = (tokenId, position) => sendMove(tokenId, position)
 
-// V, R, A and P pick a tool, as the buttons' titles say; not while typing.
+// V, R, A and P pick a tool, as the tools' names say; not while typing.
 function onKeydown(event) {
   if (event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey || !event.key) return
   if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
@@ -712,49 +680,64 @@ async function toggleScreen() {
   min-height: 0;
 }
 
-.toolbars {
+/* What is going on with the map as a whole: whether it is live, and whether
+   the table screen shows it. */
+.stage-status {
   position: absolute;
   top: var(--space-3);
-  left: var(--space-3);
+  right: var(--space-3);
   z-index: var(--z-raised);
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-.toolbar {
-  display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
   background: var(--surface-chrome);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
-.tool-group {
-  display: flex;
-  gap: 2px;
+.stage-status:not(:has(.screen-toggle)) {
+  padding-right: var(--space-3);
 }
 
-.tool-sep {
-  align-self: stretch;
-  width: 1px;
-  margin: var(--space-1) var(--space-1);
-  background: var(--border-light);
-}
-
-.tool.active {
-  background: var(--accent-a30);
+.screen-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-md);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-medium);
+  border-radius: var(--radius-md);
+  background: transparent;
   color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
-/* LiveBadge's root, from here. */
-.live-badge {
-  padding-right: var(--space-2);
+.screen-toggle .mdi {
+  font-size: 1.1rem;
+}
+
+.screen-toggle:hover {
+  border-color: var(--accent);
+  background: var(--hover-tint);
+}
+
+.screen-toggle:active {
+  transform: translateY(1px);
+}
+
+.screen-toggle.on {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
 }
 
 .panel {
@@ -763,24 +746,46 @@ async function toggleScreen() {
   width: clamp(20rem, 26vw, 26rem);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-4);
+  gap: var(--space-4);
+  padding: 0 var(--space-4) var(--space-6);
   overflow-y: auto;
   border-left: 1px solid var(--border-light);
   background: var(--surface-chrome);
 }
 
-.tabs {
+/* Stays at the top while the panel scrolls: the way back is always in reach. */
+.panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
-  gap: var(--space-1);
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 3.5rem;
+  margin: 0 calc(-1 * var(--space-4));
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border-light);
+  background: var(--bg-primary);
 }
 
-.tab {
-  padding: var(--space-2) var(--space-4);
-  margin-bottom: -1px;
+.panel-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: var(--control-sm);
+  margin-left: calc(-1 * var(--space-2));
+  padding: 0 var(--space-2) 0 var(--space-1);
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
   font: inherit;
@@ -789,44 +794,21 @@ async function toggleScreen() {
   cursor: pointer;
 }
 
-.tab.active {
+.back .mdi {
+  font-size: 1.2rem;
+}
+
+.back:hover {
+  background: var(--hover-tint);
   color: var(--text-primary);
-  border-bottom-color: var(--accent);
 }
 
-.tab-body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+.panel-head .back + .panel-title {
+  margin-right: auto;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  flex: 1;
-  min-width: 0;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-2);
-}
-
-.check {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--text-secondary);
-}
-
-.check.indent {
-  padding-left: var(--space-5);
+.visibility.off {
+  color: var(--status-warning);
 }
 
 .hint {
@@ -835,152 +817,106 @@ async function toggleScreen() {
   color: var(--text-muted);
 }
 
-.sheet-empty {
+/* ── the list ─────────────────────────────────────────────────────────── */
+
+.encounter-cta {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
   gap: var(--space-3);
   padding: var(--space-4);
-  border: 1px dashed var(--border-medium);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  color: var(--text-secondary);
+  background: var(--accent-a08);
   font-size: var(--text-sm);
+  color: var(--text-secondary);
 }
 
-.sheet-empty > .mdi {
-  font-size: 1.6rem;
+.encounter-cta > .mdi {
+  flex: none;
+  font-size: 1.4rem;
   color: var(--accent-soft);
 }
 
-.sheet-empty p {
-  margin: 0;
-}
-
-.sheet-empty .field {
-  align-self: stretch;
-}
-
-/* Who is in the encounter: one chip each, the one being played lit. */
-.roster {
+.encounter-cta-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-  max-height: 7.5rem;
-  margin: 0;
-  padding: 0;
-  overflow-y: auto;
-  list-style: none;
-}
-
-.roster-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  max-width: 11rem;
-  padding: 2px var(--space-2);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-full);
-  background: var(--surface-sunken);
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: var(--text-xs);
-  cursor: pointer;
-  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
-}
-
-.roster-chip:hover {
-  border-color: var(--border-medium);
-  color: var(--text-primary);
-}
-
-.roster-chip:active {
-  transform: scale(0.97);
-}
-
-.roster-chip.active {
-  border-color: var(--accent);
-  background: var(--accent-a12);
-  color: var(--text-primary);
-}
-
-/* Not on the map: still in the encounter, still playable. */
-.roster-chip.unplaced {
-  border-style: dashed;
-}
-
-.roster-chip.defeated .roster-name {
-  text-decoration: line-through;
-  opacity: 0.7;
-}
-
-.roster-chip .token-dot {
-  width: 0.6rem;
-  height: 0.6rem;
-}
-
-.roster-name {
+  flex-direction: column;
+  gap: var(--space-2);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1;
 }
 
-.sheet-actions {
+.encounter-cta-body p {
+  margin: 0;
+}
+
+.encounter-cta-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.encounter-cta-actions {
   display: flex;
-  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.encounter-cta-actions select {
+  flex: 1;
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
 }
 
-.areas-head {
+.group + .group {
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-light);
+}
+
+.group-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-top: var(--space-2);
+  min-height: var(--control-sm);
 }
 
-.section-title {
+.group-title {
   margin: 0;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-secondary);
-}
-
-.areas-head .active {
-  border-color: var(--accent);
   color: var(--text-primary);
 }
 
-.area-size {
-  flex: none;
-  font-size: var(--text-xs);
+.count {
+  margin-left: var(--space-1);
+  font-weight: 500;
   color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 
-.link-btn {
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent-soft);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
+.group-head .active {
+  background: var(--accent-a20);
+  color: var(--text-primary);
 }
 
-.token-list {
+.rows {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 0;
+  margin: 0 calc(-1 * var(--space-2));
   padding: 0;
   list-style: none;
 }
 
-.token-row {
+.row {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  min-height: 2.75rem;
   padding: var(--space-1) var(--space-2);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
@@ -990,96 +926,202 @@ async function toggleScreen() {
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out);
 }
 
-.token-row:hover {
+.row:hover {
   background: var(--hover-tint);
+  color: var(--text-primary);
 }
 
-.token-row.active {
-  border-color: var(--accent);
+.row:active {
+  transform: scale(0.99);
+}
+
+.row.active {
+  border-color: var(--accent-a45);
   background: var(--accent-a12);
   color: var(--text-primary);
 }
 
-.token-row.hidden {
+.row.hidden .avatar,
+.row.hidden .row-name {
   opacity: 0.6;
 }
 
-.token-dot {
-  flex: none;
-  width: 0.8rem;
-  height: 0.8rem;
-  border-radius: var(--radius-full);
+.row.defeated .row-name {
+  text-decoration: line-through;
+  color: var(--text-muted);
 }
 
-.token-name {
+.row.defeated .avatar {
+  filter: grayscale(1);
+  opacity: 0.6;
+}
+
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  border: 2px solid var(--avatar);
+  background: color-mix(in srgb, var(--avatar) 30%, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Not on the map: still in the fight, still playable. */
+.row.unplaced .avatar {
+  border-style: dashed;
+}
+
+.avatar--shape {
+  border-radius: var(--radius-md);
+  border-width: 1px;
+  color: var(--avatar);
+  background: color-mix(in srgb, var(--avatar) 14%, transparent);
+}
+
+.avatar--shape .mdi {
+  font-size: 1rem;
+}
+
+.avatar--lg {
+  width: 2.75rem;
+  height: 2.75rem;
+  font-size: var(--text-sm);
+}
+
+.row-main {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: var(--leading-tight);
+}
+
+.row-name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
-.inspector {
+.row-sub {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.row-flag {
+  flex: none;
+  color: var(--text-muted);
+}
+
+.row-counter {
+  flex: none;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.row-counter small {
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.area-size {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.place-all,
+.place-one {
+  align-self: flex-start;
+}
+
+/* ── one of them, opened ──────────────────────────────────────────────── */
+
+.detail-head {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--space-3);
-  padding: var(--space-3);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
 }
 
-.inspector-head {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.inspector-head input {
-  flex: 1;
-}
-
-.swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.swatch {
-  width: 1.4rem;
-  height: 1.4rem;
-  border: 2px solid transparent;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-}
-
-.swatch.active {
-  border-color: #fff;
-}
-
-.counters {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.grid-fields {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-3);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
+.detail-title {
   min-width: 0;
 }
 
-.grid-fields legend {
-  padding: 0 var(--space-2);
+.detail-name {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  color: var(--text-primary);
+}
+
+.detail-sub {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* The token of whoever is played: there when wanted, out of the way of the
+   sheet otherwise. */
+.token-section {
+  border-top: 1px solid var(--border-light);
+  padding-top: var(--space-3);
+}
+
+.token-section summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.token-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.token-section summary:hover {
+  background: var(--hover-tint);
+  color: var(--text-primary);
+}
+
+.token-section summary .mdi {
+  font-size: 1.1rem;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.token-section[open] summary .mdi {
+  transform: rotate(90deg);
+}
+
+.token-section[open] summary {
+  margin-bottom: var(--space-3);
 }
 
 @media (max-width: 900px) {
@@ -1097,6 +1139,18 @@ async function toggleScreen() {
     flex: 1;
     border-left: none;
     border-top: 1px solid var(--border-light);
+  }
+}
+
+@media (max-width: 600px) {
+  .screen-toggle {
+    padding: 0 var(--space-2);
+    font-size: 0;
+    gap: 0;
+  }
+
+  .screen-toggle .mdi {
+    font-size: 1.2rem;
   }
 }
 </style>

@@ -128,6 +128,8 @@ const props = defineProps({
   counters: { type: Array, default: () => [] },
   // Its sheet: useCombatantSheets' sheetOf ({ status, sheet }).
   sheetState: { type: Object, default: () => ({ status: 'none' }) },
+  // A picture to show when it has none of its own (its token's, on a map).
+  imageUrl: { type: String, default: null },
   canInteract: { type: Boolean, default: false }
 })
 
@@ -137,7 +139,7 @@ const sheet = computed(() => props.sheetState.sheet || null)
 const countersByName = computed(() => Object.fromEntries(props.counters.map((r) => [r.name, r])))
 const looseCounters = computed(() => props.counters.filter((r) => !sheet.value?.resources?.[r.name]))
 const portrait = computed(() => {
-  const image = props.combatant.image_url || sheet.value?.image
+  const image = props.combatant.image_url || props.imageUrl || sheet.value?.image
   return image ? resolveUrl(image) : null
 })
 </script>
