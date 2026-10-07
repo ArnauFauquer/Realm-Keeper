@@ -3,13 +3,14 @@
 A screen is the table's public view (a TV, a projector): it holds no login,
 and everyone in the room can read it. So what reaches it is built here, from
 the map, its encounter and the characters' saved values, and leaves out
-anything the table keeps to itself: tokens marked `hidden`, which sheet or
+anything the table keeps to itself: tokens and areas marked `hidden`, which sheet or
 combatant a token stands for, and the counters it doesn't show. The server
 does this before sending, never the screen after receiving.
 """
 from typing import Any, Dict, List, Optional
 
-PUBLIC_GRID_FIELDS = ("type", "size", "offset_x", "offset_y", "visible", "color", "opacity", "distance", "unit", "measure")
+PUBLIC_GRID_FIELDS = ("type", "size", "offset_x", "offset_y", "visible", "color", "opacity", "distance", "unit", "measure", "bands")
+PUBLIC_AREA_FIELDS = ("id", "shape", "x", "y", "size", "angle", "spread", "width", "color", "label")
 
 
 def _meters(token: Dict[str, Any], combatant: Optional[Dict[str, Any]], saved: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -44,6 +45,7 @@ def project_for_screen(
             "id": token["id"], "name": token.get("name", ""), "x": token["x"], "y": token["y"],
             "size": token.get("size", 1), "rotation": token.get("rotation", 0),
             "image_url": token.get("image_url"), "color": token.get("color"),
+            "image_scale": token.get("image_scale", 1), "image_x": token.get("image_x", 0), "image_y": token.get("image_y", 0),
             "meters": _meters(token, combatants.get(token.get("combatant")), saved),
         }
         for token in battlemap.get("tokens", [])
@@ -56,4 +58,9 @@ def project_for_screen(
         "image_url": battlemap.get("image_url"),
         "grid": {field: grid[field] for field in PUBLIC_GRID_FIELDS if field in grid},
         "tokens": tokens,
+        "areas": [
+            {field: area[field] for field in PUBLIC_AREA_FIELDS if field in area}
+            for area in battlemap.get("areas", [])
+            if not area.get("hidden")
+        ],
     }

@@ -356,10 +356,15 @@ character's own, and a character can be in an encounter only once.
 ### Battlemaps and the screens
 
 A battlemap is a background image, a grid (square or none; snap, offset, what a
-cell is worth, how the ruler measures) and tokens. Positions and sizes are in
-**cells**, so changing the grid size moves nobody. A token may stand for a
-combatant of the map's encounter (and name its sheet, `sheet`) and show some
-of its counters.
+cell is worth, how the ruler measures: by cells, the straight line, or named
+range `bands` with a reach each), tokens and areas (circle, cone, line,
+square, from an origin; `hidden` ones stay off screens like hidden tokens).
+Positions and sizes are in **cells**, so changing the grid size moves nobody.
+A token may stand for a combatant of the map's encounter (and name its sheet,
+`sheet`) and show some of its counters; `image_scale`, `image_x`, `image_y`
+frame its image. Every measurement (the ruler, a token's path, an area's
+reach) goes through `utils/battlemapGeometry.js` `measurePath`, so the table,
+the screen and someone else's ruler always agree.
 
 `/screen` — a TV, a projector, an OBS source — has no login, so what reaches it
 is **built on the server**, never filtered by the screen:
@@ -368,6 +373,29 @@ combatant a token stands for, and any counter it doesn't show.
 `BattlemapScreen` keeps that projection current: it listens to the hub and
 pushes a fresh one on every change to the map, its encounter or the characters,
 coalesced to at most one per 80 ms so dragging a token doesn't flood the screens.
+
+**Signals** — a ping, the laser pointer, a roll shown over a token, a ruler
+or a token's path while it is dragged (`models/battlemap.py` `MapSignal`;
+a ruler carries its whole path each time, newest wins) — are what is pointed
+at for a moment, and
+are kept nowhere: `POST /api/battlemaps/<id>/signal` changes no document and
+bumps no `rev`. The route stamps who sent it and their colour (from the
+session, like a dice roll) and hands it to `DocHub.announce`, which sends it on
+`/ws/sync` as `{type: "signal", battlemap, …}`, without a `doc` key, so no
+synced document takes it for an event of its own. `BattlemapScreen.relay_signal`
+passes it on to the screens as `battlemap_signal` only when that map is the
+one shown, and never a roll over a hidden token; `ConnectionManager` keeps it
+out of `current_state` (`TRANSIENT_TYPES`, like `dice_roll`), so a screen that
+connects later sees none of it. The pointer is sent a few points at a time
+(at most every 50 ms, one request after another), each point with its time
+since the stroke began, and every view replays it at that pace a moment behind
+(`utils/mapSignals.js`); `BattlemapSignals.vue` redraws only while something is
+showing.
+
+Playing a combatant from the map (`CombatantPlay.vue`, the *Sheet* tab) uses
+the same commands as the encounter tracker (`composables/useCombatantActions.js`:
+counters, conditions, notes, *defeated*, and the combatants' sheets), sent to
+the encounter the map follows.
 
 ### Screens and who may read what
 

@@ -15,6 +15,7 @@
         :viewBox="`0 0 ${naturalWidth} ${naturalHeight}`"
         preserveAspectRatio="xMidYMid meet"
         @pointerdown="onBackgroundDown"
+        @dblclick="onBackgroundDoubleClick"
       >
         <g ref="groupRef">
           <image :href="resolvedImageUrl" x="0" y="0" :width="naturalWidth" :height="naturalHeight" preserveAspectRatio="none" />
@@ -28,49 +29,96 @@
             <rect class="grid-rect" x="0" y="0" :width="naturalWidth" :height="naturalHeight" :fill="`url(#grid-${uid})`" :opacity="grid.opacity" />
           </template>
 
+          <!-- Areas, under the tokens. An area catches the pointer by its
+               outline and origin, so the map can still be panned through it;
+               once selected, by its inside too (to move it), and its reach
+               handle sizes and turns it. -->
           <g
+            v-for="area in shownAreas"
+            :key="area.id"
+            class="area"
+            :class="{ selected: area.id === selectedAreaId, hidden: area.hidden, preview: area.preview }"
+            :style="{ '--area': area.color || DEFAULT_AREA_COLOR }"
+          >
+            <path
+              class="area-fill"
+              :d="areaPath(grid, area)"
+              @pointerdown.stop="onAreaDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            />
+            <path class="area-outline" :d="areaPath(grid, area)" :stroke-width="lineWidth * 2" />
+            <!-- An outline wide enough to hit with a finger. -->
+            <path
+              class="area-hit"
+              :d="areaPath(grid, area)"
+              :stroke-width="Math.max(12, cell * 0.3)"
+              @pointerdown.stop="onAreaDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            />
+            <circle
+              v-if="editable"
+              class="area-handle"
+              :cx="toPixels(grid, area.x, area.y).x"
+              :cy="toPixels(grid, area.x, area.y).y"
+              :r="ringWidth * (area.id === selectedAreaId ? 3 : 2)"
+              @pointerdown.stop="onAreaDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            />
+            <circle
+              v-if="editable && area.id === selectedAreaId"
+              class="area-reach"
+              :cx="areaReachPoint(grid, area).x"
+              :cy="areaReachPoint(grid, area).y"
+              :r="ringWidth * 3"
+              @pointerdown.stop="onReachDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            >
+              <title>Drag to resize{{ area.shape === 'cone' || area.shape === 'line' ? ' and turn' : '' }}</title>
+            </circle>
+            <text
+              class="area-label"
+              :x="areaLabelPoint(grid, area).x"
+              :y="areaLabelPoint(grid, area).y"
+              :font-size="labelSize"
+              text-anchor="middle"
+              dominant-baseline="central"
+            >{{ area.label ? `${area.label} · ` : '' }}{{ areaMeasure(grid, area) }}</text>
+          </g>
+
+          <BattlemapToken
             v-for="token in tokens"
             :key="token.id"
-            class="token"
-            :class="{ selected: token.id === selectedId, hidden: token.hidden, dragging: token.id === draggingId }"
+            :token="token"
+            :cell="grid.size"
+            :clip-id="`clip-${uid}-${token.id}`"
+            :selected="token.id === selectedId"
+            :dragging="token.id === draggingId"
             :transform="`translate(${center(token).x}, ${center(token).y})`"
             @pointerdown.stop="onTokenDown(token, $event)"
             @mousedown.stop.prevent
             @touchstart.stop
-          >
-            <title>{{ token.name }}</title>
-            <clipPath :id="`clip-${uid}-${token.id}`"><circle :r="radius(token)" /></clipPath>
-            <circle class="token-body" :r="radius(token)" :fill="token.color || DEFAULT_COLOR" />
-            <!-- The art turns with the token (which way it faces); its name and bars don't. -->
-            <image
-              v-if="token.image_url"
-              :href="resolveUrl(token.image_url)"
-              :x="-radius(token)" :y="-radius(token)" :width="radius(token) * 2" :height="radius(token) * 2"
-              :clip-path="`url(#clip-${uid}-${token.id})`"
-              :transform="token.rotation ? `rotate(${token.rotation})` : null"
-              preserveAspectRatio="xMidYMid slice"
+            @dblclick.stop="emit('open', token.id)"
+          />
+
+          <!-- Measuring: the ruler, or the path a token is being moved along,
+               its ghost at the end. -->
+          <template v-if="measuring">
+            <MeasurePath :grid="grid" :points="[...measuring.points, measuring.current]" />
+            <BattlemapToken
+              v-if="ghost"
+              :token="ghost"
+              :cell="grid.size"
+              :clip-id="`ghost-${uid}`"
+              ghost
+              :transform="`translate(${measuring.current.x}, ${measuring.current.y})`"
             />
-            <text v-else class="token-initials" :font-size="radius(token) * 0.9" text-anchor="middle" dominant-baseline="central">{{ initials(token.name) }}</text>
-            <circle class="token-ring" :r="radius(token)" fill="none" :stroke-width="ringWidth" />
+          </template>
 
-            <g v-for="(meter, i) in token.meters || []" :key="meter.name" class="meter" :transform="`translate(${-radius(token)}, ${radius(token) + meterGap + i * (meterHeight + 2)})`">
-              <rect class="meter-back" :width="radius(token) * 2" :height="meterHeight" :rx="meterHeight / 2" />
-              <rect class="meter-fill" :width="radius(token) * 2 * meterFill(meter)" :height="meterHeight" :rx="meterHeight / 2" :fill="meter.color || DEFAULT_METER" />
-              <title>{{ meter.name }} {{ meter.current }} / {{ meter.max }}</title>
-            </g>
-
-            <text v-if="token.name" class="token-label" :font-size="labelSize" :y="-radius(token) - labelSize * 0.35" text-anchor="middle">{{ token.name }}</text>
-          </g>
-
-          <g v-if="ruler" class="ruler" pointer-events="none">
-            <line :x1="ruler.from.x" :y1="ruler.from.y" :x2="ruler.to.x" :y2="ruler.to.y" :stroke-width="ringWidth * 1.5" />
-            <circle :cx="ruler.from.x" :cy="ruler.from.y" :r="ringWidth * 2.5" />
-            <circle :cx="ruler.to.x" :cy="ruler.to.y" :r="ringWidth * 2.5" />
-            <g :transform="`translate(${(ruler.from.x + ruler.to.x) / 2}, ${(ruler.from.y + ruler.to.y) / 2})`">
-              <rect class="ruler-back" :x="-rulerSize * 2.6" :y="-rulerSize * 0.9" :width="rulerSize * 5.2" :height="rulerSize * 1.8" :rx="rulerSize * 0.3" />
-              <text class="ruler-label" :font-size="rulerSize" text-anchor="middle" dominant-baseline="central">{{ ruler.label }}</text>
-            </g>
-          </g>
+          <BattlemapSignals v-if="signals" :layer="signals" :grid="grid" :tokens="tokens" />
         </g>
       </svg>
       <CanvasEmptyState v-else-if="imageStatus === 'error'" icon="mdi-image-broken-variant" error>
@@ -84,35 +132,61 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useMapViewport } from '@/composables/useMapViewport'
 import CanvasEmptyState from './CanvasEmptyState.vue'
+import BattlemapSignals from './BattlemapSignals.vue'
+import BattlemapToken from './BattlemapToken.vue'
+import MeasurePath from './MeasurePath.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
+import { useTokenTravel } from '@/composables/useTokenTravel'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
-  cellCenter, initials, measure, meterFill, snapPosition, toCells, toPixels, tokenCenter
+  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, cellCenter, snapPosition, toCells, toPixels, tokenCenter
 } from '@/utils/battlemapGeometry'
 
-// A battlemap drawn: the image, its grid and the tokens on it. It changes
-// nothing itself: moving a token is reported (`moving` while it is dragged,
-// `move` once dropped) for whoever owns the map to apply, and the screen's
-// copy is just this with nothing editable. `tokens` carry what to draw:
-// { id, name, x, y, size, rotation (degrees, clockwise), image_url, color,
-// hidden, meters: [{ name, current, max, min, color }] }.
+// A battlemap drawn: the image, its grid, its areas and the tokens on it. It
+// changes nothing itself: what is done on it is reported for whoever owns the
+// map to apply, and the screen's copy is just this with nothing editable.
+// `tokens` carry what to draw: { id, name, x, y, size, rotation (degrees,
+// clockwise), image_url, image_scale, image_x, image_y, color, hidden,
+// meters: [{ name, current, max, min, color }] }; `areas` are the map's
+// (backend models/battlemap.py Area).
+//
+// Moving a token or measuring follows a path: Space (or a second finger)
+// adds a turn where the pointer is, Backspace takes the last one back. A
+// token stays where it is while it is dragged, its ghost following the
+// pointer with the distance; it moves when let go of.
 const props = defineProps({
   imageUrl: { type: String, default: null },
   grid: { type: Object, required: true },
   tokens: { type: Array, default: () => [] },
+  areas: { type: Array, default: () => [] },
   selectedId: { type: String, default: null },
-  // 'select': drag tokens, pan the map. 'ruler': measure a distance.
+  selectedAreaId: { type: String, default: null },
+  // 'select': drag tokens and areas, pan the map. 'ruler': measure a path.
+  // 'pointer': a tap pings, a drag is the laser pointer. 'area': drag out
+  // an area of `areaShape`.
   tool: { type: String, default: 'select' },
+  areaShape: { type: String, default: 'circle' },
   editable: { type: Boolean, default: false },
   // false on /screen: a projection to look at, not to pan around in.
   zoomable: { type: Boolean, default: true },
-  resetKey: { type: String, default: null }
+  resetKey: { type: String, default: null },
+  // What is pointed at on the map, drawn over it (a layer of utils/mapSignals.js).
+  signals: { type: Object, default: null }
 })
 
-const emit = defineEmits(['select', 'moving', 'move'])
+// `move` (a token let go of: id, { x, y }), `select` (a token, or null),
+// `open` (a token double-clicked: show whoever it stands for), `ping` (a
+// point tapped with the pointer, or the map double-clicked), `point` (the
+// pointer dragged there), `release` (let go of), `measure` ({ points, token,
+// end }: the path being measured or moved along, for everyone to see),
+// `select-area`, `move-area` (id, { x, y }), `reshape-area` (id, { size,
+// angle }) and `add-area` (an area drawn).
+// Points are in cells.
+const emit = defineEmits([
+  'select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'reshape-area', 'add-area'
+])
 
-const DEFAULT_COLOR = '#6d4fc2'
-const DEFAULT_METER = '#4ade80'
+const DEFAULT_AREA_COLOR = '#f97316'
 // How far a press may wander, in pixels of the screen (not of the map: on a
 // big map shown small, a few pixels of the map are less than a finger's
 // wobble), and still be a tap that only selects.
@@ -137,20 +211,77 @@ const cell = computed(() => props.grid.size)
 const lineWidth = computed(() => Math.max(1, cell.value * 0.025))
 const ringWidth = computed(() => Math.max(2, cell.value * 0.05))
 const labelSize = computed(() => Math.max(10, cell.value * 0.24))
-const rulerSize = computed(() => Math.max(14, cell.value * 0.34))
-const meterHeight = computed(() => Math.max(4, cell.value * 0.1))
-const meterGap = computed(() => Math.max(3, cell.value * 0.06))
-const radius = (token) => Math.max(4, ((token.size ?? 1) * cell.value) / 2 - ringWidth.value)
 
-// While a token is dragged (and a moment after it is dropped, until the
-// document catches up) it is drawn where the pointer put it, not where the
-// document still has it.
+const cellsOf = (point) => {
+  const cells = toCells(props.grid, point.x, point.y)
+  return { x: Math.round(cells.x * 100) / 100, y: Math.round(cells.y * 100) / 100 }
+}
+const cellPoint = (event) => {
+  const point = pointer(event)
+  return point && cellsOf(point)
+}
+
+// ── measuring: the ruler, and a token's move ──────────────────────────────
+// { kind: 'ruler' | 'token', token (its id), points: [start, ...turns], current }, in pixels.
+
+const measuring = ref(null)
+const ghost = computed(() => {
+  if (measuring.value?.kind !== 'token') return null
+  return props.tokens.find((t) => t.id === measuring.value.token) || null
+})
+
+function reportMeasure(end = false) {
+  const m = measuring.value
+  if (!m) return
+  emit('measure', { points: [...m.points, m.current].map(cellsOf), token: m.token || null, end })
+}
+
+function addTurn() {
+  const m = measuring.value
+  const last = m?.points[m.points.length - 1]
+  if (!m || (last.x === m.current.x && last.y === m.current.y)) return
+  m.points.push({ ...m.current })
+  reportMeasure()
+}
+
+function dropTurn() {
+  const m = measuring.value
+  if (!m || m.points.length < 2) return
+  m.points.pop()
+  reportMeasure()
+}
+
+const dragging = () => tokenDrag.active() || ruling.active()
+
+function onKey(event) {
+  if (!dragging() || !measuring.value) return
+  if (event.key === ' ') {
+    // Not also a press of whatever button has the focus.
+    event.preventDefault()
+    if (event.type === 'keydown' && !event.repeat) addTurn()
+  } else if (event.key === 'Backspace' && event.type === 'keydown') {
+    event.preventDefault()
+    dropTurn()
+  }
+}
+window.addEventListener('keydown', onKey)
+window.addEventListener('keyup', onKey)
+
+// ── tokens ────────────────────────────────────────────────────────────────
+
+// Once a token is let go of, it is drawn where it was put until the
+// document catches up (a moment), not back where the document still has it.
 const override = ref(null)
 const draggingId = ref(null)
 let releaseTimer = null
 
-const placed = (token) => (override.value?.id === token.id ? { ...token, x: override.value.x, y: override.value.y } : token)
-const center = (token) => tokenCenter(props.grid, placed(token))
+const placed = (token) => (override.value?.id === token.id && draggingId.value !== token.id ? { ...token, x: override.value.x, y: override.value.y } : token)
+// A token that has just moved is drawn where it is on its way there.
+const { centerOf, travel } = useTokenTravel({ tokens: () => props.tokens, layer: () => props.signals })
+const center = (token) => {
+  const travelling = centerOf(token)
+  return travelling ? toPixels(props.grid, travelling.x, travelling.y) : tokenCenter(props.grid, placed(token))
+}
 
 watch(() => props.tokens, (tokens) => {
   const held = override.value
@@ -159,10 +290,9 @@ watch(() => props.tokens, (tokens) => {
   if (!token || (token.x === held.x && token.y === held.y)) override.value = null
 }, { deep: true })
 
-// A token follows the pointer that grabbed it (the primary button, one
-// pointer); where it is let go is where it goes. If the browser cancels the
-// gesture it goes back where it was, and so does everyone else's copy, which
-// was following it as it moved.
+// A token's ghost follows the pointer that grabbed it (the primary button,
+// one pointer), along the path being measured; where it is let go is where
+// the token goes. If the browser cancels the gesture nothing moves.
 const tokenDrag = usePointerDrag({
   toPoint: pointer,
   thresholdPx: DRAG_THRESHOLD_PX,
@@ -170,27 +300,45 @@ const tokenDrag = usePointerDrag({
     const cells = toCells(props.grid, point.x - drag.grab.x, point.y - drag.grab.y)
     const position = snapPosition(props.grid, cells.x, cells.y)
     override.value = { id: drag.id, ...position }
-    emit('moving', drag.id, position)
+    const token = props.tokens.find((t) => t.id === drag.id)
+    measuring.value = {
+      kind: 'token',
+      token: drag.id,
+      points: measuring.value?.points || [tokenCenter(props.grid, { ...token, ...drag.from })],
+      current: tokenCenter(props.grid, { ...token, ...position })
+    }
+    reportMeasure()
   },
   onEnd(drag, { moved }) {
     draggingId.value = null
+    if (moved) reportMeasure(true)
+    const path = measuring.value ? [...measuring.value.points, measuring.value.current].map(cellsOf) : null
+    measuring.value = null
     if (!moved || !override.value) {
       override.value = null
       return
     }
     const { x, y } = override.value
+    // It walks there, along the path it was dragged, turns and all.
+    if (path) travel(drag.id, path)
     emit('move', drag.id, { x, y })
     // Let go of the pointer's position once the document has had time to agree.
     releaseTimer = setTimeout(() => { override.value = null }, 1000)
   },
-  onCancel(drag, { moved }) {
+  onCancel(_drag, { moved }) {
     draggingId.value = null
+    if (moved) reportMeasure(true)
+    measuring.value = null
     override.value = null
-    if (moved) emit('move', drag.id, drag.from)
   }
 })
 
 function onTokenDown(token, event) {
+  // A second finger while something is being dragged: a turn in its path.
+  if (dragging()) {
+    addTurn()
+    return
+  }
   emit('select', token.id)
   if (!props.editable || props.tool !== 'select') return
   const point = pointer(event)
@@ -199,39 +347,187 @@ function onTokenDown(token, event) {
   const grab = { x: point.x - topLeft.x, y: point.y - topLeft.y }
   if (!tokenDrag.start(event, { id: token.id, grab, from: { x: token.x, y: token.y } })) return
   clearTimeout(releaseTimer)
+  override.value = null
+  measuring.value = null
   draggingId.value = token.id
 }
 
-// ── ruler ──────────────────────────────────────────────────────────────────
+// ── the ruler ─────────────────────────────────────────────────────────────
 
-const ruler = ref(null)
-
-const measuring = usePointerDrag({
-  toPoint: (event) => rulerPoint(event),
-  onMove(to) {
-    ruler.value = { from: ruler.value.from, to, label: measure(props.grid, ruler.value.from, to).label }
-  }
-})
-
-watch(() => props.tool, () => { ruler.value = null })
-
-function rulerPoint(event) {
+const rulerPoint = (event) => {
   const point = pointer(event)
   return point && cellCenter(props.grid, point.x, point.y)
 }
 
+const ruling = usePointerDrag({
+  toPoint: rulerPoint,
+  onMove(to) {
+    measuring.value = { ...measuring.value, current: to }
+    reportMeasure()
+  },
+  onEnd() {
+    // It stays up here until the next one; everyone else's copy fades.
+    reportMeasure(true)
+  },
+  onCancel() {
+    reportMeasure(true)
+    measuring.value = null
+  }
+})
+
+// ── areas ─────────────────────────────────────────────────────────────────
+
+const areaPreview = ref(null)
+// { id, ...fields } while an area is moved or reshaped, and a moment after:
+// drawn as the pointer has it until the document agrees.
+const areaOverride = ref(null)
+
+const shownAreas = computed(() => {
+  const held = areaOverride.value
+  const areas = props.areas.map((area) => (held?.id === area.id ? { ...area, ...held } : area))
+  return areaPreview.value ? [...areas, { ...areaPreview.value, id: 'preview', preview: true }] : areas
+})
+
+watch(() => props.areas, (areas) => {
+  const held = areaOverride.value
+  if (!held || areaMove.active() || reaching.active()) return
+  const area = areas.find((a) => a.id === held.id)
+  if (!area || Object.entries(held).every(([field, value]) => area[field] === value)) areaOverride.value = null
+}, { deep: true })
+
+const areaDraw = usePointerDrag({
+  toPoint: cellPoint,
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(to, _event, state) {
+    areaPreview.value = areaFromDrag(props.grid, props.areaShape, state.origin, to)
+  },
+  onEnd() {
+    if (areaPreview.value) {
+      const { shape, x, y, size, angle } = areaPreview.value
+      emit('add-area', { shape, x, y, size, angle })
+    }
+    areaPreview.value = null
+  },
+  onCancel() {
+    areaPreview.value = null
+  }
+})
+
+// An area is moved by its origin, on a cell's centre or corner when the grid snaps.
+const areaMove = usePointerDrag({
+  toPoint: cellPoint,
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(to, _event, state) {
+    const x = to.x - state.grab.x
+    const y = to.y - state.grab.y
+    const snaps = props.grid.type === 'square' && props.grid.snap
+    areaOverride.value = snaps
+      ? { id: state.id, x: Math.round(x * 2) / 2, y: Math.round(y * 2) / 2 }
+      : { id: state.id, x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100 }
+  },
+  onEnd(state, { moved }) {
+    if (!moved || !areaOverride.value) {
+      areaOverride.value = null
+      return
+    }
+    emit('move-area', state.id, { x: areaOverride.value.x, y: areaOverride.value.y })
+  },
+  onCancel() {
+    areaOverride.value = null
+  }
+})
+
+function onAreaDown(area, event) {
+  if (props.tool !== 'select' || area.preview) return
+  emit('select-area', area.id)
+  if (!props.editable) return
+  const at = cellPoint(event)
+  if (at) areaMove.start(event, { id: area.id, grab: { x: at.x - area.x, y: at.y - area.y } })
+}
+
+// The selected area's reach handle: dragged, it sets how far the area
+// reaches (and, for a cone or a line, which way), as drawing it would.
+const reaching = usePointerDrag({
+  toPoint: cellPoint,
+  onMove(to, _event, state) {
+    const { size, angle } = areaFromDrag(props.grid, state.area.shape, { x: state.area.x, y: state.area.y }, to)
+    areaOverride.value = { id: state.area.id, size, angle }
+  },
+  onEnd(state, { moved }) {
+    if (!moved || !areaOverride.value) {
+      areaOverride.value = null
+      return
+    }
+    const { size, angle } = areaOverride.value
+    emit('reshape-area', state.area.id, { size, angle })
+  },
+  onCancel() {
+    areaOverride.value = null
+  }
+})
+
+function onReachDown(area, event) {
+  if (!props.editable) return
+  reaching.start(event, { area })
+}
+
+// ── the pointer ───────────────────────────────────────────────────────────
+
+const pointing = usePointerDrag({
+  toPoint: cellPoint,
+  thresholdPx: DRAG_THRESHOLD_PX,
+  onMove(point) {
+    emit('point', point)
+  },
+  onEnd(state, { moved }) {
+    if (moved) emit('release')
+    else emit('ping', state.from)
+  },
+  onCancel(_state, { moved }) {
+    if (moved) emit('release')
+  }
+})
+
+// ── the bare map ──────────────────────────────────────────────────────────
+
+watch(() => props.tool, () => {
+  measuring.value = null
+  areaPreview.value = null
+})
+
+function onBackgroundDoubleClick(event) {
+  if (props.tool !== 'select') return
+  const at = cellPoint(event)
+  if (at) emit('ping', at)
+}
+
 function onBackgroundDown(event) {
-  if (props.tool === 'ruler') {
+  if (dragging()) {
+    addTurn()
+    return
+  }
+  if (props.tool === 'pointer') {
+    const from = cellPoint(event)
+    if (from) pointing.start(event, { from })
+  } else if (props.tool === 'ruler') {
     if (event.button) return
     const from = rulerPoint(event)
-    if (!from || !measuring.start(event)) return
-    ruler.value = { from, to: from, label: measure(props.grid, from, from).label }
+    if (!from || !ruling.start(event)) return
+    measuring.value = { kind: 'ruler', points: [from], current: from }
+  } else if (props.tool === 'area') {
+    const origin = cellPoint(event)
+    if (origin && props.editable) areaDraw.start(event, { origin })
   } else {
     emit('select', null)
+    emit('select-area', null)
   }
 }
 
-onBeforeUnmount(() => clearTimeout(releaseTimer))
+onBeforeUnmount(() => {
+  clearTimeout(releaseTimer)
+  window.removeEventListener('keydown', onKey)
+  window.removeEventListener('keyup', onKey)
+})
 </script>
 
 <style scoped>
@@ -265,7 +561,9 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   cursor: grab;
 }
 
-.canvas-svg.tool-ruler {
+.canvas-svg.tool-ruler,
+.canvas-svg.tool-pointer,
+.canvas-svg.tool-area {
   cursor: crosshair;
 }
 
@@ -273,52 +571,75 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   pointer-events: none;
 }
 
-.token {
-  cursor: pointer;
-}
-
-.token.dragging {
-  cursor: grabbing;
-}
-
-.canvas-svg.tool-ruler .token {
+/* Only the select tool picks things up; the others work on the bare map. */
+/* (Each part says so: a part's own pointer-events would beat its group's.) */
+.canvas-svg:not(.tool-select) .token,
+.canvas-svg:not(.tool-select) .area,
+.canvas-svg:not(.tool-select) .area * {
   pointer-events: none;
 }
 
-.token-body {
-  stroke: rgba(0, 0, 0, 0.5);
-  stroke-width: 1;
+.area-fill {
+  fill: var(--area);
+  fill-opacity: 0.18;
+  pointer-events: none;
 }
 
-.token-ring {
-  stroke: rgba(255, 255, 255, 0.85);
-  transition: stroke var(--duration-fast) var(--ease-out);
+.area-outline {
+  fill: none;
+  stroke: var(--area);
+  stroke-opacity: 0.9;
+  pointer-events: none;
 }
 
-.token.selected .token-ring {
-  stroke: var(--accent-soft);
+/* The outline as the pointer finds it: wide, invisible. */
+.area-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
+  cursor: move;
 }
 
-.token.selected .token-body {
-  filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.9));
+.area-handle {
+  fill: var(--area);
+  stroke: #fff;
+  stroke-width: 2;
+  cursor: move;
 }
 
-/* A hidden token is one only the table sees: dimmed here, absent from screens. */
-.token.hidden {
-  opacity: 0.45;
+/* Selected, it is picked up by its inside too, and its reach handle shows. */
+.area.selected .area-fill {
+  fill-opacity: 0.28;
+  pointer-events: visiblePainted;
+  cursor: move;
 }
 
-.token.hidden .token-ring {
-  stroke-dasharray: 6 4;
-}
-
-.token-initials {
+.area-reach {
   fill: #fff;
-  font-weight: 700;
+  stroke: var(--area);
+  stroke-width: 3;
+  cursor: nwse-resize;
+}
+
+.area.preview .area-hit {
   pointer-events: none;
 }
 
-.token-label {
+.area.selected .area-outline {
+  stroke: #fff;
+}
+
+/* Only the table sees it: dashed here, absent from screens. */
+.area.hidden {
+  opacity: 0.6;
+}
+
+.area.hidden .area-outline,
+.area.preview .area-outline {
+  stroke-dasharray: 8 6;
+}
+
+.area-label {
   fill: #fff;
   font-weight: 600;
   paint-order: stroke;
@@ -326,33 +647,5 @@ onBeforeUnmount(() => clearTimeout(releaseTimer))
   stroke-width: 3px;
   stroke-linejoin: round;
   pointer-events: none;
-}
-
-.meter-back {
-  fill: rgba(0, 0, 0, 0.65);
-}
-
-.meter-fill {
-  transition: width var(--duration-base) var(--ease-out);
-}
-
-.ruler line {
-  stroke: #fbbf24;
-  stroke-linecap: round;
-}
-
-.ruler circle {
-  fill: #fbbf24;
-}
-
-.ruler-back {
-  fill: rgba(12, 13, 29, 0.9);
-  stroke: #fbbf24;
-  stroke-width: 1.5;
-}
-
-.ruler-label {
-  fill: #fff;
-  font-weight: 700;
 }
 </style>

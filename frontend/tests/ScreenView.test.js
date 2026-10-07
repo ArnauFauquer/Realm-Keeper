@@ -41,7 +41,7 @@ const ScreenView = (await import('@/views/ScreenView.vue')).default
 const stubs = {
   ChartCanvas: { props: ['chart'], template: '<div class="chart">{{ chart.id }}:{{ chart.name }}</div>' },
   VistaCanvas: { props: ['vista'], template: '<div class="vista">{{ vista.id }}</div>' },
-  BattlemapScreen: { props: ['state'], template: '<div class="battlemap">{{ state.battlemap_id }}</div>' },
+  BattlemapScreen: { name: 'BattlemapScreen', props: ['state', 'signals'], template: '<div class="battlemap">{{ state.battlemap_id }}</div>' },
   ConstellationScreen: { props: ['state'], template: '<div class="constellation"></div>' }
 }
 
@@ -112,6 +112,21 @@ describe('ScreenView scenes', () => {
     expect(wrapper.find('.battlemap').text()).toBe('cave')
     await send({ type: 'clear_screen' })
     expect(wrapper.find('.battlemap').exists()).toBe(false)
+  })
+
+  it('hands the battlemap the pings sent for it, and leaves the scene as it is', async () => {
+    await send({ type: 'display_battlemap', battlemap_id: 'cave' })
+    await send({ type: 'update_battlemap', battlemap_id: 'cave', tokens: [], grid: {} })
+    const layer = wrapper.findComponent({ name: 'BattlemapScreen' }).props('signals')
+    const ping = (battlemap_id) => ({ type: 'battlemap_signal', battlemap_id, kind: 'ping', points: [{ x: 1, y: 2 }], by: 'Leo' })
+    await send(ping('other-cave'))
+    expect(layer.idle()).toBe(true)
+    await send(ping('cave'))
+    expect(layer.view().pings).toMatchObject([{ x: 1, y: 2, by: 'Leo' }])
+    expect(wrapper.find('.battlemap').text()).toBe('cave')
+
+    await send({ type: 'display_media', url: '/api/img/map.png' })
+    expect(layer.idle()).toBe(true) // a new scene: the old one's pings go with it
   })
 })
 

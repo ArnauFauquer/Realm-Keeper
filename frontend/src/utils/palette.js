@@ -9,3 +9,6 @@ export const CHART_COLORS = ['#a78bfa', ...SHARED, '#c084fc']
 
 /** A battlemap token's colour (behind its initials, or around its image). */
 export const TOKEN_COLORS = ['#6d4fc2', ...SHARED, '#94a3b8']
+
+/** A battlemap area's colour (its fill, faint, and its outline). */
+export const AREA_COLORS = ['#f97316', ...SHARED, '#94a3b8']

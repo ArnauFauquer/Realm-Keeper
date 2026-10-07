@@ -3,9 +3,11 @@
     :image-url="state.image_url"
     :grid="grid"
     :tokens="state.tokens"
+    :areas="state.areas || []"
     :editable="false"
     :zoomable="false"
     :reset-key="state.battlemap_id"
+    :signals="signals"
   />
 </template>
 
@@ -23,7 +25,8 @@ export const GRID_DEFAULTS = Object.freeze({
   opacity: 0.25,
   distance: 1,
   unit: 'cell',
-  measure: 'grid'
+  measure: 'grid',
+  bands: []
 })
 </script>
 
@@ -35,7 +38,9 @@ import BattlemapCanvas from './BattlemapCanvas.vue'
 // (hidden tokens left out, each token with the counters it shows), drawn by
 // the same canvas the table uses, with nothing to change and no zoom.
 const props = defineProps({
-  state: { type: Object, required: true }
+  state: { type: Object, required: true },
+  // The pings and pointers sent to the screen, over the map (utils/mapSignals.js).
+  signals: { type: Object, default: null }
 })
 
 // A projection carries the grid's public fields; the rest take their usual values.

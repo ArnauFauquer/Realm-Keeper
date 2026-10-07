@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest'
 import { h, ref } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { sanitize } = vi.hoisted(() => ({ sanitize: vi.fn((html) => html) }))
 vi.mock('@/utils/sanitizeHtml', () => ({ sanitizeHtml: sanitize }))
-vi.mock('@/composables/useDiceRoller', () => ({ useDiceRoller: () => ({ roll: vi.fn() }) }))
+const { roll } = vi.hoisted(() => ({ roll: vi.fn() }))
+vi.mock('@/composables/useDiceRoller', () => ({ useDiceRoller: () => ({ roll }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
 
@@ -34,5 +35,20 @@ describe('SheetView', () => {
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.live').text()).toBe('5')
     expect(sanitize.mock.calls.length).toBe(renders)
+  })
+
+  it('names who rolls, and says once the roll has landed', async () => {
+    roll.mockResolvedValue({ total: 9 })
+    const sheet = { ...SHEET, sections: [{ ...SHEET.sections[0], items: [{ name: 'Gore', text: null, roll: '2d6+2', tags: [], cost: null }] }] }
+    const wrapper = mount(SheetView, { props: { sheet, canInteract: true, rollerName: 'Orc 2' } })
+    await wrapper.find('.sheet-roll').trigger('click')
+    await flushPromises()
+    expect(roll).toHaveBeenCalledWith('2d6+2', { label: 'Orc 2 · Gore' })
+    expect(wrapper.emitted('rolled')).toEqual([[{ label: 'Gore', formula: '2d6+2', total: 9 }]])
+  })
+
+  it('leaves its header to whoever shows it, when asked', () => {
+    expect(mount(SheetView, { props: { sheet: SHEET } }).find('.sheet-head').exists()).toBe(true)
+    expect(mount(SheetView, { props: { sheet: SHEET, showHeader: false } }).find('.sheet-head').exists()).toBe(false)
   })
 })

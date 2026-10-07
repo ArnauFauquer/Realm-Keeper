@@ -150,6 +150,13 @@ class DocHub:
     def disconnect(self, websocket: WebSocket) -> None:
         self.sockets.remove(websocket)
 
+    async def announce(self, message: Dict[str, Any]) -> None:
+        """Sends every client something that is no change to a document (a
+        ping on a map): it carries no `doc`, so no document takes it as one."""
+        if "doc" in message:
+            raise ValueError("an announcement is not a document's event")
+        await self.sockets.broadcast(message)
+
     async def _broadcast(self, event: Dict[str, Any]) -> None:
         # To every client at once, each with a time limit (see SocketGroup):
         # the document's lock is held while this runs.

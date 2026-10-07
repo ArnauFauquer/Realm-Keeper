@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  cellCenter, freeCells, initials, measure, meterFill, snapPosition, toCells, toPixels, tokenCenter
+  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, bandFor, bandRings, cellCenter, freeCells, initials, measure,
+  measurePath, meterFill, snapPosition, toCells, toPixels, tokenCenter, tokenImageFrame
 } from '@/utils/battlemapGeometry'
 
 const GRID = { type: 'square', size: 50, offset_x: 10, offset_y: 20, snap: true, distance: 5, unit: 'ft', measure: 'grid' }
@@ -87,5 +88,99 @@ describe('meterFill', () => {
     expect(meterFill({ current: 2, max: 6, min: 2 })).toBe(0)
     expect(meterFill({ current: 9, max: 6 })).toBe(1)
     expect(meterFill({ current: 1, max: 0 })).toBe(0)
+  })
+})
+
+describe('measurePath', () => {
+  const at = (x, y) => toPixels(GRID, x, y)
+
+  it('adds up every leg of a path with turns, each counted as the map counts', () => {
+    // 3 right then 4 down: 7 cells by grid, 7 by the line too (each leg is straight).
+    expect(measurePath(GRID, [at(0, 0), at(3, 0), at(3, 4)]).cells).toBe(7)
+    expect(measurePath({ ...GRID, measure: 'straight' }, [at(0, 0), at(3, 0), at(3, 4)]).cells).toBe(7)
+    // A diagonal leg: one cell a step by grid, its length by the line.
+    expect(measurePath(GRID, [at(0, 0), at(2, 2), at(2, 5)]).cells).toBe(5)
+    expect(measurePath(GRID, [at(1, 1)]).cells).toBe(0)
+  })
+
+  it('names the band a distance falls in, on a map measured in bands', () => {
+    const bands = [{ name: 'Melee', max: 5 }, { name: 'Close', max: 30 }, { name: 'Far', max: null }]
+    const grid = { ...GRID, measure: 'bands', bands }
+    expect(measurePath(grid, [at(0, 0), at(1, 0)]).label).toBe('Melee') // 5 ft: still in reach
+    expect(measurePath(grid, [at(0, 0), at(3, 4)]).label).toBe('Close') // 25 ft, measured straight
+    const far = measurePath(grid, [at(0, 0), at(20, 0)])
+    expect([far.label, far.distance]).toEqual(['Far', 100])
+    expect(measurePath({ ...grid, bands: [] }, [at(0, 0), at(1, 0)]).label).toBe('5 ft') // no bands yet
+  })
+})
+
+describe('bands', () => {
+  it('a distance beyond every reach falls in the last band', () => {
+    expect(bandFor([{ name: 'A', max: 1 }, { name: 'B', max: 2 }], 9).name).toBe('B')
+    expect(bandFor([], 3)).toBeNull()
+  })
+
+  it('draws a ring per band with a reach, in pixels', () => {
+    const grid = { ...GRID, measure: 'bands', bands: [{ name: 'Near', max: 10 }, { name: 'Far', max: null }] }
+    expect(bandRings(grid)).toEqual([{ name: 'Near', r: 100 }]) // 10 ft = 2 cells of 50 px
+    expect(bandRings({ ...grid, measure: 'grid' })).toEqual([])
+  })
+})
+
+describe('areas', () => {
+  const area = (fields) => ({ x: 2, y: 2, size: 2, angle: 0, spread: 60, width: 1, ...fields })
+  const G = { ...GRID, offset_x: 0, offset_y: 0 }
+
+  it('outlines each shape from its origin', () => {
+    expect(areaPath(G, area({ shape: 'circle' }))).toBe('M 0 100 a 100 100 0 1 0 200 0 a 100 100 0 1 0 -200 0 Z')
+    expect(areaPath(G, area({ shape: 'square', size: 1 }))).toBe('M 50 50 h 100 v 100 h -100 Z')
+    expect(areaPath(G, area({ shape: 'line', width: 1 }))).toBe('M 100 125 L 200 125 L 200 75 L 100 75 Z')
+    const cone = areaPath(G, area({ shape: 'cone', spread: 90 }))
+    expect(cone.startsWith('M 100 100 L 170.71 29.29 A 100 100 0 0 1 170.71 170.71')).toBe(true)
+    expect(areaPath(G, area({ shape: 'cone', spread: 360 }))).toBe(areaPath(G, area({ shape: 'circle' })))
+  })
+
+  it('says what it reaches as the table counts it', () => {
+    expect(areaMeasure(GRID, area({ shape: 'circle' }))).toBe('10 ft')
+    expect(areaMeasure(GRID, area({ shape: 'square', size: 1 }))).toBe('10 ft') // its side
+    expect(areaMeasure(GRID, area({ shape: 'line', size: 6 }))).toBe('30 ft × 5 ft')
+    const bands = { ...GRID, measure: 'bands', bands: [{ name: 'Close', max: 15 }, { name: 'Far' }] }
+    expect(areaMeasure(bands, area({ shape: 'cone', size: 6 }))).toBe('Far')
+  })
+
+  it('puts the reach handle at the end of a cone or line, on a circle, at a square\'s corner', () => {
+    expect(areaReachPoint(G, area({ shape: 'line', angle: 90 }))).toEqual({ x: 100, y: 200 })
+    expect(areaReachPoint(G, area({ shape: 'circle' }))).toEqual({ x: 200, y: 100 })
+    expect(areaReachPoint(G, area({ shape: 'square', size: 1 }))).toEqual({ x: 150, y: 150 })
+  })
+
+  it('labels a cone or line along it, the rest at their origin', () => {
+    expect(areaLabelPoint(G, area({ shape: 'circle' }))).toEqual({ x: 100, y: 100 })
+    expect(areaLabelPoint(G, area({ shape: 'line', angle: 90 })).y).toBeCloseTo(150)
+  })
+
+  it('is drawn from a drag: snapped on a grid that snaps, free otherwise', () => {
+    expect(areaFromDrag(GRID, 'circle', { x: 2.2, y: 2.4 }, { x: 5.4, y: 2.5 })).toEqual({ shape: 'circle', x: 2, y: 2.5, size: 3, angle: 0 })
+    expect(areaFromDrag(GRID, 'cone', { x: 2, y: 2 }, { x: 2, y: 6 }).angle).toBe(90)
+    expect(areaFromDrag(GRID, 'square', { x: 2, y: 2 }, { x: 3.2, y: 2.1 }).size).toBe(1)
+    expect(areaFromDrag(GRID, 'circle', { x: 2, y: 2 }, { x: 2.1, y: 2 }).size).toBe(1) // never nothing
+    const free = areaFromDrag({ ...GRID, snap: false }, 'line', { x: 2.123, y: 2 }, { x: 4.5, y: 2 })
+    expect(free).toEqual({ shape: 'line', x: 2.12, y: 2, size: 2.38, angle: 0 })
+  })
+})
+
+describe('tokenImageFrame', () => {
+  it('fills the token by default, and is zoomed and moved as the token says', () => {
+    expect(tokenImageFrame({}, 50)).toEqual({ x: -50, y: -50, width: 100, height: 100 })
+    expect(tokenImageFrame({ image_scale: 2, image_x: 0.25, image_y: -0.1 }, 50)).toEqual({ x: -75, y: -110, width: 200, height: 200 })
+  })
+
+  it('keeps the image whole, at its own proportions: its short side covers the token', () => {
+    // A portrait twice as tall as wide: as wide as the token, twice as tall,
+    // so its top half can be brought into the token by moving it down.
+    expect(tokenImageFrame({}, 50, 0.5)).toEqual({ x: -50, y: -100, width: 100, height: 200 })
+    expect(tokenImageFrame({ image_y: 0.5 }, 50, 0.5).y).toBe(-50) // its top at the token's top
+    expect(tokenImageFrame({}, 50, 2)).toEqual({ x: -100, y: -50, width: 200, height: 100 })
+    expect(tokenImageFrame({}, 50, 0)).toEqual({ x: -50, y: -50, width: 100, height: 100 }) // not known yet
   })
 })

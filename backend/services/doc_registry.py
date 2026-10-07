@@ -50,7 +50,7 @@ BATTLEMAP = DocType(
     kind="battlemap", prefix="battlemaps",
     model=Battlemap, metadata_model=BattlemapMetadata, items_key="battlemaps",
     image_fields=("image_url", "tokens[].image_url"),
-    live=True, collections=("tokens",), patchable=("name", "description", "image_url", "grid", "encounter"),
+    live=True, collections=("tokens", "areas"), patchable=("name", "description", "image_url", "grid", "encounter"),
 )
 
 # Sheets: a character is an individual whose counters are played live, the

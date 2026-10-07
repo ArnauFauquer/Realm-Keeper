@@ -147,9 +147,25 @@ order suits your table.
 encounter. Pick a map image from the Observatory and lay a grid over it
 (cell size and offset in pixels of the image, snapping on or off). Tokens are
 placed in cells, so changing the grid never moves anyone; drag them, resize
-them, give them an image or a colour. A **ruler** measures between cells: you
-say what one cell is worth (5 ft, 1.5 m, 1 square…) and whether a diagonal
-costs one cell or its length.
+them, give them an image or a colour, and frame the image (drag it inside the
+token, zoom, turn). A **ruler** (`R`) measures between cells: you say what one
+cell is worth (5 ft, 1.5 m, 1 square…) and whether a diagonal costs one cell
+or its length. Everyone on the map, and the screen, sees who is measuring
+what.
+- **Moving a token** draws the ruler from where it stands: it stays put while
+  its ghost follows the pointer with the distance, and moves when you let go.
+  **Space** (or a second finger) adds a turn to the path, Backspace takes it
+  back; the distance counts every leg.
+- **Range bands** for tables that play by ranges rather than squares: name
+  your bands and how far each reaches (*Map → Distance → Range bands*). The
+  ruler, a moving token and areas then say which band a distance falls in,
+  with each band's ring around where it starts. Turn snapping off for free
+  movement, and the grid off altogether if the map has none.
+- **Areas** (`A`): circles, cones, lines and squares dragged out from where
+  they start (spells, zones, hazards). They stay on the map until removed.
+  Click one (its outline or origin) to select it: drag it from inside to move
+  it, drag its white handle to resize it (and turn a cone or line); name,
+  colour or hide it from the screen in *Tokens → Areas*.
 - Attach an **encounter** and *Place combatants* puts a token for each one. A
   token can show some of its combatant's counters as bars (an adversary's own,
   or a character's), and they follow the encounter as it changes.
@@ -157,6 +173,21 @@ costs one cell or its length.
   screen**: *Show on the screen* sends the server's view of the map, made
   without them (and without which sheet or combatant a token stands for). The
   screen follows every change — moves, new tokens, counters — a moment later.
+- **Play the sheets from the map.** The *Sheet* tab shows whoever the selected
+  token stands for (double-click a token, or pick anyone in the encounter, on
+  the map or not): their whole sheet, with its counters live (an adversary's
+  own, a character's saved ones), conditions, notes, *defeated*, and a link to
+  edit the sheet. Its rolls are named after the combatant ("Bugboar 2 · Gore"),
+  go to the screen like any roll, and show over the token for a few seconds,
+  for everyone on the map and on the screen (unless the token is hidden).
+  *Add to the fight* brings adversaries and characters from their sheets into
+  the encounter and puts their tokens on the map; a map without an encounter
+  gets one of its own with *New encounter for this map*.
+- **Point at things.** The pointer tool (`P`; `V` selects): a
+  tap pings a spot, a drag is a laser pointer with a fading trail.
+  Double-clicking the bare map pings too. Everyone with the map open sees it,
+  in red with the pointer's name, and so does the screen when it shows this
+  map. Nothing is kept: a ping is not part of the map.
 - Everyone signed in can move any token and change any setting.
 
 **The Observatory** — where everything but the notes lives: one tree of folders

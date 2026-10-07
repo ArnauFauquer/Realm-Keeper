@@ -17,7 +17,7 @@
 
     <!-- Battlemap area -->
     <div v-else-if="activeBattlemap" class="screen-battlemap-area">
-      <BattlemapScreen :state="activeBattlemap" />
+      <BattlemapScreen :state="activeBattlemap" :signals="mapSignals" />
     </div>
 
     <!-- Constellation area: restarted each time the GM sends it again -->
@@ -117,6 +117,7 @@ import { chartsApi, vistasApi } from '@/api/docs'
 import { useScreenSocket } from '@/composables/useScreenSocket'
 import { drawStarfield } from '@/composables/useConstellationGraph'
 import { EMPTY_SCENE, changesScene, reduceScene, screenMediaUrl } from '@/utils/screenScene'
+import { createSignalLayer } from '@/utils/mapSignals'
 import { resolveDuality, resolveNatural, rollClass, DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS } from '@/utils/diceNotation'
 
 const route = useRoute()
@@ -152,13 +153,24 @@ async function fetchSceneDoc({ kind, id, seq }) {
   }
 }
 
+// Pings, the pointer and rolls over tokens on the battlemap showing: drawn
+// over it for a moment, and kept nowhere.
+const mapSignals = createSignalLayer()
+
 function onMessage(data) {
   if (data.type === 'dice_roll') {
     showDiceRoll(data)
     return
   }
+  if (data.type === 'battlemap_signal') {
+    if (activeBattlemap.value && data.battlemap_id === scene.value.id) mapSignals.receive(data)
+    return
+  }
   const newScene = changesScene(data)
-  if (newScene) clearDiceRoll()
+  if (newScene) {
+    clearDiceRoll()
+    mapSignals.clear()
+  }
   const previousUrl = displayUrl.value
   const hasMedia = data.type === 'display_media' && data.url
   dispatch(hasMedia ? { ...data, url: screenMediaUrl(data.url, window.location.hostname) } : data)
