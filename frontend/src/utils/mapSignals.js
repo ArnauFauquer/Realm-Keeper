@@ -22,8 +22,8 @@ export const REPLAY_DELAY_MS = 120
 export const RULER_LINGER_MS = 1500
 /** A ruler whose end never came: someone may hold still measuring a while. */
 export const RULER_IDLE_MS = 30000
-/** The laser pointer is red for everyone, whoever holds it (their name says
- * who): it has to stand out on any map. */
+/** The laser pointer and its pings are red for everyone, whoever holds it
+ * (their name says who): they have to stand out on any map. */
 export const POINTER_COLOR = '#ff2d2d'
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -41,6 +41,7 @@ export function createSignalLayer() {
   const strokes = new Map()
   const rolls = new Map() // by token: one roll over it at a time, the newest
   const rulers = new Map() // by stroke: { key, color, by, token, points, ended, lastAt }
+  const paths = new Map() // by token: the newest path it was moved along, { points, at }
   const listeners = new Set()
   let seq = 0
 
@@ -50,7 +51,7 @@ export function createSignalLayer() {
     if (signal.kind === 'ping') {
       const [point] = signal.points || []
       if (!point) return
-      pings.push({ id: ++seq, x: point.x, y: point.y, color, by, at })
+      pings.push({ id: ++seq, x: point.x, y: point.y, color: POINTER_COLOR, by, at })
     } else if (signal.kind === 'pointer') {
       receivePointer(signal, at, { color: POINTER_COLOR, by, local })
     } else if (signal.kind === 'ruler' && signal.stroke) {
@@ -59,6 +60,8 @@ export function createSignalLayer() {
       const before = rulers.get(key)
       const points = signal.points?.length ? signal.points.map(({ x, y }) => ({ x, y })) : before?.points || []
       rulers.set(key, { key, color, by, token: signal.token || null, points, ended: !!signal.end, lastAt: at })
+      // The path a token is being moved along, for it to travel once it moves.
+      if (signal.token && points.length) paths.set(signal.token, { points, at })
     } else if (signal.kind === 'roll' && signal.token && signal.roll) {
       rolls.set(signal.token, { id: ++seq, token: signal.token, ...signal.roll, color, by, at })
     } else {
@@ -140,6 +143,7 @@ export function createSignalLayer() {
     strokes.clear()
     rolls.clear()
     rulers.clear()
+    paths.clear()
   }
 
   function subscribe(listener) {
@@ -147,5 +151,12 @@ export function createSignalLayer() {
     return () => listeners.delete(listener)
   }
 
-  return { receive, view, prune, idle, clear, subscribe }
+  /** The path a token was last moved along (cells: where it started, its
+   * turns, where it ended), if it was heard of at `since` or later. */
+  function pathFor(token, since = 0) {
+    const path = paths.get(token)
+    return path && path.at >= since ? path.points : null
+  }
+
+  return { receive, view, prune, idle, clear, subscribe, pathFor }
 }

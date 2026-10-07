@@ -186,8 +186,8 @@ what.
 - **Point at things.** The pointer tool (`P`; `V` selects): a
   tap pings a spot, a drag is a laser pointer with a fading trail.
   Double-clicking the bare map pings too. Everyone with the map open sees it,
-  in the pointer's own player colour and with their name, and so does the
-  screen when it shows this map. Nothing is kept: a ping is not part of the map.
+  in red with the pointer's name, and so does the screen when it shows this
+  map. Nothing is kept: a ping is not part of the map.
 - Everyone signed in can move any token and change any setting.
 
 **The Observatory** — where everything but the notes lives: one tree of folders

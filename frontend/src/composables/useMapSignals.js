@@ -118,7 +118,14 @@ export function useMapSignals(battlemapId, { canSend = () => true } = {}) {
     const current = measurement
     current.pending = { kind: 'ruler', stroke: current.id, points: thin(points.map(({ x, y }) => ({ x, y }))), token, end }
     if (end) current.closed = true
-    scheduleMeasure(current)
+    // The end goes at once (unless one is on its way): a token's path should
+    // reach everyone before, or with, the move it leads to.
+    if (end && !current.sending) {
+      clearTimeout(current.timer)
+      flushMeasure(current)
+    } else {
+      scheduleMeasure(current)
+    }
   }
 
   function scheduleMeasure(current) {

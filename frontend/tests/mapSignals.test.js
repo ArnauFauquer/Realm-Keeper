@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { PING_MS, POINTER_COLOR, REPLAY_DELAY_MS, ROLL_MS, RULER_IDLE_MS, RULER_LINGER_MS, STROKE_IDLE_MS, TRAIL_MS, createSignalLayer } from '@/utils/mapSignals'
-import { PLAYER_SIGNAL_COLORS } from '@/dice/diceTheme'
 
 const ping = (x, y, extra = {}) => ({ kind: 'ping', points: [{ x, y }], by: 'Mia', slot: 1, ...extra })
 const pointer = (points, extra = {}) => ({ kind: 'pointer', stroke: 's1', source: 'tab', by: 'Mia', slot: 2, points, ...extra })
 
 describe('a signal layer', () => {
-  it('shows a ping where it was sent, in its sender\'s colour, until it fades', () => {
+  it('shows a ping where it was sent, in red with its sender\'s name, until it fades', () => {
     const layer = createSignalLayer()
     layer.receive(ping(3, 4), 1000)
     const [shown] = layer.view(1000 + PING_MS / 2).pings
-    expect(shown).toMatchObject({ x: 3, y: 4, by: 'Mia', color: PLAYER_SIGNAL_COLORS[1], progress: 0.5 })
+    expect(shown).toMatchObject({ x: 3, y: 4, by: 'Mia', color: POINTER_COLOR, progress: 0.5 }) // red, like the laser
     expect(layer.view(1000 + PING_MS).pings).toEqual([])
     layer.prune(1000 + PING_MS)
     expect(layer.idle()).toBe(true)

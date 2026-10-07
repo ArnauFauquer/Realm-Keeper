@@ -136,6 +136,7 @@ import BattlemapSignals from './BattlemapSignals.vue'
 import BattlemapToken from './BattlemapToken.vue'
 import MeasurePath from './MeasurePath.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
+import { useTokenTravel } from '@/composables/useTokenTravel'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
   areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, cellCenter, snapPosition, toCells, toPixels, tokenCenter
@@ -275,7 +276,12 @@ const draggingId = ref(null)
 let releaseTimer = null
 
 const placed = (token) => (override.value?.id === token.id && draggingId.value !== token.id ? { ...token, x: override.value.x, y: override.value.y } : token)
-const center = (token) => tokenCenter(props.grid, placed(token))
+// A token that has just moved is drawn where it is on its way there.
+const { centerOf, travel } = useTokenTravel({ tokens: () => props.tokens, layer: () => props.signals })
+const center = (token) => {
+  const travelling = centerOf(token)
+  return travelling ? toPixels(props.grid, travelling.x, travelling.y) : tokenCenter(props.grid, placed(token))
+}
 
 watch(() => props.tokens, (tokens) => {
   const held = override.value
@@ -306,12 +312,15 @@ const tokenDrag = usePointerDrag({
   onEnd(drag, { moved }) {
     draggingId.value = null
     if (moved) reportMeasure(true)
+    const path = measuring.value ? [...measuring.value.points, measuring.value.current].map(cellsOf) : null
     measuring.value = null
     if (!moved || !override.value) {
       override.value = null
       return
     }
     const { x, y } = override.value
+    // It walks there, along the path it was dragged, turns and all.
+    if (path) travel(drag.id, path)
     emit('move', drag.id, { x, y })
     // Let go of the pointer's position once the document has had time to agree.
     releaseTimer = setTimeout(() => { override.value = null }, 1000)
