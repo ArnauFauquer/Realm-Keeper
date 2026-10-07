@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.2](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.1...v0.4.2) (2026-10-07)
+
+
+### Features
+
+* **battlemap:** a calmer map, one panel about one thing at a time ([#58](https://github.com/ArnauFauquer/Realm-Keeper/issues/58)) ([1f0c0a3](https://github.com/ArnauFauquer/Realm-Keeper/commit/1f0c0a3dbb0412e4827a0ca207276b27fcde2542))
+* **battlemap:** play sheets, ping/laser, shared ruler, areas, range bands ([#57](https://github.com/ArnauFauquer/Realm-Keeper/issues/57)) ([d79e7b4](https://github.com/ArnauFauquer/Realm-Keeper/commit/d79e7b4f32b0107cf43db11ec09ca3dade52c965))
+* git, S3 and the login are each optional; sign in with any OIDC provider or GitHub ([#59](https://github.com/ArnauFauquer/Realm-Keeper/issues/59)) ([d704811](https://github.com/ArnauFauquer/Realm-Keeper/commit/d704811ff95da9258f91f999e59476e4211fde30))
+* **sheets:** characters and adversaries open in preview ([#56](https://github.com/ArnauFauquer/Realm-Keeper/issues/56)) ([4bfce3e](https://github.com/ArnauFauquer/Realm-Keeper/commit/4bfce3e41917998e05b1dd1e9d00b7674566d86d))
+* **sheets:** start a sheet from a game system's template ([#53](https://github.com/ArnauFauquer/Realm-Keeper/issues/53)) ([504f47a](https://github.com/ArnauFauquer/Realm-Keeper/commit/504f47a57140c046792b19c379f61b9fde6d83ab))
+
+
+### Bug Fixes
+
+* offer a reload when a deploy leaves a tab behind; ping under reduced motion ([#60](https://github.com/ArnauFauquer/Realm-Keeper/issues/60)) ([a4348bd](https://github.com/ArnauFauquer/Realm-Keeper/commit/a4348bd4b66414ad74d928f4e422eb8466d73aad))
+
 ## [0.4.1](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.0...v0.4.1) (2026-10-06)
 
 
