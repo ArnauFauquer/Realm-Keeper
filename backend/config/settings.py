@@ -13,6 +13,9 @@ def _flag(name: str, default: bool) -> bool:
 class Settings:
     VAULT_PATH: Path = Path(os.getenv("VAULT_PATH", "./vault"))
     NOTE_TAG_IGNORE: str = os.getenv("NOTE_TAG_IGNORE", "private")
+    # The note the app opens on (its id: path without ".md"). Empty: the first
+    # of HOME_NOTE_CANDIDATES the vault has (services/markdown_service.py).
+    HOME_NOTE: str = os.getenv("HOME_NOTE", "").strip().strip("/")
     REPO_URL: str = os.getenv("REPO_URL", "")
     # Whether the vault is a git repository the app pulls and pushes. On by
     # default when there is a REPO_URL to clone. Off, the vault is a plain

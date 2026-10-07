@@ -347,7 +347,16 @@ Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
 
 ## Quick start (Docker Compose)
 
-Requirements: Docker with Compose 2.24 or later.
+**To run it**, without building anything: [examples/](examples) has ready-made
+setups on the published images, from a folder of notes with no login
+(`examples/01-minimal`) to a server with HTTPS, Git, MinIO and single sign-on.
+
+```bash
+cd examples/01-minimal
+docker compose up -d        # http://localhost:8080
+```
+
+**To work on it**, from this checkout (requires Docker with Compose 2.24 or later):
 
 ```bash
 cp .env.example .env
@@ -433,6 +442,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `GIT_SYNC_INTERVAL`     | `300`                    | Seconds between pulls (`0` disables periodic sync)                |
 | `VAULT_WATCH_INTERVAL`  | `10`                     | Without Git: seconds between checks for notes changed on disk (`0` disables) |
 | `NOTE_TAG_IGNORE`       | `private`                | Notes with this tag are hidden                                    |
+| `HOME_NOTE`             | found in the vault       | The note the app opens on (its path without `.md`); else the first of `RealmKeeper`, `index`, `Home`, `README`, `Welcome` at the vault's top, else its first note |
 | `STORAGE_BACKEND`       | `s3` if `S3_ENDPOINT_URL` is set, else `local` | Where documents, images and audio go               |
 | `STORAGE_LOCAL_PATH`    | `./data` (`/data` in Compose) | The folder for `local` (formerly `DOCS_LOCAL_PATH`, still read) |
 | `DATA_DIR`              | a named volume           | Compose only: a host folder for `/data` instead                   |
@@ -455,7 +465,7 @@ and [backend/.env.example](backend/.env.example) for annotated examples.
 | `CORS_ALLOWED_ORIGINS`  | `http://localhost:5173`  | Comma-separated allowed origins                                   |
 | `LOG_LEVEL`             | `INFO`                   | Backend log level                                                 |
 | `LOG_DIR`               | `/app/logs`              | Where `app.log` and `error.log` are written (rotated at 10 MB, 3 kept) |
-| `VITE_DEFAULT_PAGE`     | `index`                  | Note opened on the home page (frontend build arg)                 |
+| `VITE_DEFAULT_PAGE`     | —                        | Frontend build arg: fixes the home note at build time, over `HOME_NOTE` |
 | `VITE_API_URL`          | empty                    | Backend URL; leave empty when nginx proxies `/api` and `/ws`      |
 
 ## Development without Docker

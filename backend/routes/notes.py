@@ -53,6 +53,13 @@ def get_all_notes(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 
+@router.get("/home")
+def get_home(service: MarkdownService = Depends(get_markdown_service)):
+    """The note the app opens on (HOME_NOTE, or found in the vault); null
+    when the vault has no notes yet."""
+    return {"note": service.home_note(settings.HOME_NOTE)}
+
+
 @router.get("/note/{note_path:path}", response_model=Note)
 def get_note(note_path: str, service: MarkdownService = Depends(get_markdown_service)):
     note = service.get_note(_note_id(service, note_path))

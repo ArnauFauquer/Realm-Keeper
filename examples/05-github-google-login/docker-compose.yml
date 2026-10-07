@@ -1,0 +1,36 @@
+# Sign in with GitHub and/or Google: each provider configured in .env gets a
+# button. Only the emails on ALLOWED_EMAILS get in (any of a GitHub account's
+# verified emails counts). Files only otherwise, as in 01-minimal.
+#
+#   cp .env.example .env   # and fill it in
+#   docker compose up -d   ->   http://localhost:8080
+services:
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      VAULT_PATH: /vault
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data
+      ENABLE_AUTH: "true"
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ALLOWED_EMAILS: ${ALLOWED_EMAILS:?Set ALLOWED_EMAILS in .env}
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:?Set SESSION_SECRET_KEY in .env}
+      FRONTEND_URL: ${APP_URL:-http://localhost:8080}
+    volumes:
+      - ${VAULT_DIR:-../sample-vault}:/vault
+      - data:/data
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${RK_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  data:

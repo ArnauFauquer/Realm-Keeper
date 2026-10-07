@@ -1,0 +1,57 @@
+# A login with local users and passwords, no outside account needed: Dex
+# (dex.yaml) is the OpenID Connect provider, and the app lets in the emails
+# on ALLOWED_EMAILS. Files only otherwise, as in 01-minimal.
+#
+#   docker compose up -d   ->   http://localhost:8080
+#   Sign in as gm@example.com / gamemaster, or player@example.com / player.
+services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.43.1
+    restart: unless-stopped
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    volumes:
+      - ./dex.yaml:/etc/dex/config.yaml:ro
+    ports:
+      - "5556:5556"
+    networks:
+      default:
+        # The issuer's name (dex.yaml), so the backend reaches Dex at the same
+        # address the browser does.
+        aliases:
+          - dex.localhost
+
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      VAULT_PATH: /vault
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data
+      ENABLE_AUTH: "true"
+      OIDC_ISSUER_URL: http://dex.localhost:5556/dex
+      OIDC_CLIENT_ID: realm-keeper
+      OIDC_CLIENT_SECRET: change-this-client-secret
+      OIDC_NAME: Realm Keeper account
+      # Who may sign in; the order sets each one's dice colour.
+      ALLOWED_EMAILS: gm@example.com,player@example.com
+      # Signs the session cookie. Without it, everyone is signed out whenever
+      # the backend restarts. Make one with:  openssl rand -base64 32
+      SESSION_SECRET_KEY: ${SESSION_SECRET_KEY:-}
+      FRONTEND_URL: http://localhost:8080
+    volumes:
+      - ${VAULT_DIR:-../sample-vault}:/vault
+      - data:/data
+    depends_on:
+      - dex
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      # The redirect URI in dex.yaml names this port: change both together.
+      - "8080:8080"
+    depends_on:
+      - backend
+
+volumes:
+  data:

@@ -14,6 +14,11 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
+# The home page, when HOME_NOTE doesn't name one: the first of these the vault
+# has at its top (any case). "RealmKeeper" first, the home page before it
+# could be chosen.
+HOME_NOTE_CANDIDATES = ("RealmKeeper", "index", "Home", "README", "Welcome")
+
 
 class NoteSaveError(Exception):
     """Raised when writing a note to disk or to git fails."""
@@ -333,6 +338,22 @@ class MarkdownService:
             self._all_notes_cache = None
             self.parser.invalidate_index()
     
+    def home_note(self, configured: str = "") -> Optional[str]:
+        """The note the app opens on: `configured` (HOME_NOTE) if the vault
+        has it, else the first of HOME_NOTE_CANDIDATES at the vault's top,
+        else its first note at the top, else any. None for an empty vault."""
+        visible = {n.id: n for n in self._all_notes()}
+        if not visible:
+            return None
+        if configured in visible:
+            return configured
+        by_name = {note_id.lower(): note_id for note_id in visible if "/" not in note_id}
+        for candidate in HOME_NOTE_CANDIDATES:
+            if candidate.lower() in by_name:
+                return by_name[candidate.lower()]
+        top = sorted(by_name.values(), key=str.lower)
+        return top[0] if top else sorted(visible, key=str.lower)[0]
+
     def get_all_tags(self) -> List[str]:
         tags = set()
         
