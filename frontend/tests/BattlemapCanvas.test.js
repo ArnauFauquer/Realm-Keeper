@@ -183,7 +183,7 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.find('.token.ghost').exists()).toBe(false)
       // It walks there from where it stood, then stays there before anyone has agreed.
       expect(wrapper.findAll('.token')[0].attributes('transform')).not.toBe('translate(385, 315)')
-      await new Promise((resolve) => setTimeout(resolve, 450)) // 3 cells and one down: ~290 ms
+      await new Promise((resolve) => setTimeout(resolve, 600)) // 3 cells and one down: ~440 ms
       await wrapper.vm.$nextTick()
       expect(wrapper.findAll('.token')[0].attributes('transform')).toBe('translate(385, 315)')
     })

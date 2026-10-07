@@ -200,18 +200,8 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Without motion, a ping is a ring that is simply there, then gone. */
-@media (prefers-reduced-motion: reduce) {
-  .ping-ring {
-    animation: none;
-    opacity: 0.9;
-    transform: scale(0.5);
-  }
-
-  .ping-ring--late {
-    display: none;
-  }
-}
+/* It spreads even when the device asks for reduced motion (on Windows, with
+   "Animation effects" off): a ping is there to catch the eye, once, briefly. */
 
 .roll-back {
   fill: rgba(12, 13, 29, 0.92);

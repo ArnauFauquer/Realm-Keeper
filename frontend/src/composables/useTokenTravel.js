@@ -4,11 +4,15 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 // moved along (where it started, each turn, where it ended), on every view of
 // the map: the one that moved it, everyone else's, the screen.
 //
-// Speed follows the path's length, within bounds, so a step is quick and a
-// long run still short.
-export const TRAVEL_MS_PER_CELL = 90
-export const TRAVEL_MIN_MS = 250
-export const TRAVEL_MAX_MS = 900
+// Speed follows the path's length, within bounds, so a step can be followed
+// by eye and a long run still doesn't hold the table up.
+//
+// It plays even when the device asks for reduced motion (on Windows, with
+// "Animation effects" off): it is how the table sees which way a token went,
+// not decoration, and it is short and slow enough to follow.
+export const TRAVEL_MS_PER_CELL = 140
+export const TRAVEL_MIN_MS = 400
+export const TRAVEL_MAX_MS = 1200
 // Someone else's move can arrive before the path they moved along: it waits
 // this long for it, then goes straight.
 export const WAIT_FOR_PATH_MS = 200
@@ -16,7 +20,8 @@ export const WAIT_FOR_PATH_MS = 200
 const PATH_FRESH_MS = 3000
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
-const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2)
+// Starts and stops gently, moves evenly in between.
+const ease = (t) => -(Math.cos(Math.PI * t) - 1) / 2
 const near = (a, b) => Math.abs(a.x - b.x) < 0.02 && Math.abs(a.y - b.y) < 0.02
 
 function lengthOf(points) {
@@ -50,10 +55,9 @@ const travelTime = (points) => Math.min(TRAVEL_MAX_MS, Math.max(TRAVEL_MIN_MS, l
  * where the paths others move tokens along are heard. `centerOf(token)` is
  * where to draw a token's centre (in cells) while it travels, or null when it
  * is where it is; `travel(id, path)` sets one off along a path this view
- * knows (its own drop). With reduced motion, tokens simply are where they go.
+ * knows (its own drop).
  */
 export function useTokenTravel({ tokens, layer = () => null }) {
-  const reduced = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   const frame = ref(0) // ticks while anything travels, so centres follow
   const travels = new Map() // id -> { points, start, duration }
   const waiting = new Map() // id -> { from, to, since }
@@ -83,7 +87,7 @@ export function useTokenTravel({ tokens, layer = () => null }) {
 
   /** Sets a token off along `path` (cells: its centre at the start, each turn, the end). */
   function travel(id, path) {
-    if (reduced || path.length < 2) return
+    if (path.length < 2) return
     start(id, path)
     wake()
   }
@@ -92,17 +96,15 @@ export function useTokenTravel({ tokens, layer = () => null }) {
   // there if this view knows it (its own, or one heard), or straight.
   watch(() => (tokens() || []).map((t) => `${t.id}:${t.x}:${t.y}:${t.size ?? 1}`).join('|'), () => {
     const next = new Map((tokens() || []).map((t) => [t.id, centre(t)]))
-    if (!reduced) {
-      for (const [id, to] of next) {
-        const from = last.get(id)
-        if (!from || near(from, to)) continue
-        const going = travels.get(id)
-        if (going && near(going.points[going.points.length - 1], to)) continue // already on its way there
-        waiting.set(id, { from: going ? currentOf(id, going) : from, to, since: now() })
-      }
-      for (const id of [...travels.keys(), ...waiting.keys()]) if (!next.has(id)) { travels.delete(id); waiting.delete(id) }
-      if (waiting.size) wake()
+    for (const [id, to] of next) {
+      const from = last.get(id)
+      if (!from || near(from, to)) continue
+      const going = travels.get(id)
+      if (going && near(going.points[going.points.length - 1], to)) continue // already on its way there
+      waiting.set(id, { from: going ? currentOf(id, going) : from, to, since: now() })
     }
+    for (const id of [...travels.keys(), ...waiting.keys()]) if (!next.has(id)) { travels.delete(id); waiting.delete(id) }
+    if (waiting.size) wake()
     last = next
   }, { immediate: true })
 

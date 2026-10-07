@@ -57,11 +57,11 @@ describe('useTokenTravel', () => {
     const { list, travel } = setup([ORC])
     travel.travel('orc', [{ x: 0.5, y: 0.5 }, { x: 4.5, y: 0.5 }, { x: 4.5, y: 4.5 }])
     expect(travel.centerOf(ORC)).toEqual({ x: 0.5, y: 0.5 })
-    await advance(360) // halfway through 8 cells at 90 ms each
+    await advance(560) // halfway through 8 cells at 140 ms each
     expect(travel.centerOf(ORC)).toEqual({ x: 4.5, y: 0.5 }) // at the turn
     list.value = [{ ...ORC, x: 4, y: 4 }] // the move, agreed: it is already on its way there
     await nextTick()
-    await advance(400)
+    await advance(600)
     expect(travel.centerOf(list.value[0])).toBeNull() // arrived: drawn where it is
   })
 
@@ -99,14 +99,12 @@ describe('useTokenTravel', () => {
     expect(travel.centerOf(ORC)).toBeNull()
   })
 
-  it('does not move anything on its way with reduced motion', async () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true }))
+  it('still walks when the device asks for reduced motion: it shows which way the token went', async () => {
     window.matchMedia = () => ({ matches: true })
-    const { list, travel } = setup([ORC])
+    const { travel } = setup([ORC])
     travel.travel('orc', [{ x: 0.5, y: 0.5 }, { x: 3.5, y: 0.5 }])
-    list.value = [{ ...ORC, x: 3 }]
-    await nextTick()
-    expect(travel.centerOf(list.value[0])).toBeNull()
+    await advance(TRAVEL_MIN_MS / 2)
+    expect(travel.centerOf(ORC).x).toBeGreaterThan(0.5)
     delete window.matchMedia
   })
 })
