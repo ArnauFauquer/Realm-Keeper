@@ -67,7 +67,7 @@
       <div class="graph-info" :class="{ 'is-open': showGraphInfo }">
         <p>{{ nodes.length }} notes | {{ links.length }} connections</p>
         <button @click="showTypeStats = !showTypeStats" class="stats-toggle" :aria-expanded="showTypeStats">
-          <span class="mdi" :class="showTypeStats ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span> Tipos
+          <span class="mdi" :class="showTypeStats ? 'mdi-chevron-down' : 'mdi-chevron-right'"></span> Types
         </button>
         <div v-if="showTypeStats" class="type-stats">
           <div

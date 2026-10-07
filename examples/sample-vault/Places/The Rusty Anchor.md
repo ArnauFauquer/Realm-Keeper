@@ -3,7 +3,7 @@ tags: [place, tavern]
 ---
 # The Rusty Anchor
 
-A dockside tavern that smells of tar and fried fish. [[People/Captain Mirela]]
+A dockside tavern that smells of tar and fried fish. [[Captain Mirela]]
 keeps a corner table and a running tab nobody dares to collect.
 
 **Rumours** (roll `1d4`):

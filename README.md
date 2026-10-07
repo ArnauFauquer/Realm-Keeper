@@ -1,556 +1,81 @@
 # Realm Keeper
 
-A self-hosted companion for tabletop RPG game masters. Realm Keeper turns an
-Obsidian/Markdown vault into a navigable web wiki for your campaign, and adds
-the tools you reach for at the table: interactive maps, perspective scenes,
-a 3D dice roller, a music player, and a second screen to show things to your
-players.
+**Your Obsidian vault, turned into a campaign wiki with everything you need at
+the table.** Dice in your notes, live character sheets, battlemaps, a screen for
+your players. Self-hosted, for any game system.
 
-There is no database, and every moving part is optional. Notes are Markdown
-files: a folder (point it at your Obsidian vault) or a Git repository the app
-pulls and pushes. Everything else (charts, vistas, characters, adversaries,
-encounters, battlemaps, images and audio) is files in a folder or in any
-S3-compatible bucket. Login is off, or any OpenID Connect provider, GitHub or
-Google.
+[![Release](https://img.shields.io/github/v/release/ArnauFauquer/Realm-Keeper)](https://github.com/ArnauFauquer/Realm-Keeper/releases)
+[![License: MIT-0](https://img.shields.io/badge/license-MIT--0-blue)](LICENSE)
 
-## Features
+![Realm Keeper: rolling dice from a note, searching, a live character sheet, moving tokens on a battlemap and the constellation of notes](docs/images/demo.gif)
 
-**Notes & wiki**
-- Renders a Markdown vault as a browsable wiki, keeping its folder structure
-  (`vault/Characters/Hero.md` → `/note/Characters/Hero`).
-- Obsidian-style `[[wiki links]]` (`[[Note]]`, `[[Folder/Note]]`,
-  `[[Note|custom text]]`), frontmatter, tags and callouts.
-- Mermaid diagrams in fenced ` ```mermaid ` blocks.
-- Search (Ctrl+K, or Cmd+K on a Mac) across the notes and, signed in, everything
-  in the Observatory: documents of every kind and images, by name, folder,
-  subtitle or tag. Tag filtering and a folder tree sidebar.
-- Constellation: an interactive map of every note and link (D3 force layout on canvas).
-- In-browser note editing, written back to the vault (and committed and pushed,
-  when the vault is a Git repository).
-- Notes tagged with `NOTE_TAG_IGNORE` (e.g. `draft`) are hidden from the app.
+- **Your notes stay yours.** Plain Markdown in a folder, the same one Obsidian
+  opens. Edit on either side; nothing is locked into a database.
+- **Built for the table.** 3D dice from any note, sheets whose counters change
+  live for everyone, battlemaps, encounters, music, and a second screen for the
+  players.
+- **Any system, any server.** No rules built in: name your own counters and
+  stats, or start from a D&D 5e, Daggerheart, Pathfinder 2e, Call of Cthulhu,
+  Cyberpunk RED, Shadowdark or Blades in the Dark template. Runs from one
+  `docker compose up`, on a laptop, a NAS or a Raspberry Pi.
 
-**Inline actions in notes** — inline code spans become interactive:
+## Try it in a minute
 
-| Write in a note                          | You get                                  |
-| ---------------------------------------- | ---------------------------------------- |
-| `` `2d20+5` ``                            | A button that rolls those dice           |
-| `` `hf+1d6-1` ``                          | A Hope & Fear roll (plus a d6, minus 1)  |
-| `` `adv+5` `` / `` `dis+5` ``             | A d20 with advantage / disadvantage      |
-| `` `roll:hf` ``                           | Any formula, made explicit with `roll:` — needed when it's only `hf` / `adv` / `dis` |
-| `` `Action/01 Beyond Distant Lands.mp3` `` | A button that plays that track           |
-| `` `sfx:Effects/door creak.mp3` ``         | A sound effect played over the music (press again to cut it) |
-| `` `chart:regions/tavern-map` ``           | The chart embedded in the note           |
-| `` `vista:tavern/night` ``                 | The vista embedded in the note           |
-| `` `character:party/aria` ``               | The character's sheet, its counters live |
-| `` `adversary:bestiary/bugboar` ``         | The adversary's sheet                    |
-
-**Roll tables**: a table whose first header cell is a die rolls on itself.
-Press the die to throw it; the row it lands on is highlighted, and the toast
-says what it reads (only on your screen: the player screen shows the dice).
-
-```markdown
-| d6  | Weather          |
-| --- | ---------------- |
-| 1-3 | Rain             |
-| 4-5 | Fog              |
-| 6   | Clear skies      |
-```
-
-- The first column holds each row's numbers: `7`, a range `2-3`, `96-00`
-  for a `d%`, or `11+`. Rows without numbers are counted from 1.
-- Any die works: `d20`, `2d6`, `d%`. A bare `d` sizes the die to the table:
-  a 20-row table rolls a d20.
-- A die there's no real die for (a 7-row table, `d3`) picks a row at random.
-
-**Sheets** — characters and adversaries, each a document of its own (in
-folders, like charts and vistas): counters, stats, actions with dice buttons.
-A sheet knows nothing about any rules system: counters, stats and tags are
-named by you.
-
-- A **character** is one individual (a player character, a recurring NPC):
-  its counters keep their values wherever it shows — on every note, in every
-  encounter and on every map — and between sessions. Its counters change live,
-  like an encounter's; the sheet itself is saved with the editor's **Save**.
-  An **adversary** is a template: each copy in an encounter will have its own
-  values. It is edited whole and saved with a button, like a chart.
-- Create one from the Observatory (**New ▾ → Character** or **Adversary**, or
-  the sidebar's shortcut to that kind) and build it in the **sheet
-  builder**, beside a live preview; an empty sheet offers **Start from a
-  template**. No format to learn: everything is a form.
-- To show one in a note, write its link, `` `character:<id>` `` or
-  `` `adversary:<id>` `` (see the table above): the note editor's **Sheet**
-  button finds one and inserts it, and the editor's copy button gives it too.
-  A character's counters there are live and can be played from the note. Under
-  the sheet, **Edit** opens it in its editor and **Add to encounter**
-  puts it into one without leaving the note. A sheet named like its note's
-  title or one of its headings doesn't repeat the name in its header (screen
-  readers still get it).
-- **Moving** a character or adversary — or renaming or moving its folder —
-  changes its id: the links in the notes that show it are rewritten (in one
-  commit), and the encounters and map tokens that use it follow. Renaming it
-  only changes the name it shows.
-
-What the sheet builder edits:
-
-- **Header**: a portrait (picked from the Observatory), a subtitle and tags.
-  The name, id and type are the document's: the name is the one given in the
-  gallery (rename it there), the id is where it is stored, and the type is
-  whether it is a character or an adversary.
-- **Sections** hold everything, in order: add one, give it a title (or none:
-  an untitled section opens the sheet), and drag it by its handle (or press
-  ↑/↓ on the handle) to reorder. Each section draws its **counters**, then its
-  **stats**, then its **entries**, so spell slots can sit with their spells.
-- **Counters** have a name, a maximum, a minimum, where they **start** (the
-  maximum unless said otherwise, so one can count up from 0), how they are
-  shown (pips, a bar or a number) and a colour. Their names are unique in the
-  sheet: characters and encounters go by them.
-- **Stats** come in groups, each with an optional title and a number per row:
-  a label, a value and, for a dice button, a roll. A value typed as a whole
-  number is kept as one.
-- **Entries** (actions, features, gear...) have a name, a roll, a cost, tags
-  and a Markdown text, where an inline formula (`` `1d8+2` ``) is a dice button
-  too. An entry that is only a name and a roll (a skill, a save) is drawn as
-  one row, the roll at its end.
-- **Layout**: "Side by side" puts the sheet's sections in columns on a wide
-  sheet (**Full width** takes a section across the whole row); "Entries" lays
-  a section's entries out in a grid. Narrow sheets (a phone, the encounter
-  tracker) fall back to fewer columns on their own.
-- **Tabs**: sections sharing a **Tab** (Spells, Gear) are shown one tab at a
-  time, under a tab bar placed after the sections without one, so a long sheet
-  stays one screen tall. A titled section folds with a click; **Starts
-  folded** starts it folded.
-- **Counters follow the sheet.** When a character's sheet is saved, each counter
-  keeps its current value (within its new range), a new one starts where the
-  sheet says, and one the sheet no longer has is dropped — so renaming a counter
-  starts it again.
-- A sheet with a mistake (two counters with the same name, a minimum above the
-  maximum) can't be saved: the builder says what is wrong.
-- A sheet is stored as JSON in its document (`sheet`). Sheets used to be
-  YAML; any still stored that way are converted when the app starts.
-- `GET /api/sheets` lists every character and adversary (signed in), and
-  `GET /api/sheets/detail?type=&ref=` returns one, read.
-
-**Encounters** — who is in a fight, live for everyone at the table. Add
-adversaries and characters; each one gets counters (HP, Stress... whatever its
-sheet defines) with ± buttons, free-text conditions, notes, defeated, and its
-sheet's actions with dice buttons. There are no
-rounds, turns or initiative, since how a fight is ordered is a rule of the
-system being played: drag the combatants (or use the arrows) into whatever
-order suits your table.
-- Add **3 Bugboars** and each has its own copy of the sheet's counters, starting
-  alike and then diverging. A **character** is added once and has no counters of
-  its own: its counters are the character's, the same on its notes and in every
-  encounter, and persist between sessions.
-- Everyone signed in can change everything, and sees every change as it is
-  made (a WebSocket announces them; there is no Save button). Lose the
-  connection and it reloads from the server on reconnecting.
-- **Add to encounter**, under a sheet shown in a note, puts it into one without
-  leaving the note.
-
-**Battlemaps** — a tactical map to play a fight out on, shared live like an
-encounter. Pick a map image from the Observatory and lay a grid over it
-(cell size and offset in pixels of the image, snapping on or off). Tokens are
-placed in cells, so changing the grid never moves anyone; drag them, resize
-them, give them an image or a colour, and frame the image (drag it inside the
-token, zoom, turn). A **ruler** (`R`) measures between cells: you say what one
-cell is worth (5 ft, 1.5 m, 1 square…) and whether a diagonal costs one cell
-or its length. Everyone on the map, and the screen, sees who is measuring
-what.
-- **Moving a token** draws the ruler from where it stands: it stays put while
-  its ghost follows the pointer with the distance, and moves when you let go.
-  **Space** (or a second finger) adds a turn to the path, Backspace takes it
-  back; the distance counts every leg.
-- **Range bands** for tables that play by ranges rather than squares: name
-  your bands and how far each reaches (*Map → Distance → Range bands*). The
-  ruler, a moving token and areas then say which band a distance falls in,
-  with each band's ring around where it starts. Turn snapping off for free
-  movement, and the grid off altogether if the map has none.
-- **Areas** (`A`): circles, cones, lines and squares dragged out from where
-  they start (spells, zones, hazards). They stay on the map until removed.
-  Click one (its outline or origin) to select it: drag it from inside to move
-  it, drag its white handle to resize it (and turn a cone or line); name,
-  colour or hide it from the screen in *Tokens → Areas*.
-- Attach an **encounter** and *Place combatants* puts a token for each one. A
-  token can show some of its combatant's counters as bars (an adversary's own,
-  or a character's), and they follow the encounter as it changes.
-- **Hidden** tokens are dimmed for everyone signed in and **never sent to the
-  screen**: *Show on the screen* sends the server's view of the map, made
-  without them (and without which sheet or combatant a token stands for). The
-  screen follows every change — moves, new tokens, counters — a moment later.
-- **Play the sheets from the map.** The *Sheet* tab shows whoever the selected
-  token stands for (double-click a token, or pick anyone in the encounter, on
-  the map or not): their whole sheet, with its counters live (an adversary's
-  own, a character's saved ones), conditions, notes, *defeated*, and a link to
-  edit the sheet. Its rolls are named after the combatant ("Bugboar 2 · Gore"),
-  go to the screen like any roll, and show over the token for a few seconds,
-  for everyone on the map and on the screen (unless the token is hidden).
-  *Add to the fight* brings adversaries and characters from their sheets into
-  the encounter and puts their tokens on the map; a map without an encounter
-  gets one of its own with *New encounter for this map*.
-- **Point at things.** The pointer tool (`P`; `V` selects): a
-  tap pings a spot, a drag is a laser pointer with a fading trail.
-  Double-clicking the bare map pings too. Everyone with the map open sees it,
-  in red with the pointer's name, and so does the screen when it shows this
-  map. Nothing is kept: a ping is not part of the map.
-- Everyone signed in can move any token and change any setting.
-
-**The Observatory** — where everything but the notes lives: one tree of folders
-holding every chart, vista, encounter, battlemap, character and adversary, and
-the images they draw, so an adventure's map, its chart, its scenes and its fights
-can share a folder. **New ▾** makes a document of any kind in the folder you are
-in; opening one opens its editor, whose back arrow comes back to that folder.
-Drag anything (folders too) into another folder. Next to **Folders**, a view per
-kind shows every chart, vista, encounter… (or image) wherever it is, each with
-its folder; the sidebar's Observatory tile has a shortcut to each of them.
-- An image is found by the uid it got when uploaded, so renaming or moving it —
-  or the folder it is in — never breaks the documents and notes that show it.
-- **Import** brings images, documents (`tavern.chart.json`, `night.vista.json`…)
-  and zips of them into the folder you are in; dragging files from the computer
-  onto the Observatory does the same (onto a folder, into it). Nothing there is
-  replaced: a document whose name is taken comes in as a copy beside it.
-- **Export** downloads the folder you are in (everything, at the top) as a zip of
-  its files and subfolders: import it into any folder, here or on another
-  instance, to bring them all back.
-
-**Game-master tools**
-- **Charts** — maps with pins (icon, color, size, linked note), hand-drawn
-  paths with direction arrows, and text annotations.
-- **Vistas** — perspective scenes: a background plus assets that shrink as
-  they move toward a vanishing point, with flip, rotation and color
-  adjustments.
-- **Dice roller** — physics-based 3D dice (d2 to d100) with standard notation,
-  including subtracted dice (`1d20-1d4`) and Hope & Fear (`hf`): two coloured
-  d12s whose sum is a critical on a tie, otherwise "with Hope" or "with Fear"
-  depending on which one is higher.
-  A natural 20 on a d20 is a critical and a natural 1 a fumble. Advantage /
-  disadvantage (`adv` / `dis`) roll two d20 and keep the higher / lower,
-  and any group can keep its best or worst dice with `kh` / `kl` (`4d6kh3`).
-  A roll throws at most 50 dice. A roll made from a sheet says what it is for
-  ("Bugboar · Gore") in the toast and on the screen.
-- **Music player** — albums and tracks stored in object storage, with a
-  sidebar mini-player (shuffle, previous, volume).
-- **Player screen** — open `/screen` on a TV or projector; images, charts,
-  vistas and dice rolls sent from the GM's view appear there live over
-  WebSocket. In the chart and vista editors, **Go live** mirrors your edits on
-  the screen as you make them (drag a pin, move an asset), saved or not;
-  turning it off with unsaved changes puts the saved version back.
-  The Constellation works the same way: **Send to screen** shows it frozen as it
-  is, and **Go live** mirrors your zoom, pan, dragged notes and highlights.
-  A battlemap shown on the screen is always live, without its hidden tokens.
-
-Documents, images, folders and tracks can all be created, renamed, moved and
-deleted from the UI.
-
-**Access control**
-- Reading notes is public. The characters and adversaries a note shows are not:
-  a reader who isn't signed in sees "Sign in to see this character" in their place.
-- Everything else — charts, vistas, characters, adversaries, encounters,
-  battlemaps, the Observatory's images,
-  the music player, writing and screen control — requires a login, limited to
-  an allow-list of emails. Sign in with any OpenID Connect provider (Microsoft
-  Entra ID, Keycloak, Authentik, Authelia, Auth0, Okta, Zitadel, GitLab...),
-  GitHub or Google; each one configured gets a button. Sessions are signed
-  cookies, no user database.
-- A paired screen (`/screen#key=…`, a TV or OBS source with no login) can read
-  only what is on it right now: the chart or vista last sent and the images it
-  draws, the image sent with "display media", or the images of the battlemap
-  shown (without its hidden tokens) — nothing else.
-- Set `ENABLE_AUTH=false` to run it open as a single local user.
-
-## How data is stored
-
-| Data                      | Where                                                       |
-| ------------------------- | ----------------------------------------------------------- |
-| Notes                     | `.md` files in the vault (a folder, or a Git repository)    |
-| Audio (the player)        | `player/<album>/<track>` in the store                       |
-| Documents                 | `observatory/<folders>/<slug>.<kind>.json` in the store     |
-| Images                    | `observatory/<folders>/<uid>-<name>` in the store           |
-
-where `<kind>` is `chart`, `vista`, `encounter`, `battlemap`, `character` or
-`adversary`. The store is a folder (`STORAGE_BACKEND=local`, at
-`STORAGE_LOCAL_PATH`) or any S3-compatible bucket (`STORAGE_BACKEND=s3`: MinIO,
-Ceph RGW, AWS S3…), laid out the same way, with those two top-level prefixes and
-nothing else at the top: moving from one to the other is copying the files
-(`aws s3 sync <folder> s3://<bucket>`, or `mc mirror`). A document's id is
-its folders and slug (`Hijos del Fango/Acto 2/emboscada`), which is how a note
-links to it; an image is served at `/api/observatory/images/<uid>-<name>`.
-
-**The vault, two ways:**
-- **A folder** (the default, without `REPO_URL`): your Obsidian vault mounted as
-  a volume, say. A note saved in the app is written to its file, nothing more,
-  and what Obsidian (or anything else) changes there shows in the app within
-  `VAULT_WATCH_INTERVAL` seconds. Keep it backed up however you already do
-  (Obsidian Sync, Syncthing, the Obsidian Git plugin...).
-- **A Git repository** (`REPO_URL`, or `GIT_ENABLED=true`): the backend clones
-  it on startup, pulls every `GIT_SYNC_INTERVAL` seconds, and commits and pushes
-  every edit made to a note in the app. You can keep editing the same vault in
-  Obsidian — both sides stay in sync through Git. Works where the app has no
-  disk that lasts (a Kubernetes `emptyDir`).
-
-Everything else is not in the vault: a map or a fight changes while people play.
-Those documents are JSON files in the store, one write per save, with no lock and
-no commit.
-Charts, vistas and adversaries are edited whole and saved with a button;
-encounters, battlemaps and characters are *live*: held in memory while someone
-is using them and written a couple of seconds after the last change (and when the app shuts
-down). Don't redeploy in the middle of a session: the new pod would load the
-last saved copy.
-
-**Coming from a vault that kept charts and vistas in Git** (`_charts/` and
-`_vistas/`, how earlier versions stored them): on its first start the backend
-copies them into the bucket, once per kind. Nothing in the vault is changed or
-deleted, and a document already in the bucket is never replaced, so the copy is
-safe to repeat. Once you have checked the charts and vistas in the app, delete
-`_charts/` and `_vistas/` from the vault repository yourself. Their history in
-Git is gone from the app's point of view: to keep an undo trail for the bucket,
-turn on **bucket versioning** (`aws s3api put-bucket-versioning --bucket <bucket>
---versioning-configuration Status=Enabled`, if your Ceph RGW or MinIO supports it).
-
-**Coming from a vault that wrote sheets in notes** (` ```sheet ` blocks, how
-earlier versions kept them): on its first start the backend makes a document of
-each valid block, once (the marker `observatory/.imported-from-notes` stops it
-running again). A character goes to `<its sheet id>` at the top of the
-Observatory, joining the counters it had saved; an adversary goes to `<its
-note's folder>/<its sheet id>` (`-2`, `-3`… if two would collide), and the encounters
-and maps that named it as `<note id>#<sheet id>` are pointed at it. Nothing in
-the vault is changed. Once the deployed app has imported them (its log says
-so), run `python backend/scripts/sheets_to_documents.py <vault>` on a checkout
-of the vault: it replaces each block with the link to its document. Commit and
-push the vault, and delete the script.
-
-**Moving a bucket into the Observatory** (from the layout of 0.2.3 and before:
-one prefix per kind, `charts/<folders>/<id>/chart.json`…, and the images in
-`asset-library/`): `backend/scripts/migrate_to_observatory.py` does it once, for
-any bucket, and can then be deleted. It reads the same `S3_*` settings as the app
-and shows what it would do unless told otherwise:
+You need [Docker](https://docs.docker.com/get-docker/).
 
 ```bash
-cd backend
-python scripts/migrate_to_observatory.py               # dry run: what goes where, and any conflict
-python scripts/migrate_to_observatory.py --copy-only   # copy and check; the old keys stay
-python scripts/migrate_to_observatory.py --apply       # copy, check, delete the old keys
+git clone https://github.com/ArnauFauquer/Realm-Keeper.git
+cd Realm-Keeper/examples/01-minimal
+docker compose up -d
 ```
 
-Document ids don't change, so the notes' `chart:<id>` links keep working. Image
-URLs do (`/api/asset-library/assets/asset-library/<folders>/<name>` becomes
-`/api/observatory/images/<uid>-<name>`): the script rewrites them in every
-document as it copies it, and `--vault <checkout of the vault>` rewrites them in
-the notes (then commit and push the vault). An image uploaded before images got
-a uid is given one made from its old key, the same every run.
+Open http://localhost:8080. It starts with a small sample campaign; point
+`VAULT_DIR` at your own vault to see your notes instead.
 
-Nothing is deleted before its copy is checked, so a run that stops halfway can be
-run again. For a live deployment: run `--copy-only` while the old version is
-still serving, deploy the new version, then run `--apply`: a document edited in
-between is in both places, and the copy saved last is the one kept. Run it
-against the same bucket the app uses, from a shell with its `S3_*` settings (for
-Kubernetes, `kubectl exec` into the backend pod: the script is in the image).
+## What's inside
 
-## Quick start (Docker Compose)
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/dice.webp" alt="3D dice rolled from a note"><br><b>Notes that play.</b> Write <code>`2d6+1`</code> and it is a button that throws 3D dice. Tables headed by a die roll on themselves. Wiki links, tags, callouts and Mermaid, as in Obsidian.</td>
+    <td width="50%"><img src="docs/images/sheet.webp" alt="A D&amp;D character sheet inside a note, with live counters"><br><b>Live sheets.</b> Characters and adversaries built in a visual editor. A character's HP, spell slots or Stress change for everyone at once, on every note and map it appears in.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/battlemap.webp" alt="A tavern battlemap with tokens"><br><b>Battlemaps and encounters.</b> Tokens on a grid, a ruler that measures moves, areas for spells, range bands, a laser pointer, and hidden tokens your players never see.</td>
+    <td width="50%"><img src="docs/images/constellation.webp" alt="The constellation of notes and their links"><br><b>A map of your world.</b> The constellation draws every note and link. Charts with pins, perspective scenes, a music player, and a screen (a TV, a projector, an OBS source) you send any of it to.</td>
+  </tr>
+</table>
 
-**To run it**, without building anything: [examples/](examples) has ready-made
-setups on the published images, from a folder of notes with no login
-(`examples/01-minimal`) to a server with HTTPS, Git, MinIO and single sign-on.
+Every feature, in detail: [docs/features.md](docs/features.md).
 
-```bash
-cd examples/01-minimal
-docker compose up -d        # http://localhost:8080
-```
+## Make it yours
 
-**To work on it**, from this checkout (requires Docker with Compose 2.24 or later):
+Each piece is optional, and [examples/](examples) has a ready-to-run setup for
+each way of combining them:
 
-```bash
-cp .env.example .env
-docker compose up --build
-```
+| Example | Notes | Maps, sheets, images, music | Login |
+| ------- | ----- | --------------------------- | ----- |
+| [01-minimal](examples/01-minimal) | a folder (your Obsidian vault) | a Docker volume | none |
+| [02-minio](examples/02-minio) | a folder | MinIO, or any S3 bucket | none |
+| [03-dex-local-users](examples/03-dex-local-users) | a folder | a Docker volume | users and passwords of your own |
+| [04-git-vault](examples/04-git-vault) | a Git repository, pulled and pushed | a Docker volume | none |
+| [05-github-google-login](examples/05-github-google-login) | a folder | a Docker volume | GitHub or Google |
+| [06-server-https](examples/06-server-https) | a Git repository | MinIO | any OpenID Connect provider, with HTTPS |
 
-- App: http://localhost:5173
-- API docs: http://localhost:8000/docs
+## Documentation
 
-As it comes, `.env.example` runs the simplest setup: no login, notes in a folder,
-and documents, images and audio in a Docker volume. Pick what you need from there:
-
-**Your Obsidian vault.** Set `VAULT_DIR` to its folder. The app reads and writes
-the `.md` files in place; Obsidian's own folders (`.obsidian`, `.trash`) are
-left alone. The container runs as UID 1000, which must be able to write the
-folder (on Linux, usually your own user).
-
-```env
-VAULT_DIR=/home/me/Obsidian/My Campaign
-```
-
-**A vault in Git instead.** Leave `VAULT_DIR` empty and set `REPO_URL` (a named
-volume keeps the clone). For a private GitHub repo, use a personal access token
-with write access (in-app edits are pushed):
-
-```env
-REPO_URL=https://<TOKEN>@github.com/<user>/<notes-repo>.git
-```
-
-**Files in S3.** `STORAGE_BACKEND=s3` with your bucket's `S3_*` settings, or
-also run a MinIO here with the `s3` profile:
-
-```env
-COMPOSE_PROFILES=s3
-STORAGE_BACKEND=s3
-```
-
-(MinIO console: http://localhost:9001, `minioadmin` / `minioadmin123`.)
-
-**A login.** `ENABLE_AUTH=true`, `ALLOWED_EMAILS`, a `SESSION_SECRET_KEY`, and
-at least one provider. Register `<your app>/api/auth/callback` as the redirect
-URI with each provider; it is the same for all of them.
-
-```env
-# Any OpenID Connect provider, by its issuer URL
-OIDC_ISSUER_URL=https://login.microsoftonline.com/<tenant-id>/v2.0
-OIDC_CLIENT_ID=...
-OIDC_CLIENT_SECRET=...
-OIDC_NAME=Microsoft
-# GitHub (an OAuth App), which isn't OIDC
-GITHUB_CLIENT_ID=...
-GITHUB_CLIENT_SECRET=...
-# Google
-GOOGLE_CLIENT_ID=...
-GOOGLE_CLIENT_SECRET=...
-```
-
-| Provider           | `OIDC_ISSUER_URL`                                            |
-| ------------------ | ------------------------------------------------------------ |
-| Microsoft Entra ID | `https://login.microsoftonline.com/<tenant-id>/v2.0`         |
-| Keycloak           | `https://<host>/realms/<realm>`                              |
-| Authentik          | `https://<host>/application/o/<app-slug>/`                   |
-| Authelia           | `https://<host>`                                             |
-| Auth0              | `https://<tenant>.auth0.com/`                                |
-| GitLab             | `https://gitlab.com`                                         |
-
-Only an email the provider has verified (`email_verified`) is matched against
-`ALLOWED_EMAILS`. Entra ID doesn't send that claim: with a single-tenant issuer,
-where only your admins set addresses, `OIDC_REQUIRE_VERIFIED_EMAIL=false` lets it
-in. Never turn it off with a provider where anyone can sign up with any address.
-
-## Configuration
-
-All settings are environment variables. See [.env.example](.env.example)
-and [backend/.env.example](backend/.env.example) for annotated examples.
-
-| Variable                | Default                  | Description                                                      |
-| ----------------------- | ------------------------ | ---------------------------------------------------------------- |
-| `VAULT_PATH`            | `./vault`                | Where the vault is read from / cloned to (`/vault` in Compose)    |
-| `VAULT_DIR`             | a named volume           | Compose only: the host folder mounted as the vault                |
-| `REPO_URL`              | —                        | Git repository holding the vault                                  |
-| `GIT_ENABLED`           | on if `REPO_URL` is set  | Pull, commit and push the vault; off, it is a plain folder        |
-| `GIT_SYNC_INTERVAL`     | `300`                    | Seconds between pulls (`0` disables periodic sync)                |
-| `VAULT_WATCH_INTERVAL`  | `10`                     | Without Git: seconds between checks for notes changed on disk (`0` disables) |
-| `NOTE_TAG_IGNORE`       | `private`                | Notes with this tag are hidden                                    |
-| `HOME_NOTE`             | found in the vault       | The note the app opens on (its path without `.md`); else the first of `RealmKeeper`, `index`, `Home`, `README`, `Welcome` at the vault's top, else its first note |
-| `STORAGE_BACKEND`       | `s3` if `S3_ENDPOINT_URL` is set, else `local` | Where documents, images and audio go               |
-| `STORAGE_LOCAL_PATH`    | `./data` (`/data` in Compose) | The folder for `local` (formerly `DOCS_LOCAL_PATH`, still read) |
-| `DATA_DIR`              | a named volume           | Compose only: a host folder for `/data` instead                   |
-| `S3_ENDPOINT_URL`       | —                        | S3-compatible endpoint (empty with `s3`: AWS itself)              |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | —              | Object storage credentials                                        |
-| `S3_BUCKET_NAME`        | `realm-keeper-audio`     | Bucket for audio, images and assets                               |
-| `S3_REGION`             | `us-east-1`              | Bucket region                                                     |
-| `ENABLE_AUTH`           | `true`                   | `false` disables login entirely                                   |
-| `OIDC_ISSUER_URL`       | —                        | Any OpenID Connect provider's issuer (or its discovery URL)       |
-| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | —        | Its client                                                        |
-| `OIDC_NAME`             | `SSO`                    | The provider's name on its button                                 |
-| `OIDC_SCOPES`           | `openid email profile`   | Scopes asked for                                                  |
-| `OIDC_REQUIRE_VERIFIED_EMAIL` | `true`             | Only match emails the provider says it verified                  |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | —    | A GitHub OAuth App                                                |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | —    | A Google OAuth client                                             |
-| `ALLOWED_EMAILS`        | —                        | Comma-separated emails allowed to log in; each one's position sets their dice colour |
-| `SESSION_SECRET_KEY`    | random per start         | Signs session cookies — set it in production                      |
-| `SESSION_COOKIE_SECURE` | `false`                  | `true` when served over HTTPS                                     |
-| `FRONTEND_URL`          | `http://localhost:5173`  | Where to redirect after login                                     |
-| `CORS_ALLOWED_ORIGINS`  | `http://localhost:5173`  | Comma-separated allowed origins                                   |
-| `LOG_LEVEL`             | `INFO`                   | Backend log level                                                 |
-| `LOG_DIR`               | `/app/logs`              | Where `app.log` and `error.log` are written (rotated at 10 MB, 3 kept) |
-| `VITE_DEFAULT_PAGE`     | —                        | Frontend build arg: fixes the home note at build time, over `HOME_NOTE` |
-| `VITE_API_URL`          | empty                    | Backend URL; leave empty when nginx proxies `/api` and `/ws`      |
-
-## Development without Docker
-
-Backend (Python 3.11):
-
-```bash
-cd backend
-pip install -r requirements.txt
-uvicorn main:app --reload --host 0.0.0.0 --port 8000 --env-file .env
-```
-
-Frontend (Node 20):
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Tests:
-
-```bash
-cd backend && pip install pytest && pytest
-```
-
-```bash
-cd frontend && npx vitest
-```
-
-## Deployment
-
-`.argocd/` holds Kubernetes manifests (deployments, services, PDBs, Traefik
-ingress, a vault PVC and a Ceph object bucket claim) meant to be synced by
-Argo CD.
-
-Releases are managed by
-[release-please](https://github.com/googleapis/release-please): on every
-push to `main` it keeps a release PR open that bumps `VERSION`, the image
-tags in `.argocd/` and `CHANGELOG.md`, based on the Conventional Commits
-merged since the last release. Merging that PR tags `vX.Y.Z` and builds both
-images to `ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}`.
-
-The backend runs as a single replica: the vault lives on a `ReadWriteOnce`
-volume, Git writes are serialized in-process and live documents are held in that
-one process's memory.
-
-## Project structure
-
-```
-Realm-Keeper/
-├── backend/            FastAPI app
-│   ├── main.py         App setup, vault clone/pull loop
-│   ├── config/         Settings, logging, cache headers
-│   ├── models/         Pydantic models (notes, sheets, charts, vistas, characters, adversaries, encounters, battlemaps)
-│   ├── routes/         notes, sheets, observatory, charts, vistas, characters, adversaries, encounters, battlemaps, sync, player, screen, auth
-│   ├── services/       Markdown + sheet parsing, Git commits, S3 storage, the Observatory's documents and images (observatory, doc_*, sync_hub, sheet_*)
-│   ├── scripts/        One-time tools (migrate_to_observatory.py, sheets_to_documents.py)
-│   └── tests/
-├── frontend/           Vue 3 + Vite app, served by nginx in production
-│   └── src/
-│       ├── views/      Home, NoteView, ScreenView
-│       ├── components/ Sidebar, the Observatory, document modal (charts, vistas, characters, adversaries, encounters, battlemaps), sheets, graph, player, dice
-│       ├── composables/
-│       ├── dice/       three.js + cannon-es dice simulation
-│       └── api/
-├── .argocd/            Kubernetes manifests
-├── .github/workflows/  CI: tests on every pull request; version bump, image build and push
-└── docker-compose.yml  Local stack with MinIO
-```
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for more detail.
-
-## Tech stack
-
-- **Backend:** FastAPI, Pydantic, python-markdown, python-frontmatter, boto3,
-  Authlib, Git
-- **Frontend:** Vue 3, Vue Router, markdown-it, Mermaid, D3, three.js,
-  cannon-es, Axios
-- **Infrastructure:** Docker, nginx, MinIO / Ceph RGW, Kubernetes, Argo CD,
-  GitHub Actions
+- [Features](docs/features.md): notes, inline dice and roll tables, sheets,
+  encounters, battlemaps, the Observatory, the player screen, who can see what.
+- [Configuration](docs/configuration.md): your vault, where files go, signing in,
+  and every setting.
+- [How data is stored](docs/storage.md): the layout of the vault and the store,
+  backups and upgrades from older versions.
+- [Development](docs/development.md): running it from source, tests, deployment
+  and the project's layout. [ARCHITECTURE.md](ARCHITECTURE.md) explains how it
+  is built.
 
 ## Contributing
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [Code of Conduct](CODE_OF_CONDUCT.md). To report a vulnerability, follow
 [SECURITY.md](SECURITY.md).
 

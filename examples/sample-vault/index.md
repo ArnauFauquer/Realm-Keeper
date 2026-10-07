@@ -8,7 +8,7 @@ vault. Point the app at yours with `VAULT_DIR` and these notes go away.
 
 ## Try it
 
-- Follow a link: [[Places/The Rusty Anchor]], or meet [[People/Captain Mirela|the captain]].
+- Follow a link: [[The Rusty Anchor]], or meet [[Captain Mirela|the captain]].
 - Roll some dice: `2d6+1`, a check with advantage `adv+4`, or a Hope & Fear roll `hf+2`.
 - Press the die in the table below to roll on it.
 
