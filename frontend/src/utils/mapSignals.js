@@ -22,6 +22,9 @@ export const REPLAY_DELAY_MS = 120
 export const RULER_LINGER_MS = 1500
 /** A ruler whose end never came: someone may hold still measuring a while. */
 export const RULER_IDLE_MS = 30000
+/** The laser pointer is red for everyone, whoever holds it (their name says
+ * who): it has to stand out on any map. */
+export const POINTER_COLOR = '#ff2d2d'
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now())
 
@@ -49,7 +52,7 @@ export function createSignalLayer() {
       if (!point) return
       pings.push({ id: ++seq, x: point.x, y: point.y, color, by, at })
     } else if (signal.kind === 'pointer') {
-      receivePointer(signal, at, { color, by, local })
+      receivePointer(signal, at, { color: POINTER_COLOR, by, local })
     } else if (signal.kind === 'ruler' && signal.stroke) {
       // Each one carries the whole path so far: it replaces the last.
       const key = `${signal.source || ''}|${signal.by || ''}|${signal.stroke}`

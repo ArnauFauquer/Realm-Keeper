@@ -69,6 +69,7 @@
           @select-area="selectArea"
           @move="onMove"
           @move-area="moveArea"
+          @reshape-area="moveArea"
           @add-area="addArea"
           @open="openToken"
           @ping="signals.ping"
@@ -621,10 +622,14 @@ async function addArea(area) {
     event = await commit(commands.addItems(id, 'areas', [{ ...area, color: AREA_COLORS[0] }]))
   })())
   const created = added && event?.upsert?.areas?.at(-1)
-  if (created) selectArea(created.id)
+  if (!created) return
+  // Laid down: picked up again at once, to move it, size it, turn it.
+  tool.value = 'select'
+  selectArea(created.id)
 }
 
-const moveArea = (areaId, position) => send(commands.patchItem(id, 'areas', areaId, position))
+// Moved by its origin, or resized and turned by its reach handle.
+const moveArea = (areaId, fields) => send(commands.patchItem(id, 'areas', areaId, fields))
 const patchArea = (fields) => send(commands.patchItem(id, 'areas', selectedAreaId.value, fields))
 
 function removeArea() {

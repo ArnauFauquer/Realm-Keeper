@@ -162,9 +162,10 @@ what.
   with each band's ring around where it starts. Turn snapping off for free
   movement, and the grid off altogether if the map has none.
 - **Areas** (`A`): circles, cones, lines and squares dragged out from where
-  they start (spells, zones, hazards). They stay on the map until removed;
-  name, resize, turn, colour or hide them from the screen in *Tokens → Areas*,
-  and move them by their origin.
+  they start (spells, zones, hazards). They stay on the map until removed.
+  Click one (its outline or origin) to select it: drag it from inside to move
+  it, drag its white handle to resize it (and turn a cone or line); name,
+  colour or hide it from the screen in *Tokens → Areas*.
 - Attach an **encounter** and *Place combatants* puts a token for each one. A
   token can show some of its combatant's counters as bars (an adversary's own,
   or a character's), and they follow the encounter as it changes.

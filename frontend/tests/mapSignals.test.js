@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { PING_MS, REPLAY_DELAY_MS, ROLL_MS, RULER_IDLE_MS, RULER_LINGER_MS, STROKE_IDLE_MS, TRAIL_MS, createSignalLayer } from '@/utils/mapSignals'
+import { PING_MS, POINTER_COLOR, REPLAY_DELAY_MS, ROLL_MS, RULER_IDLE_MS, RULER_LINGER_MS, STROKE_IDLE_MS, TRAIL_MS, createSignalLayer } from '@/utils/mapSignals'
 import { PLAYER_SIGNAL_COLORS } from '@/dice/diceTheme'
 
 const ping = (x, y, extra = {}) => ({ kind: 'ping', points: [{ x, y }], by: 'Mia', slot: 1, ...extra })
@@ -35,7 +35,7 @@ describe('a signal layer', () => {
     expect(now.segments).toHaveLength(2)
     expect(now.segments[1].opacity).toBe(1)
     expect(now.segments[0].opacity).toBeLessThan(1) // older: fading
-    expect(now).toMatchObject({ by: 'Mia', color: PLAYER_SIGNAL_COLORS[2] })
+    expect(now).toMatchObject({ by: 'Mia', color: POINTER_COLOR }) // red for everyone: it must stand out
   })
 
   it('keeps the head where the pointer rests, and lets the trail go once it is lifted', () => {

@@ -1,8 +1,8 @@
 <template>
   <div class="token-image-editor">
     <div
-      class="frame"
-      :class="{ disabled }"
+      class="frame-wrap"
+      :class="{ disabled, dragging }"
       :style="{ '--frame-color': color || '#6d4fc2' }"
       role="img"
       :aria-label="disabled ? 'The token\'s image' : 'The token\'s image: drag to move it, scroll to zoom'"
@@ -12,8 +12,15 @@
       @pointercancel="onUp"
       @wheel.prevent="onWheel"
     >
-      <div class="turn" :style="{ transform: `rotate(${draft.rotation}deg)` }">
+      <!-- While it is moved, the whole image shows faintly around the token,
+           so what can still be brought in stays in sight. -->
+      <div v-if="dragging" class="turn outside" :style="turnStyle" aria-hidden="true">
         <img :src="src" alt="" draggable="false" :style="imageStyle" />
+      </div>
+      <div class="frame">
+        <div class="turn" :style="turnStyle">
+          <img :src="src" alt="" draggable="false" :style="imageStyle" @load="onLoad" />
+        </div>
       </div>
     </div>
 
@@ -34,14 +41,17 @@
 </template>
 
 <script setup>
-import { computed, reactive, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { tokenImageFrame } from '@/utils/battlemapGeometry'
 
 // How a token's image sits in it: dragged to frame a face, zoomed, turned.
-// The token keeps `image_scale` (1 fills it), `image_x`, `image_y` (moved by
-// that many token widths) and `rotation` (degrees): the same the map draws
-// (utils/battlemapGeometry.js tokenImageFrame). Changes are shown here as they
-// are made and asked for (`change`, with what changed) once let go of.
+// The token keeps `image_scale` (1: its short side spans the token),
+// `image_x`, `image_y` (moved by that many token widths) and `rotation`
+// (degrees): the same the map draws (utils/battlemapGeometry.js
+// tokenImageFrame), the image always whole at its own proportions. Changes
+// are shown here as they are made and asked for (`change`, with what changed)
+// once let go of.
 const props = defineProps({
   imageUrl: { type: String, required: true },
   scale: { type: Number, default: 1 },
@@ -60,22 +70,28 @@ const round = (value) => Math.round(value * 1000) / 1000
 const draft = reactive({ scale: 1, x: 0, y: 0, rotation: 0 })
 // The frame being dragged: { id, x, y, from, width }.
 let drag = null
+const dragging = ref(false)
 // What the token has, until it is changed here.
 watch(() => [props.scale, props.x, props.y, props.rotation], () => {
   if (drag) return
   Object.assign(draft, { scale: props.scale ?? 1, x: props.x ?? 0, y: props.y ?? 0, rotation: props.rotation ?? 0 })
 }, { immediate: true })
 
+// The image's own proportions (width over height), once it has loaded.
+const aspect = ref(1)
+function onLoad(event) {
+  const { naturalWidth: w, naturalHeight: h } = event.target
+  if (w && h) aspect.value = w / h
+}
+
 const src = computed(() => resolveUrl(props.imageUrl))
 const isReset = computed(() => draft.scale === 1 && draft.x === 0 && draft.y === 0 && draft.rotation === 0)
-// As the map draws it: a square as wide as the token times the zoom,
-// centred, then moved.
-const imageStyle = computed(() => ({
-  width: `${draft.scale * 100}%`,
-  height: `${draft.scale * 100}%`,
-  left: `${50 - draft.scale * 50 + draft.x * 100}%`,
-  top: `${50 - draft.scale * 50 + draft.y * 100}%`
-}))
+// As the map draws it, in percent of the token (whose radius is 50).
+const imageStyle = computed(() => {
+  const frame = tokenImageFrame({ image_scale: draft.scale, image_x: draft.x, image_y: draft.y }, 50, aspect.value)
+  return { width: `${frame.width}%`, height: `${frame.height}%`, left: `${50 + frame.x}%`, top: `${50 + frame.y}%` }
+})
+const turnStyle = computed(() => ({ transform: `rotate(${draft.rotation}deg)` }))
 
 function commit() {
   const changed = {}
@@ -102,6 +118,7 @@ function onDown(event) {
     // A pointer already gone (or a synthetic one) has nothing to capture.
   }
   drag = { id: event.pointerId, x: event.clientX, y: event.clientY, from: { x: draft.x, y: draft.y }, width: event.currentTarget.clientWidth || 1 }
+  dragging.value = true
 }
 
 function onMove(event) {
@@ -116,6 +133,7 @@ function onMove(event) {
 function onUp(event) {
   if (!drag || event.pointerId !== drag.id) return
   drag = null
+  dragging.value = false
   commit()
 }
 
@@ -135,25 +153,31 @@ function onWheel(event) {
   gap: var(--space-3);
 }
 
-.frame {
+.frame-wrap {
   position: relative;
   flex: none;
   width: 6rem;
   height: 6rem;
-  overflow: hidden;
-  border-radius: var(--radius-full);
-  border: 3px solid rgba(255, 255, 255, 0.85);
-  background: var(--frame-color);
   cursor: grab;
   touch-action: none;
 }
 
-.frame:active {
+.frame-wrap.dragging {
+  z-index: var(--z-raised);
   cursor: grabbing;
 }
 
-.frame.disabled {
+.frame-wrap.disabled {
   cursor: default;
+}
+
+.frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  background: var(--frame-color);
 }
 
 .turn {
@@ -161,9 +185,19 @@ function onWheel(event) {
   inset: 0;
 }
 
+/* The rest of the image, outside the token, while it is moved (inside the
+   frame's border, so both line up). */
+.turn.outside {
+  inset: 3px;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
 .turn img {
   position: absolute;
-  object-fit: cover;
+  max-width: none;
+  max-height: none;
+  object-fit: fill;
   pointer-events: none;
   user-select: none;
 }

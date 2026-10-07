@@ -39,7 +39,7 @@ vi.mock('@/components/BattlemapCanvas.vue', () => ({
   default: {
     name: 'BattlemapCanvas',
     props: ['imageUrl', 'grid', 'tokens', 'areas', 'selectedId', 'selectedAreaId', 'tool', 'areaShape', 'editable', 'signals'],
-    emits: ['select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'add-area'],
+    emits: ['select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'reshape-area', 'add-area'],
     template: '<div class="canvas"><slot name="empty" /></div>'
   }
 }))
@@ -497,6 +497,13 @@ describe('BattlemapEditor', () => {
       await flushPromises()
       expect(commands.addItems).toHaveBeenCalledWith('cave', 'areas', [{ shape: 'cone', x: 2, y: 2, size: 4, angle: 90, color: '#f97316' }])
       expect(canvas(wrapper).props('selectedAreaId')).toBe('new')
+      expect(canvas(wrapper).props('tool')).toBe('select') // ready to be moved, sized, turned
+    })
+
+    it('resizes and turns one as its reach handle says', async () => {
+      const wrapper = mountEditor()
+      canvas(wrapper).vm.$emit('reshape-area', 'a1', { size: 6, angle: 90 })
+      expect(commands.patchItem).toHaveBeenLastCalledWith('cave', 'areas', 'a1', { size: 6, angle: 90 })
     })
 
     it('lists them, and changes, moves and removes the selected one', async () => {

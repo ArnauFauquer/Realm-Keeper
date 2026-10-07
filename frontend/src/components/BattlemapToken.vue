@@ -8,7 +8,7 @@
     <g v-if="token.image_url" :clip-path="`url(#${clipId})`">
       <image
         :href="resolveUrl(token.image_url)"
-        :x="frame.x" :y="frame.y" :width="frame.size" :height="frame.size"
+        :x="frame.x" :y="frame.y" :width="frame.width" :height="frame.height"
         :transform="token.rotation ? `rotate(${token.rotation})` : null"
         preserveAspectRatio="xMidYMid slice"
       />
@@ -36,6 +36,7 @@ const DEFAULT_METER = '#4ade80'
 <script setup>
 import { computed } from 'vue'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { useImageSize } from '@/composables/useImageSize'
 import { initials, meterFill, tokenImageFrame } from '@/utils/battlemapGeometry'
 
 // One token, drawn around (0, 0): whoever places it moves it there. `token`
@@ -57,7 +58,10 @@ const labelSize = computed(() => Math.max(10, props.cell * 0.24))
 const meterHeight = computed(() => Math.max(4, props.cell * 0.1))
 const meterGap = computed(() => Math.max(3, props.cell * 0.06))
 const radius = computed(() => Math.max(4, ((props.token.size ?? 1) * props.cell) / 2 - ringWidth.value))
-const frame = computed(() => tokenImageFrame(props.token, radius.value))
+// The image's own proportions, so it is drawn whole, never cut to a square.
+const image = useImageSize(() => props.token.image_url)
+const aspect = computed(() => (image.width.value && image.height.value ? image.width.value / image.height.value : 1))
+const frame = computed(() => tokenImageFrame(props.token, radius.value, aspect.value))
 </script>
 
 <style scoped>

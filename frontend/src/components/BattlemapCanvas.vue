@@ -29,8 +29,10 @@
             <rect class="grid-rect" x="0" y="0" :width="naturalWidth" :height="naturalHeight" :fill="`url(#grid-${uid})`" :opacity="grid.opacity" />
           </template>
 
-          <!-- Areas, under the tokens. Only their outline and origin catch the
-               pointer, so the map can still be panned through them. -->
+          <!-- Areas, under the tokens. An area catches the pointer by its
+               outline and origin, so the map can still be panned through it;
+               once selected, by its inside too (to move it), and its reach
+               handle sizes and turns it. -->
           <g
             v-for="area in shownAreas"
             :key="area.id"
@@ -38,11 +40,19 @@
             :class="{ selected: area.id === selectedAreaId, hidden: area.hidden, preview: area.preview }"
             :style="{ '--area': area.color || DEFAULT_AREA_COLOR }"
           >
-            <path class="area-fill" :d="areaPath(grid, area)" />
             <path
-              class="area-outline"
+              class="area-fill"
               :d="areaPath(grid, area)"
-              :stroke-width="lineWidth * 2"
+              @pointerdown.stop="onAreaDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            />
+            <path class="area-outline" :d="areaPath(grid, area)" :stroke-width="lineWidth * 2" />
+            <!-- An outline wide enough to hit with a finger. -->
+            <path
+              class="area-hit"
+              :d="areaPath(grid, area)"
+              :stroke-width="Math.max(12, cell * 0.3)"
               @pointerdown.stop="onAreaDown(area, $event)"
               @mousedown.stop.prevent
               @touchstart.stop
@@ -57,6 +67,18 @@
               @mousedown.stop.prevent
               @touchstart.stop
             />
+            <circle
+              v-if="editable && area.id === selectedAreaId"
+              class="area-reach"
+              :cx="areaReachPoint(grid, area).x"
+              :cy="areaReachPoint(grid, area).y"
+              :r="ringWidth * 3"
+              @pointerdown.stop="onReachDown(area, $event)"
+              @mousedown.stop.prevent
+              @touchstart.stop
+            >
+              <title>Drag to resize{{ area.shape === 'cone' || area.shape === 'line' ? ' and turn' : '' }}</title>
+            </circle>
             <text
               class="area-label"
               :x="areaLabelPoint(grid, area).x"
@@ -116,7 +138,7 @@ import MeasurePath from './MeasurePath.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { resolveUrl } from '@/utils/resolveUrl'
 import {
-  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, cellCenter, snapPosition, toCells, toPixels, tokenCenter
+  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, cellCenter, snapPosition, toCells, toPixels, tokenCenter
 } from '@/utils/battlemapGeometry'
 
 // A battlemap drawn: the image, its grid, its areas and the tokens on it. It
@@ -156,10 +178,11 @@ const props = defineProps({
 // point tapped with the pointer, or the map double-clicked), `point` (the
 // pointer dragged there), `release` (let go of), `measure` ({ points, token,
 // end }: the path being measured or moved along, for everyone to see),
-// `select-area`, `move-area` (id, { x, y }) and `add-area` (an area drawn).
+// `select-area`, `move-area` (id, { x, y }), `reshape-area` (id, { size,
+// angle }) and `add-area` (an area drawn).
 // Points are in cells.
 const emit = defineEmits([
-  'select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'add-area'
+  'select', 'move', 'open', 'ping', 'point', 'release', 'measure', 'select-area', 'move-area', 'reshape-area', 'add-area'
 ])
 
 const DEFAULT_AREA_COLOR = '#f97316'
@@ -346,18 +369,21 @@ const ruling = usePointerDrag({
 // ── areas ─────────────────────────────────────────────────────────────────
 
 const areaPreview = ref(null)
-const areaOverride = ref(null) // { id, x, y } while one is dragged, and a moment after
+// { id, ...fields } while an area is moved or reshaped, and a moment after:
+// drawn as the pointer has it until the document agrees.
+const areaOverride = ref(null)
 
 const shownAreas = computed(() => {
-  const areas = props.areas.map((area) => (areaOverride.value?.id === area.id ? { ...area, x: areaOverride.value.x, y: areaOverride.value.y } : area))
+  const held = areaOverride.value
+  const areas = props.areas.map((area) => (held?.id === area.id ? { ...area, ...held } : area))
   return areaPreview.value ? [...areas, { ...areaPreview.value, id: 'preview', preview: true }] : areas
 })
 
 watch(() => props.areas, (areas) => {
   const held = areaOverride.value
-  if (!held || areaMove.active()) return
+  if (!held || areaMove.active() || reaching.active()) return
   const area = areas.find((a) => a.id === held.id)
-  if (!area || (area.x === held.x && area.y === held.y)) areaOverride.value = null
+  if (!area || Object.entries(held).every(([field, value]) => area[field] === value)) areaOverride.value = null
 }, { deep: true })
 
 const areaDraw = usePointerDrag({
@@ -408,6 +434,32 @@ function onAreaDown(area, event) {
   if (!props.editable) return
   const at = cellPoint(event)
   if (at) areaMove.start(event, { id: area.id, grab: { x: at.x - area.x, y: at.y - area.y } })
+}
+
+// The selected area's reach handle: dragged, it sets how far the area
+// reaches (and, for a cone or a line, which way), as drawing it would.
+const reaching = usePointerDrag({
+  toPoint: cellPoint,
+  onMove(to, _event, state) {
+    const { size, angle } = areaFromDrag(props.grid, state.area.shape, { x: state.area.x, y: state.area.y }, to)
+    areaOverride.value = { id: state.area.id, size, angle }
+  },
+  onEnd(state, { moved }) {
+    if (!moved || !areaOverride.value) {
+      areaOverride.value = null
+      return
+    }
+    const { size, angle } = areaOverride.value
+    emit('reshape-area', state.area.id, { size, angle })
+  },
+  onCancel() {
+    areaOverride.value = null
+  }
+})
+
+function onReachDown(area, event) {
+  if (!props.editable) return
+  reaching.start(event, { area })
 }
 
 // ── the pointer ───────────────────────────────────────────────────────────
@@ -511,8 +563,10 @@ onBeforeUnmount(() => {
 }
 
 /* Only the select tool picks things up; the others work on the bare map. */
+/* (Each part says so: a part's own pointer-events would beat its group's.) */
 .canvas-svg:not(.tool-select) .token,
-.canvas-svg:not(.tool-select) .area {
+.canvas-svg:not(.tool-select) .area,
+.canvas-svg:not(.tool-select) .area * {
   pointer-events: none;
 }
 
@@ -526,7 +580,14 @@ onBeforeUnmount(() => {
   fill: none;
   stroke: var(--area);
   stroke-opacity: 0.9;
-  pointer-events: visibleStroke;
+  pointer-events: none;
+}
+
+/* The outline as the pointer finds it: wide, invisible. */
+.area-hit {
+  fill: none;
+  stroke: transparent;
+  pointer-events: stroke;
   cursor: move;
 }
 
@@ -537,8 +598,22 @@ onBeforeUnmount(() => {
   cursor: move;
 }
 
+/* Selected, it is picked up by its inside too, and its reach handle shows. */
 .area.selected .area-fill {
   fill-opacity: 0.28;
+  pointer-events: visiblePainted;
+  cursor: move;
+}
+
+.area-reach {
+  fill: #fff;
+  stroke: var(--area);
+  stroke-width: 3;
+  cursor: nwse-resize;
+}
+
+.area.preview .area-hit {
+  pointer-events: none;
 }
 
 .area.selected .area-outline {

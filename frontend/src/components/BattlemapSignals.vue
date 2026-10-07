@@ -22,7 +22,7 @@
         class="pointer-glow"
         :x1="px(s.x1, s.y1).x" :y1="px(s.x1, s.y1).y" :x2="px(s.x2, s.y2).x" :y2="px(s.x2, s.y2).y"
         :stroke-width="trailWidth * 3"
-        :opacity="s.opacity * 0.35"
+        :opacity="s.opacity * 0.5"
       />
       <line
         v-for="(s, i) in stroke.segments"
@@ -96,7 +96,7 @@ const tokenById = (id) => props.tokens.find((t) => t.id === id) || null
 const frame = shallowRef(EMPTY)
 
 const cell = computed(() => props.grid.size)
-const trailWidth = computed(() => Math.max(3, cell.value * 0.07))
+const trailWidth = computed(() => Math.max(4, cell.value * 0.09))
 const nameSize = computed(() => Math.max(11, cell.value * 0.22))
 const rollSize = computed(() => Math.max(12, cell.value * 0.28))
 const px = (x, y) => toPixels(props.grid, x, y)

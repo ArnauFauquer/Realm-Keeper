@@ -123,6 +123,16 @@ export function areaPath(grid, area) {
   return circlePath(o, size)
 }
 
+/** Where an area's reach handle sits (pixels): at the end of a cone or
+ * line, on a circle's edge the way it was drawn, at a square's corner. */
+export function areaReachPoint(grid, area) {
+  const o = toPixels(grid, area.x, area.y)
+  const size = area.size * grid.size
+  if (area.shape === 'square') return { x: o.x + size, y: o.y + size }
+  const angle = rad(area.angle || 0)
+  return { x: o.x + size * Math.cos(angle), y: o.y + size * Math.sin(angle) }
+}
+
 /** Where an area's label goes (pixels): its origin, or along a cone or line. */
 export function areaLabelPoint(grid, area) {
   const o = toPixels(grid, area.x, area.y)
@@ -184,15 +194,23 @@ export function initials(name) {
   return (words[0][0] + words[words.length - 1][0]).toUpperCase()
 }
 
-/** Where a token's image sits inside a token of radius `r` (pixels, around
- * its centre): as big as the token at `image_scale` 1, moved by `image_x`,
- * `image_y` token widths. { x, y, size } of the image's square. */
-export function tokenImageFrame(token, r) {
-  const size = 2 * r * (token.image_scale ?? 1)
+/**
+ * Where a token's image sits inside a token of radius `r` (pixels, around
+ * its centre), whole and at its own proportions (`aspect`, its width over its
+ * height): at `image_scale` 1 its shorter side spans the token, so it covers
+ * it, and the rest of it reaches past, ready to be brought in by moving it
+ * (`image_x`, `image_y`, in token widths). { x, y, width, height }.
+ */
+export function tokenImageFrame(token, r, aspect = 1) {
+  const base = 2 * r * (token.image_scale ?? 1)
+  const ratio = aspect > 0 && Number.isFinite(aspect) ? aspect : 1
+  const width = ratio >= 1 ? base * ratio : base
+  const height = ratio >= 1 ? base : base / ratio
   return {
-    x: -size / 2 + (token.image_x ?? 0) * 2 * r,
-    y: -size / 2 + (token.image_y ?? 0) * 2 * r,
-    size
+    x: -width / 2 + (token.image_x ?? 0) * 2 * r,
+    y: -height / 2 + (token.image_y ?? 0) * 2 * r,
+    width,
+    height
   }
 }
 

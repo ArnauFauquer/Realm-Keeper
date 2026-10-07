@@ -324,6 +324,34 @@ describe('BattlemapCanvas', () => {
       expect(wrapper.emitted('move-area')).toEqual([['fire', { x: 4.5, y: 2 }]]) // on a cell's centre or corner
     })
 
+    it('once selected, is picked up by its inside too, and shows where it has been moved until agreed', async () => {
+      const wrapper = mountCanvas({ areas: AREAS, selectedAreaId: 'fire' })
+      wrapper.find('.area.selected .area-fill').element.dispatchEvent(pointer('pointerdown', 175, 140)) // half a cell in
+      window.dispatchEvent(pointer('pointermove', 175 + 70 * 3, 140 + 70))
+      await frame()
+      window.dispatchEvent(pointer('pointerup', 175 + 70 * 3, 140 + 70))
+      await wrapper.vm.$nextTick()
+      expect(wrapper.emitted('move-area')).toEqual([['fire', { x: 5, y: 3 }]]) // the grab is kept
+      expect(wrapper.find('.area.selected .area-handle').attributes('cx')).toBe('350')
+    })
+
+    it('resizes and turns the selected one by its reach handle', async () => {
+      const cone = { ...AREAS[0], shape: 'cone', size: 2, angle: 0 }
+      const wrapper = mountCanvas({ areas: [cone], selectedAreaId: 'fire' })
+      const reach = wrapper.find('.area-reach')
+      expect([reach.attributes('cx'), reach.attributes('cy')]).toEqual(['280', '140']) // its tip, 2 cells right
+      reach.element.dispatchEvent(pointer('pointerdown', 280, 140))
+      window.dispatchEvent(pointer('pointermove', 140, 140 + 70 * 4)) // 4 cells straight down
+      await frame()
+      window.dispatchEvent(pointer('pointerup', 140, 140 + 70 * 4))
+      expect(wrapper.emitted('reshape-area')).toEqual([['fire', { size: 4, angle: 90 }]])
+      expect(wrapper.emitted('move-area')).toBeUndefined()
+    })
+
+    it('shows no reach handle on what is not selected', () => {
+      expect(mountCanvas({ areas: AREAS }).find('.area-reach').exists()).toBe(false)
+    })
+
     it('lets a screen only look', () => {
       const wrapper = mountCanvas({ areas: AREAS, editable: false })
       expect(wrapper.find('.area-handle').exists()).toBe(false)

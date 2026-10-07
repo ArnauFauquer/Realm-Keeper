@@ -24,7 +24,7 @@ describe('TokenImageEditor', () => {
 
   it('moves the image with a drag of the frame, in token widths, and says so once let go of', async () => {
     const wrapper = mountFrame()
-    const frame = wrapper.find('.frame')
+    const frame = wrapper.find('.frame-wrap')
     Object.defineProperty(frame.element, 'clientWidth', { value: 100 })
     frame.element.dispatchEvent(pointer('pointerdown', 50, 50))
     frame.element.dispatchEvent(pointer('pointermove', 70, 40))
@@ -50,8 +50,8 @@ describe('TokenImageEditor', () => {
 
   it('only shows, when it may not change', () => {
     const wrapper = mountFrame({ disabled: true })
-    wrapper.find('.frame').element.dispatchEvent(pointer('pointerdown', 50, 50))
-    wrapper.find('.frame').element.dispatchEvent(pointer('pointerup', 90, 50))
+    wrapper.find('.frame-wrap').element.dispatchEvent(pointer('pointerdown', 50, 50))
+    wrapper.find('.frame-wrap').element.dispatchEvent(pointer('pointerup', 90, 50))
     expect(wrapper.emitted('change')).toBeUndefined()
     expect(wrapper.find('input').attributes('disabled')).toBeDefined()
   })

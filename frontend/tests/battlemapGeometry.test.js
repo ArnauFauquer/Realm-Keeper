@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, bandFor, bandRings, cellCenter, freeCells, initials, measure,
+  areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, bandFor, bandRings, cellCenter, freeCells, initials, measure,
   measurePath, meterFill, snapPosition, toCells, toPixels, tokenCenter, tokenImageFrame
 } from '@/utils/battlemapGeometry'
 
@@ -148,6 +148,12 @@ describe('areas', () => {
     expect(areaMeasure(bands, area({ shape: 'cone', size: 6 }))).toBe('Far')
   })
 
+  it('puts the reach handle at the end of a cone or line, on a circle, at a square\'s corner', () => {
+    expect(areaReachPoint(G, area({ shape: 'line', angle: 90 }))).toEqual({ x: 100, y: 200 })
+    expect(areaReachPoint(G, area({ shape: 'circle' }))).toEqual({ x: 200, y: 100 })
+    expect(areaReachPoint(G, area({ shape: 'square', size: 1 }))).toEqual({ x: 150, y: 150 })
+  })
+
   it('labels a cone or line along it, the rest at their origin', () => {
     expect(areaLabelPoint(G, area({ shape: 'circle' }))).toEqual({ x: 100, y: 100 })
     expect(areaLabelPoint(G, area({ shape: 'line', angle: 90 })).y).toBeCloseTo(150)
@@ -165,7 +171,16 @@ describe('areas', () => {
 
 describe('tokenImageFrame', () => {
   it('fills the token by default, and is zoomed and moved as the token says', () => {
-    expect(tokenImageFrame({}, 50)).toEqual({ x: -50, y: -50, size: 100 })
-    expect(tokenImageFrame({ image_scale: 2, image_x: 0.25, image_y: -0.1 }, 50)).toEqual({ x: -75, y: -110, size: 200 })
+    expect(tokenImageFrame({}, 50)).toEqual({ x: -50, y: -50, width: 100, height: 100 })
+    expect(tokenImageFrame({ image_scale: 2, image_x: 0.25, image_y: -0.1 }, 50)).toEqual({ x: -75, y: -110, width: 200, height: 200 })
+  })
+
+  it('keeps the image whole, at its own proportions: its short side covers the token', () => {
+    // A portrait twice as tall as wide: as wide as the token, twice as tall,
+    // so its top half can be brought into the token by moving it down.
+    expect(tokenImageFrame({}, 50, 0.5)).toEqual({ x: -50, y: -100, width: 100, height: 200 })
+    expect(tokenImageFrame({ image_y: 0.5 }, 50, 0.5).y).toBe(-50) // its top at the token's top
+    expect(tokenImageFrame({}, 50, 2)).toEqual({ x: -100, y: -50, width: 200, height: 100 })
+    expect(tokenImageFrame({}, 50, 0)).toEqual({ x: -50, y: -50, width: 100, height: 100 }) // not known yet
   })
 })
