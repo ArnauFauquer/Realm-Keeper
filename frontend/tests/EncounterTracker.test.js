@@ -60,7 +60,7 @@ describe('EncounterTracker', () => {
     expect(cards(wrapper)[0].find('.rc-value').text()).toBe('4 / 6')
     expect(cards(wrapper)[1].find('.rc-value').text()).toBe('6 / 6')
     expect(cards(wrapper)[1].text()).toContain('Prone')
-    expect(wrapper.text()).toContain('Live')
+    expect(wrapper.find('.live-badge').exists()).toBe(false) // changes arrive live: nothing to say
   })
 
   it("shows a character's saved counters, not the encounter's", () => {

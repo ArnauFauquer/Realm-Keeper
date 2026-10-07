@@ -44,9 +44,7 @@
           :shapes="AREA_SHAPES"
         />
 
-        <div class="stage-status">
-          <LiveBadge />
-        </div>
+        <LiveBadge class="stage-status" />
       </div>
 
       <aside class="panel" aria-label="Map panel">
@@ -728,7 +726,7 @@ onBeforeUnmount(() => clearTimeout(viewTimer))
   min-height: 0;
 }
 
-/* Whether the map is live: changes reach everyone as they are made. */
+/* Only there when changes stop arriving live (LiveBadge): over the map, where it is seen. */
 .stage-status {
   position: absolute;
   top: var(--space-3);

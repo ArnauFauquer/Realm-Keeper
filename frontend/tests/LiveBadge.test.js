@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, ref } from 'vue'
 import { mount } from '@vue/test-utils'
 
@@ -13,13 +13,32 @@ const LiveBadge = (await import('@/components/LiveBadge.vue')).default
 const LiveDocumentState = (await import('@/components/LiveDocumentState.vue')).default
 
 describe('LiveBadge', () => {
-  it('says whether changes arrive live', async () => {
+  afterEach(() => {
+    syncStatus.value.value = 'open'
+    vi.useRealTimers()
+  })
+
+  it('says nothing while changes arrive live, and when they stop', async () => {
     const wrapper = mount(LiveBadge)
-    expect(wrapper.text()).toBe('Live')
+    expect(wrapper.find('.live-badge').exists()).toBe(false)
     syncStatus.value.value = 'denied'
     await nextTick()
     expect(wrapper.text()).toBe('Signed out')
-    expect(wrapper.attributes('title')).toContain('Sign in')
+    expect(wrapper.find('.live-badge').attributes('title')).toContain('Sign in')
+  })
+
+  it('mentions a connection only once it takes a while', async () => {
+    vi.useFakeTimers()
+    const wrapper = mount(LiveBadge)
+    syncStatus.value.value = 'connecting'
+    await nextTick()
+    expect(wrapper.find('.live-badge').exists()).toBe(false) // opening a document connects too, in a moment
+    vi.advanceTimersByTime(2000)
+    await nextTick()
+    expect(wrapper.text()).toBe('Reconnecting…')
+    syncStatus.value.value = 'open'
+    await nextTick()
+    expect(wrapper.find('.live-badge').exists()).toBe(false)
   })
 })
 
@@ -34,6 +53,8 @@ describe('LiveDocumentState', () => {
   it('takes the class its owner gives it (its root is one element)', () => {
     const wrapper = mount(LiveDocumentState, { props: { status: 'loading', noun: 'map' }, attrs: { class: 'editor-state' } })
     expect(wrapper.classes()).toEqual(['live-state', 'editor-state'])
+    syncStatus.value.value = 'denied'
     expect(mount(LiveBadge, { attrs: { class: 'here' } }).classes()).toContain('here')
+    syncStatus.value.value = 'open'
   })
 })
