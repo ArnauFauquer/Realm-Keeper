@@ -1,9 +1,10 @@
 # Examples
 
-Ready-to-run Docker Compose setups, from the simplest to a full server. Each
-folder is self-contained: copy it anywhere, no need to clone the whole
-repository. They use the published images
-(`ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}`), version 0.5.0 or later.
+Ready-to-run Docker Compose setups, from the simplest to a full server. They
+use the published images (`ghcr.io/arnaufauquer/realm-keeper/{backend,frontend}`),
+version 0.5.0 or later, so nothing is built. Each folder also works copied on
+its own, once `VAULT_DIR` points at your notes: without it, it shows the
+[sample-vault](sample-vault) beside it.
 
 | Example | Notes | Files (maps, sheets, images, music) | Login |
 | ------- | ----- | ----------------------------------- | ----- |
@@ -20,7 +21,7 @@ docker compose up -d
 ```
 
 Then open http://localhost:8080. Until you point it at your own notes, it shows
-the few in [sample-vault](sample-vault).
+the sample campaign in [sample-vault](sample-vault).
 
 ## Settings they share
 
@@ -51,7 +52,7 @@ any login go together:
   or more of `OIDC_*`, `GITHUB_*`, `GOOGLE_*`. The redirect URI to register is
   always `<app address>/api/auth/callback`.
 
-The [main README](../README.md#configuration) lists every setting.
+[docs/configuration.md](../docs/configuration.md) lists every setting.
 
 ## Backups
 

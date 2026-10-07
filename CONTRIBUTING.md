@@ -32,8 +32,7 @@ docker compose up --build
 a folder, everything else in a Docker volume.
 
 To work on one side with hot reload, see
-[Development without Docker](README.md#development-without-docker) in the
-README. Images and audio go to a folder (`STORAGE_LOCAL_PATH`) unless you set
+[Development without Docker](docs/development.md#without-docker). Images and audio go to a folder (`STORAGE_LOCAL_PATH`) unless you set
 `STORAGE_BACKEND=s3`; to work against S3, the MinIO service from
 `docker-compose.yml` works on its own:
 
