@@ -206,7 +206,13 @@ onBeforeUnmount(() => {
 }
 
 /* It spreads even when the device asks for reduced motion (on Windows, with
-   "Animation effects" off): a ping is there to catch the eye, once, briefly. */
+   "Animation effects" off): a ping is there to catch the eye, once, briefly.
+   (styles/base.css cuts every animation short then, with !important.) */
+@media (prefers-reduced-motion: reduce) {
+  .ping-ring {
+    animation-duration: 1.2s !important;
+  }
+}
 
 .roll-back {
   fill: rgba(12, 13, 29, 0.92);
