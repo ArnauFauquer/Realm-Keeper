@@ -79,7 +79,7 @@ and [backend/.env.example](../backend/.env.example) for annotated examples.
 | `REPO_URL`              | —                        | Git repository holding the vault                                  |
 | `GIT_ENABLED`           | on if `REPO_URL` is set  | Pull, commit and push the vault; off, it is a plain folder        |
 | `GIT_SYNC_INTERVAL`     | `300`                    | Seconds between pulls (`0` disables periodic sync)                |
-| `VAULT_WATCH_INTERVAL`  | `10`                     | Without Git: seconds between checks for notes changed on disk (`0` disables) |
+| `VAULT_WATCH_INTERVAL`  | `10`                     | Seconds between checks for notes changed on disk (a pull, Obsidian): open pages then reload their tree (`0` disables) |
 | `NOTE_TAG_IGNORE`       | `private`                | Notes with this tag are hidden                                    |
 | `HOME_NOTE`             | found in the vault       | The note the app opens on (its path without `.md`); else the first of `RealmKeeper`, `index`, `Home`, `README`, `Welcome` at the vault's top, else its first note |
 | `STORAGE_BACKEND`       | `s3` if `S3_ENDPOINT_URL` is set, else `local` | Where documents, images and audio go               |
