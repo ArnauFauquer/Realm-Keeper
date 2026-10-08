@@ -7,8 +7,11 @@ vi.mock('@/api/http', () => ({
   invalidateCached: (...args) => invalidateCached(...args)
 }))
 vi.mock('@/config/env', () => ({ apiUrl: '' }))
+const stopSync = vi.fn()
+const listenToSync = vi.fn(() => stopSync)
+vi.mock('@/composables/syncSocket', () => ({ listenToSync: (...args) => listenToSync(...args) }))
 
-const { useNotes, notifyNotesChanged, useNotesChanged } = await import('@/composables/useNotes')
+const { useNotes, notifyNotesChanged, useNotesChanged, listenForVaultChanges } = await import('@/composables/useNotes')
 const { useGraphData } = await import('@/composables/useGraphData')
 
 const page = (start, count) => Array.from({ length: count }, (_, i) => ({ id: `n${start + i}`, title: `N${start + i}` }))
@@ -118,5 +121,24 @@ describe('useNotes', () => {
     expect(invalidateCached).toHaveBeenCalledWith('/api/tags')
     expect(invalidateCached).toHaveBeenCalledWith('/api/container-folders')
     expect([changed.value, version.value]).toEqual([before[0] + 1, before[1] + 1])
+  })
+
+  it('a vault change the server announces refreshes the lists, as does a reconnection', () => {
+    const changed = useNotesChanged()
+    const stop = listenForVaultChanges()
+    const { onEvent, onOpen } = listenToSync.mock.calls.at(-1)[0]
+    const before = changed.value
+
+    onOpen()
+    expect(changed.value).toBe(before)
+    onEvent({ type: 'doc', doc: 'chart:x' })
+    expect(changed.value).toBe(before)
+    onEvent({ type: 'notes' })
+    expect(changed.value).toBe(before + 1)
+    onOpen()
+    expect(changed.value).toBe(before + 2)
+
+    stop()
+    expect(stopSync).toHaveBeenCalled()
   })
 })

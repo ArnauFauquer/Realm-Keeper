@@ -111,10 +111,10 @@ def sync_vault() -> None:
 
 
 async def _watch_vault():
-    """Without git, the vault is a folder that something else may write too
-    (Obsidian, on the same volume): notice its notes changing and drop the
-    parsed-note caches, as a pull would, so an edit there shows within a few
-    seconds rather than once the caches expire."""
+    """Notices the vault's notes changing on disk, whoever changed them: a
+    pull, a note saved here, or Obsidian writing to a shared folder. Drops the
+    parsed-note caches and tells every open page, so a tree, the tags or the
+    graph show a new note within a few seconds instead of on the next reload."""
     interval = settings.VAULT_WATCH_INTERVAL
     if interval <= 0:
         logger.info("Vault watch disabled (VAULT_WATCH_INTERVAL <= 0).")
@@ -132,11 +132,11 @@ async def _watch_vault():
             seen = now
             logger.info("The vault changed on disk: reloading notes.")
             md_service_instance.invalidate_cache()
+            await doc_hub.announce({"type": "notes"})
 
 
 async def _periodic_sync():
     if not settings.GIT_ENABLED:
-        await _watch_vault()
         return
     interval = settings.GIT_SYNC_INTERVAL
     if interval <= 0:
@@ -148,7 +148,8 @@ async def _periodic_sync():
         logger.info("Running periodic vault sync...")
         await asyncio.to_thread(md_service_instance.under_git_lock, sync_vault)
         # A pull can add, change or newly hide (ignore-tag) notes: drop the
-        # parsed-note caches so none of that waits out their 5-minute TTL.
+        # parsed-note caches so none of that waits out their 5-minute TTL
+        # (the vault watch then tells the open pages).
         md_service_instance.invalidate_cache()
 
 
@@ -180,9 +181,10 @@ async def lifespan(app: FastAPI):
     # And then were YAML in their documents: they are JSON now (once).
     await asyncio.to_thread(convert_yaml_sheets)
     task = asyncio.create_task(_periodic_sync())
+    watch = asyncio.create_task(_watch_vault())
     housekeeping = asyncio.create_task(doc_hub.run_housekeeping())
     yield
-    for background in (task, housekeeping):
+    for background in (task, watch, housekeeping):
         background.cancel()
         try:
             await background

@@ -241,7 +241,7 @@ import { useRouter } from 'vue-router'
 import TreeItem from './TreeItem.vue'
 import PlayerTransport from './PlayerTransport.vue'
 import { appVersion } from '../config/env'
-import { useNotes, useNotesChanged } from '@/composables/useNotes'
+import { listenForVaultChanges, useNotes, useNotesChanged } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
 import { useObservatoryModal } from '@/composables/useObservatoryModal'
@@ -325,7 +325,9 @@ const {
   fetchTags
 } = useNotes()
 
-// A note saved or created here changes the tree and the tags.
+// A note saved or created here, or one the server found in the vault (a pull,
+// Obsidian), changes the tree and the tags.
+let stopListening = null
 watch(useNotesChanged(), () => {
   refreshNotes()
   fetchTags()
@@ -479,9 +481,11 @@ onMounted(() => {
   fetchNotes()
   fetchTags()
   setupScrollObserver()
+  stopListening = listenForVaultChanges()
 })
 
 onBeforeUnmount(() => {
+  stopListening?.()
   lockPageScroll(false)
   if (scrollObserver) {
     scrollObserver.disconnect()

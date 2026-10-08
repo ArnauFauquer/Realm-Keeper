@@ -2,6 +2,7 @@ import { readonly, ref } from 'vue'
 import { getCached, invalidateCached } from '@/api/http'
 import { apiUrl } from '@/config/env'
 import { invalidateGraph } from './useGraphData'
+import { listenToSync } from './syncSocket'
 
 // Bumped whenever a note is saved or created in the app, so every list of
 // notes (the sidebar's tree, the tags, the graph) fetches again instead of
@@ -20,6 +21,23 @@ export function notifyNotesChanged() {
 /** A number that changes each time notifyNotesChanged() is called. */
 export function useNotesChanged() {
   return readonly(notesVersion)
+}
+
+/** Listens for the server noticing the vault change on disk (a pull, Obsidian,
+ * a note saved by someone else) and refreshes the lists as a save here would.
+ * Changes missed while the socket was down count too: a reconnection
+ * refreshes, the first connection doesn't. Returns the function that stops. */
+export function listenForVaultChanges() {
+  let connected = false
+  return listenToSync({
+    onEvent: (event) => {
+      if (event.type === 'notes') notifyNotesChanged()
+    },
+    onOpen: () => {
+      if (connected) notifyNotesChanged()
+      connected = true
+    }
+  })
 }
 
 export function useNotes() {
