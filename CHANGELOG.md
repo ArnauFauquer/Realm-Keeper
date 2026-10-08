@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.3](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.2...v0.4.3) (2026-10-08)
+
+
+### Features
+
+* **notes:** ==text== highlights its text, as in Obsidian ([#62](https://github.com/ArnauFauquer/Realm-Keeper/issues/62)) ([eb92288](https://github.com/ArnauFauquer/Realm-Keeper/commit/eb922884fcfbee1255e4dac0fd78640435ec32ce))
+
+
+### Bug Fixes
+
+* **notes:** the tree shows notes pulled from git without a reload ([#63](https://github.com/ArnauFauquer/Realm-Keeper/issues/63)) ([e464f80](https://github.com/ArnauFauquer/Realm-Keeper/commit/e464f80be44dfb0fc691ce1b185fa630326cbf57))
+
 ## [0.4.2](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.1...v0.4.2) (2026-10-07)
 
 
