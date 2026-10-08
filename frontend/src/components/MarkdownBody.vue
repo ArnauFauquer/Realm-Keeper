@@ -213,6 +213,16 @@ function onMouseover(e) {
   font-size: 0.875em;
 }
 
+/* ==text==: a highlighter stroke, warm so it never reads as inline code. */
+.markdown-content :deep(mark) {
+  background: color-mix(in srgb, var(--status-warning) 24%, transparent);
+  color: var(--text-primary);
+  padding: 0.05em 0.25em;
+  border-radius: var(--radius-sm);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .markdown-content :deep(pre) {
   background: var(--surface-sunken);
   padding: var(--space-4);

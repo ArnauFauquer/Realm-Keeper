@@ -27,4 +27,19 @@ describe('createMarkdown', () => {
   it('leaves ordinary code alone', () => {
     expect(createMarkdown().renderInline('`foo()`')).toBe('<code>foo()</code>')
   })
+
+  it('highlights ==text==, nested with other emphasis', () => {
+    const md = createMarkdown()
+    expect(md.renderInline('un ==AVENTURERO== valiente')).toBe('un <mark>AVENTURERO</mark> valiente')
+    expect(md.renderInline('==**muy** importante==')).toBe('<mark><strong>muy</strong> importante</mark>')
+    expect(md.renderInline('**==ojo==**')).toBe('<strong><mark>ojo</mark></strong>')
+  })
+
+  it('leaves a lone or unbalanced = as text', () => {
+    const md = createMarkdown()
+    expect(md.renderInline('a == b')).toBe('a == b')
+    expect(md.renderInline('x = 1, ==sin cerrar')).toBe('x = 1, ==sin cerrar')
+    expect(md.renderInline('`==code==`')).toBe('<code>==code==</code>')
+    expect(md.render('Título\n===')).toBe('<h1>Título</h1>\n')
+  })
 })
