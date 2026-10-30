@@ -47,13 +47,15 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 20))
 
 async function get(path, mode = 'no-cors') {
   let response
+  const extending = []   // what the worker asked to keep alive (recording the live build): awaited, not guessed at
   const event = {
     request: { url: ORIGIN + path, method: 'GET', mode },
     respondWith: (promise) => { response = promise },
-    waitUntil: () => {}
+    waitUntil: (promise) => { extending.push(promise) }
   }
   listeners.fetch(event)
   const result = await response
+  await Promise.all(extending)
   await settle()
   return result
 }
