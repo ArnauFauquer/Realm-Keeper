@@ -1,6 +1,6 @@
 <template>
   <div class="home" :aria-busy="!empty">
-    <span class="home-mark mdi mdi-saturn" aria-hidden="true"></span>
+    <span class="home-mark mdi mdi-orbit" aria-hidden="true"></span>
     <h1 class="home-title">Welcome to Realm Keeper</h1>
     <p v-if="empty" class="home-empty">
       The vault has no notes yet. Add Markdown files to its folder (an Obsidian
