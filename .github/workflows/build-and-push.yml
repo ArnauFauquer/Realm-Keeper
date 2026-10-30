@@ -6,6 +6,10 @@ on:
       - main
   workflow_dispatch:
 
+# Read-only by default; each job asks for what it writes.
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME_BACKEND: ${{ github.repository }}/backend

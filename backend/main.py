@@ -1,7 +1,7 @@
 import asyncio
 import os
 import shutil
-import subprocess
+import subprocess  # git, with fixed arguments  # nosec B404
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -40,11 +40,11 @@ def _mark_vault_safe(vault_path: Path) -> None:
     (the container runs as UID 1000 but the vault mount may be owned by
     root). Once: `--add` on every sync appended the same line to
     ~/.gitconfig every few minutes."""
-    listed = subprocess.run(
+    listed = subprocess.run(  # git, fixed arguments  # nosec B603 B607
         ["git", "config", "--global", "--get-all", "safe.directory"], capture_output=True, text=True,
     )
     if str(vault_path) not in listed.stdout.splitlines():
-        subprocess.run(
+        subprocess.run(  # git, fixed arguments  # nosec B603 B607
             ["git", "config", "--global", "--add", "safe.directory", str(vault_path)], capture_output=True, text=True,
         )
 
@@ -72,7 +72,7 @@ def _clone_vault(vault_path: Path, repo_url: str) -> None:
     tmp_path = Path(tempfile.mkdtemp(prefix="vault_clone_"))
     try:
         logger.info(f"Cloning vault from {redact_credentials(repo_url)} into {tmp_path}...")
-        result = subprocess.run(
+        result = subprocess.run(  # git; repo_url comes from the operator's config  # nosec B603 B607
             ["git", "clone", repo_url, str(tmp_path)],
             capture_output=True, text=True, timeout=300
         )

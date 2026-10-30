@@ -101,7 +101,7 @@ def _github_provider(oauth: OAuth) -> Provider:
         client_id=settings.GITHUB_CLIENT_ID,
         client_secret=settings.GITHUB_CLIENT_SECRET,
         authorize_url="https://github.com/login/oauth/authorize",
-        access_token_url="https://github.com/login/oauth/access_token",
+        access_token_url="https://github.com/login/oauth/access_token",  # a URL  # nosec B106
         api_base_url="https://api.github.com/",
         client_kwargs={"scope": "read:user user:email"},
     )

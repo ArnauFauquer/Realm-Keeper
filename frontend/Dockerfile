@@ -29,11 +29,13 @@ FROM nginxinc/nginx-unprivileged:alpine-slim
 # the container's actual /etc/resolv.conf at startup (see nginx.conf.template).
 # apk upgrade: pull the security patches (brotli, curl, expat, tiff, libx11)
 # published since the base image was last built.
-USER root
+USER 0
 RUN apk upgrade --no-cache
 USER 101
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
 CMD ["nginx", "-g", "daemon off;"]

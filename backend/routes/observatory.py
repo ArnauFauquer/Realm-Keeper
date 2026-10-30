@@ -182,14 +182,19 @@ def make_observatory_router(
         that folder: POST /import brings it back into any folder, here or on
         another instance."""
         await hub.flush_all()   # what is being played is stored as it is now
-        spool = await blocking(lambda: tempfile.SpooledTemporaryFile(max_size=EXPORT_SPOOL_BYTES))
-        try:
-            await blocking(observatory.export_zip, spool, path)
-            size = spool.tell()
-            spool.seek(0)
-        except BaseException:
-            spool.close()
-            raise
+
+        def build():
+            spool = tempfile.SpooledTemporaryFile(max_size=EXPORT_SPOOL_BYTES)
+            try:
+                observatory.export_zip(spool, path)
+                size = spool.tell()
+                spool.seek(0)
+            except BaseException:
+                spool.close()
+                raise
+            return spool, size
+
+        spool, size = await blocking(build)
 
         def chunks():
             with spool:
