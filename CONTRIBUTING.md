@@ -107,6 +107,13 @@ npx vitest run
 npm run build
 ```
 
+A pre-commit hook runs both test suites and refuses the commit if any test
+fails. Turn it on once per clone:
+
+```bash
+git config core.hooksPath .githooks
+```
+
 ## Commit messages
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org/):
