@@ -18,12 +18,13 @@ if ('serviceWorker' in navigator) {
       })
     })
   } else {
+    // Clearing an old worker and its caches is best effort: a failure changes nothing.
     navigator.serviceWorker.getRegistrations().then(registrations => {
       registrations.forEach(r => r.unregister())
-    })
+    }).catch(() => {})
     window.caches?.keys().then(keys => {
       keys.filter(k => k.startsWith('realm-keeper-')).forEach(k => caches.delete(k))
-    })
+    }).catch(() => {})
   }
 }
 

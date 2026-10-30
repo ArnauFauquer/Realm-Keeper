@@ -29,10 +29,10 @@ const NAMED_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp:
 /** The visible text of a bit of rendered HTML: no tags, entities decoded. */
 export function htmlToText(html) {
   return html
-    .replace(/<[^>]*>/g, '')
+    .replace(/<[^<>]*>/g, '')
     .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (entity, code) => {
       if (code[0] === '#') {
-        const point = code[1].toLowerCase() === 'x' ? parseInt(code.slice(2), 16) : parseInt(code.slice(1), 10)
+        const point = code[1].toLowerCase() === 'x' ? Number.parseInt(code.slice(2), 16) : Number.parseInt(code.slice(1), 10)
         try {
           return String.fromCodePoint(point)
         } catch {

@@ -11,6 +11,7 @@
  * draws one still frame.
  */
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { random } from '../utils/random.js'
 
 const STAR_COUNT = 350
 const FRAME_MS = 1000 / 30
@@ -62,14 +63,14 @@ function createStars() {
   stars = []
   for (let i = 0; i < STAR_COUNT; i++) {
     stars.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
-      size: Math.random() * 2 + 0.5,
-      speed: Math.random() * 0.02 + 0.003,
-      brightness: Math.random(),
-      twinkleSpeed: Math.random() * 0.002 + 0.001,
-      twinkleOffset: Math.random() * Math.PI * 2,
-      hue: Math.random() > 0.7 ? (Math.random() * 60 + 200) : 0
+      x: random() * width,
+      y: random() * height,
+      size: random() * 2 + 0.5,
+      speed: random() * 0.02 + 0.003,
+      brightness: random(),
+      twinkleSpeed: random() * 0.002 + 0.001,
+      twinkleOffset: random() * Math.PI * 2,
+      hue: random() > 0.7 ? (random() * 60 + 200) : 0
     })
   }
 }
@@ -86,33 +87,33 @@ function createNebulaClouds() {
   ]
 
   for (let i = 0; i < 6; i++) {
-    const radius = Math.random() * 400 + 200
+    const radius = random() * 400 + 200
     const numberOfPoints = 12
     const angleStep = (Math.PI * 2) / numberOfPoints
     const points = []
 
     for (let j = 0; j <= numberOfPoints; j++) {
       const angle = j * angleStep
-      const distortion = Math.random() * 0.5 + 0.5
+      const distortion = random() * 0.5 + 0.5
       points.push({
         x: Math.cos(angle) * radius * distortion,
         y: Math.sin(angle) * radius * distortion
       })
     }
 
-    const color = colors[Math.floor(Math.random() * colors.length)]
+    const color = colors[Math.floor(random() * colors.length)]
     // Drawn around the cloud's own origin, so it never changes: made once.
     const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius)
     gradient.addColorStop(0, color)
     gradient.addColorStop(1, 'transparent')
 
     clouds.push({
-      x: Math.random() * width,
-      y: Math.random() * height,
+      x: random() * width,
+      y: random() * height,
       points,
       gradient,
       angle: 0,
-      rotationSpeed: (Math.random() - 0.5) * 0.0005
+      rotationSpeed: (random() - 0.5) * 0.0005
     })
   }
 }
@@ -157,10 +158,10 @@ function drawCloud(cloud, step) {
 function updateStar(star, step, now) {
   star.y -= star.speed * step
   if (star.y < 0) {
-    star.x = Math.random() * width
+    star.x = random() * width
     star.y = height
-    star.size = Math.random() * 2 + 0.5
-    star.speed = Math.random() * 0.02 + 0.003
+    star.size = random() * 2 + 0.5
+    star.speed = random() * 0.02 + 0.003
   }
   star.brightness = Math.sin(now * star.twinkleSpeed + star.twinkleOffset) * 0.3 + 0.7
 }

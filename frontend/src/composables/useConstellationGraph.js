@@ -1,3 +1,4 @@
+import { random } from '../utils/random.js'
 /**
  * Shared building blocks for the two D3 "constellation" graph views
  * (GraphModal's full graph and RightSidebar's mini graph). Only the parts
@@ -25,13 +26,13 @@ export function drawStarfield(canvas, width, height, {
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
-  const rand = (min, max) => min + Math.random() * (max - min)
+  const rand = (min, max) => min + random() * (max - min)
   const starCount = Math.floor((width * height) / density)
 
   for (let i = 0; i < starCount; i++) {
     const x = rand(0, width)
     const y = rand(0, height)
-    const r = Math.random()
+    const r = random()
     const size = r < sizeOdds[0]
       ? rand(...sizeRanges[0])
       : r < sizeOdds[1]

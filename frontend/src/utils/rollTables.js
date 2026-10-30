@@ -25,8 +25,8 @@ export function parseRollHeader(text) {
 function virtualDie(formula) {
   const match = VIRTUAL_RE.exec(formula)
   if (!match) return null
-  const count = match[1] ? parseInt(match[1], 10) : 1
-  const sides = parseInt(match[2], 10)
+  const count = match[1] ? Number.parseInt(match[1], 10) : 1
+  const sides = Number.parseInt(match[2], 10)
   if (count < 1 || count > 100 || sides < 2 || sides > 10000) return null
   return { count, sides }
 }
@@ -38,7 +38,7 @@ function virtualDie(formula) {
 export function parseRowRange(text) {
   const match = RANGE_RE.exec(String(text ?? '').replace(/[`*_]/g, '').trim())
   if (!match) return null
-  const read = (value) => (value === '00' ? 100 : parseInt(value, 10))
+  const read = (value) => (value === '00' ? 100 : Number.parseInt(value, 10))
   const min = read(match[1])
   if (match[3]) return { min, max: null }
   const max = match[2] !== undefined ? read(match[2]) : min
@@ -109,10 +109,14 @@ export function renderRollHeader(formula, escape) {
 export function rollTablesPlugin(md) {
   md.core.ruler.push('roll_tables', (state) => {
     const tokens = state.tokens
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== 'table_open') continue
+    let i = 0
+    while (i < tokens.length) {
+      if (tokens[i].type !== 'table_open') {
+        i++
+        continue
+      }
       const table = collectTable(tokens, i)
-      i = table.end
+      i = table.end + 1
       if (!table.header) continue
       const plan = planRollTable(table.header.content, table.rows.map(r => r.firstCell?.content ?? ''))
       if (!plan) continue

@@ -40,10 +40,12 @@ server {
     # "backend" resolves via Docker's embedded DNS.
     location /api/ {
         proxy_pass $backend_upstream;
-        # $http_host (not $host) — nginx's $host strips the port, so a
-        # request to localhost:5173 would forward "Host: localhost" and the
-        # backend's request.url_for() would build the Google OAuth
-        # redirect_uri without the port, mismatching what's registered.
+        # The Host header goes through with its port: nginx's own host variable
+        # strips it, so a request to localhost:5173 would reach the backend as
+        # "Host: localhost" and request.url_for() would build the Google OAuth
+        # redirect_uri without the port, mismatching what's registered. The
+        # backend checks the origin of what it serves (OriginCheckMiddleware).
+        # nosemgrep: generic.nginx.security.request-host-used.request-host-used
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
     }

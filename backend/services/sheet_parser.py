@@ -214,7 +214,7 @@ def _load_yaml(source: str) -> Any:
     if len(source) > MAX_SOURCE_LENGTH:
         raise SheetParseError(f"A sheet can't be longer than {MAX_SOURCE_LENGTH // 1000} KB")
     try:
-        return yaml.load(source, Loader=_NoAliasLoader)  # noqa: S506 (a SafeLoader)
+        return yaml.load(source, Loader=_NoAliasLoader)  # noqa: S506 (a SafeLoader)  # nosec B506
     except yaml.YAMLError as e:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")

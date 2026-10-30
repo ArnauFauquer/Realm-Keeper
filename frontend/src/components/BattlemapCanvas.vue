@@ -151,6 +151,7 @@ import MeasurePath from './MeasurePath.vue'
 import { usePointerDrag } from '@/composables/usePointerDrag'
 import { useTokenTravel } from '@/composables/useTokenTravel'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { random } from '../utils/random.js'
 import {
   areaFromDrag, areaLabelPoint, areaMeasure, areaPath, areaReachPoint, cellCenter, snapPosition, toCells, toPixels, tokenCenter
 } from '@/utils/battlemapGeometry'
@@ -209,7 +210,7 @@ const DEFAULT_AREA_COLOR = '#f97316'
 // wobble), and still be a tap that only selects.
 const DRAG_THRESHOLD_PX = 4
 
-const uid = Math.random().toString(36).slice(2, 8)
+const uid = random().toString(36).slice(2, 8)
 const svgRef = ref(null)
 const groupRef = ref(null)
 

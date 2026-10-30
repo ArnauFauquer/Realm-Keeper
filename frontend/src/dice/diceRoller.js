@@ -6,6 +6,7 @@ import { convexShapeForGeometry } from './dicePhysics'
 import { themeForKind } from './diceTheme'
 import { themeKey } from './diceAssets'
 import { MAX_DICE, SUPPORTED_SIDES, rollResult } from '@/utils/diceNotation'
+import { random } from '../utils/random.js'
 
 const UP = new THREE.Vector3(0, 1, 0)
 // If the winning and runner-up face are this close in "up-ness", the die is
@@ -51,24 +52,24 @@ function spawnDie(world, { sides, variant, index, theme }) {
 
   const shape = convexShapeForGeometry(cacheKey, geometry)
 
-  const angle = index * GOLDEN_ANGLE + (Math.random() - 0.5) * 0.6
+  const angle = index * GOLDEN_ANGLE + (random() - 0.5) * 0.6
   // Somewhere in the middle of the tray, following its shape.
-  const dist = 0.16 + Math.random() * 0.5
+  const dist = 0.16 + random() * 0.5
   const x = Math.cos(angle) * dist * world.trayHalf.x
   const z = Math.sin(angle) * dist * world.trayHalf.z
   const y = 4.5 + (index % SPAWN_LAYERS) * 0.6
 
   const body = new CANNON.Body({ mass: 1, position: new CANNON.Vec3(x, y, z), shape })
   body.quaternion.setFromEuler(
-    Math.random() * Math.PI * 2,
-    Math.random() * Math.PI * 2,
-    Math.random() * Math.PI * 2
+    random() * Math.PI * 2,
+    random() * Math.PI * 2,
+    random() * Math.PI * 2
   )
-  body.velocity.set((Math.random() - 0.5) * 5, -1 - Math.random(), (Math.random() - 0.5) * 5)
+  body.velocity.set((random() - 0.5) * 5, -1 - random(), (random() - 0.5) * 5)
   body.angularVelocity.set(
-    (Math.random() - 0.5) * 20,
-    (Math.random() - 0.5) * 20,
-    (Math.random() - 0.5) * 20
+    (random() - 0.5) * 20,
+    (random() - 0.5) * 20,
+    (random() - 0.5) * 20
   )
   body.allowSleep = true
   body.sleepSpeedLimit = 0.09
@@ -104,11 +105,11 @@ function nudge(entry) {
   entry.body.wakeUp()
   entry.body.linearDamping = LINEAR_DAMPING
   entry.body.angularDamping = ANGULAR_DAMPING
-  entry.body.velocity.set((Math.random() - 0.5) * 1.5, 2 + Math.random(), (Math.random() - 0.5) * 1.5)
+  entry.body.velocity.set((random() - 0.5) * 1.5, 2 + random(), (random() - 0.5) * 1.5)
   entry.body.angularVelocity.set(
-    (Math.random() - 0.5) * 10,
-    (Math.random() - 0.5) * 10,
-    (Math.random() - 0.5) * 10
+    (random() - 0.5) * 10,
+    (random() - 0.5) * 10,
+    (random() - 0.5) * 10
   )
 }
 
@@ -260,7 +261,7 @@ function quaternionForValue(faceTable, value) {
   const align = new THREE.Quaternion().setFromUnitVectors(face.localNormal.clone().normalize(), target)
   // Random spin around the vertical axis so repeat rolls of the same value
   // don't all look visually identical once settled.
-  const spin = new THREE.Quaternion().setFromAxisAngle(target, Math.random() * Math.PI * 2)
+  const spin = new THREE.Quaternion().setFromAxisAngle(target, random() * Math.PI * 2)
   return spin.multiply(align)
 }
 

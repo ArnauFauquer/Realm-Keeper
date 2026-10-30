@@ -2,6 +2,7 @@ import { findRangeIndex, readRowRanges, rollVirtual, rowOutcome } from '@/utils/
 import { useDiceRoller } from './useDiceRoller'
 import { usePlayer } from './usePlayer'
 import { useSoundEffects } from './useSoundEffects'
+import { random } from '../utils/random.js'
 
 // What can be clicked in rendered markdown, nearest first. The placeholders
 // come from inlineRefs.js / rollTables.js; the screen buttons from
@@ -115,7 +116,7 @@ async function scanRows(rows) {
   if (rows.length < 2 || reducedMotion()) return
   let last = -1
   for (let step = 0; step < 9; step++) {
-    let next = Math.floor(Math.random() * rows.length)
+    let next = Math.floor(random() * rows.length)
     if (next === last) next = (next + 1) % rows.length
     rows[last]?.classList.remove('roll-scan')
     rows[next].classList.add('roll-scan')

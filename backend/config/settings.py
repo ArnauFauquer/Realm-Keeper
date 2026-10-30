@@ -33,7 +33,7 @@ class Settings:
             "CORS_ALLOWED_ORIGINS", "http://localhost:5173"
         ).split(",")
     ]
-    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
+    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")  # a container: the port is published by compose, on 127.0.0.1  # nosec B104
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
 
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

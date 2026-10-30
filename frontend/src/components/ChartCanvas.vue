@@ -101,6 +101,7 @@
                   v-if="editable && editingAnnotationId === note.id"
                   :value="note.text"
                   class="annotation-input"
+                  aria-label="Annotation text"
                   placeholder="Write a note..."
                   @input="updateAnnotationText(note.id, $event.target.value)"
                   @pointerdown.stop
@@ -247,6 +248,7 @@
           <input
             v-model="pinNoteQuery"
             class="selection-name-input rk-input"
+            aria-label="Search a note to link"
             :placeholder="selectedPin.note_path ? 'Link a different note...' : 'Search a note to link...'"
             @focus="pinPickerOpen = true"
             @blur="closePinPickerSoon"
@@ -374,7 +376,7 @@ const PIN_SCALE_MAX = 3
 function hexToRgba(hex, alpha) {
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || '')
   if (!m) return `rgba(167, 139, 250, ${alpha})`
-  const [r, g, b] = m.slice(1).map(v => parseInt(v, 16))
+  const [r, g, b] = m.slice(1).map(v => Number.parseInt(v, 16))
   return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
@@ -390,7 +392,7 @@ function setPinColor(pin, color) {
 }
 
 function setPinScale(pin, scale) {
-  pin.scale = parseFloat(scale)
+  pin.scale = Number.parseFloat(scale)
   emitChange()
 }
 

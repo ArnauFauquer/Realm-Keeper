@@ -1,11 +1,11 @@
 import logging
 import re
-import subprocess
+import subprocess  # git, with fixed arguments  # nosec B404
 import threading
 from pathlib import Path
 from typing import List, Union
 
-_URL_CREDENTIALS_RE = re.compile(r"(\w+://)[^/@\s]+@")
+_URL_CREDENTIALS_RE = re.compile(r"://[^/@\s]++@")
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ def redact_credentials(text: str) -> str:
     """REPO_URL usually embeds an access token (https://TOKEN@github.com/...),
     and git echoes the remote URL back in its own errors — strip it before
     that text reaches a log line or an HTTP error response."""
-    return _URL_CREDENTIALS_RE.sub(r"\1***@", text)
+    return _URL_CREDENTIALS_RE.sub("://***@", text)
 
 
 class GitCommitError(Exception):
@@ -32,7 +32,7 @@ def run_git(repo_path: Path, *args: str, timeout: float = 30) -> subprocess.Comp
     is removed (only ever called under the vault's lock, so no other git of
     ours is running) and the timeout raised as a GitCommitError."""
     try:
-        return subprocess.run(["git", "-C", str(repo_path), *args], capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(["git", "-C", str(repo_path), *args], capture_output=True, text=True, timeout=timeout)  # git, fixed arguments  # nosec B603 B607
     except subprocess.TimeoutExpired:
         clear_stale_index_lock(repo_path)
         raise GitCommitError(f"git {args[0]} timed out")

@@ -30,6 +30,7 @@ services:
       ENABLE_AUTH: "true"
       OIDC_ISSUER_URL: http://dex.localhost:5556/dex
       OIDC_CLIENT_ID: realm-keeper
+      # checkov:skip=CKV_SECRET_6: a placeholder for the example
       OIDC_CLIENT_SECRET: change-this-client-secret
       OIDC_NAME: Realm Keeper account
       # Who may sign in; the order sets each one's dice colour.

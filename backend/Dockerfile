@@ -5,6 +5,9 @@ WORKDIR /app
 # git is the only program the app runs (vault commits, sync, clone). Nothing
 # else is installed: no compiler, curl or perl. --no-cache keeps the apk index
 # out of the image; upgrade pulls patches published since the base was built.
+# Unpinned on purpose: a pinned revision disappears from the Alpine mirrors when
+# it is superseded, and the point of the upgrade is the newest patches.
+# hadolint ignore=DL3018
 RUN apk upgrade --no-cache && apk add --no-cache git
 
 # Create a non-root user and pre-create the logs dir with correct ownership.
@@ -15,14 +18,27 @@ RUN adduser -D -u 1000 appuser && \
     chown -R appuser:appuser /app /vault /data
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade setuptools wheel && pip install --no-cache-dir -r requirements.txt
+# setuptools and wheel only build packages, and every requirement installs from a
+# wheel: removing them also removes the copies vendored inside setuptools that
+# scanners flag (jaraco.context, wheel).
+RUN pip install --no-cache-dir -r requirements.txt && pip uninstall -y setuptools wheel
 
-COPY . .
-RUN chown -R appuser:appuser /app
+# Only what the app runs: no tests, caches, env files or whatever else sits in
+# the build context. Left owned by root: the app can read its code, not rewrite it.
+COPY main.py ./
+COPY config ./config
+COPY models ./models
+COPY routes ./routes
+COPY scripts ./scripts
+COPY services ./services
 
 USER 1000
 
 EXPOSE 8000
+
+# No curl in the image: Python's own client asks the API docs page.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=4)"]
 
 # --proxy-headers/--forwarded-allow-ips: trust X-Forwarded-Proto from the
 # ingress (Traefik terminates TLS and forwards plain HTTP internally).

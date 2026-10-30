@@ -55,9 +55,15 @@ def test_guarded_says_why_except_for_permissions_and_storage():
     async def storage():
         raise BotoCoreError()
 
-    assert pytest.raises(HTTPException, _run, not_found).value.detail == "no such chart"
-    assert pytest.raises(HTTPException, _run, forbidden).value.detail == "Not allowed"
-    assert pytest.raises(HTTPException, _run, storage).value.detail == "Could not reach object storage"
+    with pytest.raises(HTTPException) as caught:
+        _run(not_found)
+    assert caught.value.detail == "no such chart"
+    with pytest.raises(HTTPException) as caught:
+        _run(forbidden)
+    assert caught.value.detail == "Not allowed"
+    with pytest.raises(HTTPException) as caught:
+        _run(storage)
+    assert caught.value.detail == "Could not reach object storage"
 
 
 def test_guarded_passes_through_what_a_handler_returns_and_other_errors():
