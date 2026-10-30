@@ -12,6 +12,7 @@ import {
   streamUrl
 } from '@/api/player'
 import { errorMessage } from '@/api/http'
+import { random } from '../utils/random.js'
 
 // Module-level (singleton) state: playback survives closing the player modal
 // or navigating away, since the same <audio> element keeps running.
@@ -57,7 +58,7 @@ function albumOf(key) {
 function shuffled(keys) {
   const order = keys.slice()
   for (let i = order.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
+    const j = Math.floor(random() * (i + 1))
     ;[order[i], order[j]] = [order[j], order[i]]
   }
   return order

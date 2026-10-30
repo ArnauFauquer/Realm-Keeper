@@ -7,6 +7,7 @@
 import { parseDiceFormula } from './diceNotation'
 import { parseSfxRef, parseSongKey } from './audioLink'
 import { EMBEDDABLE_TYPES, embedIcon } from './docTypes'
+import { trimEdges } from './trimEdges'
 
 // A document's id is "<folder path>/<slug>" ("La Biblioteca Olvidada/la-entrada")
 // and folder names may contain spaces. Which kinds a note can embed is up to
@@ -17,7 +18,7 @@ const DOC_REF_RE = new RegExp(String.raw`^(${EMBEDDABLE_TYPES.join('|')}):(\S.*)
 export function parseDocRef(text) {
   const match = DOC_REF_RE.exec(text.trim())
   if (!match) return null
-  return { type: match[1].toLowerCase(), id: match[2].replace(/^\/+|\/+$/g, '') }
+  return { type: match[1].toLowerCase(), id: trimEdges(match[2], '/') }
 }
 
 /** The markdown to paste into a note to embed a document. */

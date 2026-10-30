@@ -11,7 +11,7 @@ markers are not part of its content.
 import re
 from typing import Iterator, List, NamedTuple, Optional
 
-_OPEN_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})[ \t]*([^`\n]*?)[ \t]*$")
+_OPEN_RE = re.compile(r"^ {0,3}(`{3,}+|~{3,}+)([^`\n]*)$")
 _QUOTE_RE = re.compile(r"^ {0,3}> ?")
 
 

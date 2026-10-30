@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const random = vi.hoisted(() => vi.fn(() => 0.5))
+vi.mock('@/utils/random', () => ({ random }))
+
 const pairScreen = vi.fn()
 vi.mock('@/api/screen', () => ({ pairScreen: (...args) => pairScreen(...args) }))
 vi.mock('@/utils/socketUrl', () => ({ socketUrl: (path) => `ws://test${path}` }))
@@ -30,7 +33,7 @@ beforeEach(() => {
   vi.stubGlobal('WebSocket', FakeSocket)
   vi.useFakeTimers()
   // No jitter: each wait is exactly the ceiling.
-  vi.spyOn(Math, 'random').mockReturnValue(1)
+  random.mockReturnValue(1)
   pairScreen.mockReset()
   pairScreen.mockResolvedValue({})
   window.history.replaceState(null, '', '/screen')

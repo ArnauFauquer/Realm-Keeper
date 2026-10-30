@@ -11,7 +11,7 @@ const VOLUME_KEY = 'rk-sfx-volume'
 
 function storedVolume() {
   try {
-    const v = parseFloat(localStorage.getItem(VOLUME_KEY))
+    const v = Number.parseFloat(localStorage.getItem(VOLUME_KEY))
     return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 1
   } catch {
     return 1

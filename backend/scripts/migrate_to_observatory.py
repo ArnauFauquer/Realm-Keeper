@@ -89,7 +89,7 @@ def image_filename(old_key: str) -> str:
     name = old_key.rsplit("/", 1)[-1]
     if _UID_RE.match(name):
         return name
-    return f"{hashlib.sha1(old_key.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]}-{name}"
+    return f"{hashlib.sha1(old_key.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]}-{name}"  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
 
 
 def new_image_url(old_key: str) -> str:

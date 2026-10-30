@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 from typing import List, Union
 
-_URL_CREDENTIALS_RE = re.compile(r"(\w+://)[^/@\s]+@")
+_URL_CREDENTIALS_RE = re.compile(r"://[^/@\s]++@")
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ def redact_credentials(text: str) -> str:
     """REPO_URL usually embeds an access token (https://TOKEN@github.com/...),
     and git echoes the remote URL back in its own errors — strip it before
     that text reaches a log line or an HTTP error response."""
-    return _URL_CREDENTIALS_RE.sub(r"\1***@", text)
+    return _URL_CREDENTIALS_RE.sub("://***@", text)
 
 
 class GitCommitError(Exception):

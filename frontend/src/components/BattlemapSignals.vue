@@ -77,6 +77,7 @@ import { computed, onBeforeUnmount, shallowRef, watch } from 'vue'
 import BattlemapToken from './BattlemapToken.vue'
 import MeasurePath from './MeasurePath.vue'
 import { toPixels, tokenCenter } from '@/utils/battlemapGeometry'
+import { random } from '../utils/random.js'
 
 // What is pointed at on the map, drawn over it (inside the map's SVG, so it
 // zooms with it): the pointers' trails, pings and rolls over tokens of a
@@ -91,7 +92,7 @@ const props = defineProps({
 })
 
 const EMPTY = Object.freeze({ pings: [], strokes: [], rolls: [], rulers: [] })
-const uid = Math.random().toString(36).slice(2, 8)
+const uid = random().toString(36).slice(2, 8)
 // A ruler's key carries who measures ("Local User", with its spaces and bars),
 // and an id with those in it is no id a clip path can be found by: the token's
 // picture would show whole. Each such character is spelled out instead, so

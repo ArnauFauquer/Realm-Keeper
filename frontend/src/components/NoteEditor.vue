@@ -33,6 +33,7 @@
       v-if="editorTab === 'write'"
       ref="editorTextarea"
       v-model="draft"
+      aria-label="Note text (Markdown)"
       class="editor-textarea"
       placeholder="# Title
 

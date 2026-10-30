@@ -303,6 +303,7 @@ import TagsInput from './TagsInput.vue'
 import ObservatoryModal from './ObservatoryModal.vue'
 import { folderOf } from '@/composables/useObservatoryModal'
 import { resolveUrl } from '@/utils/resolveUrl'
+import { random } from '../utils/random.js'
 import {
   COLUMN_CHOICES,
   COUNTER_DISPLAYS,
@@ -330,7 +331,7 @@ const props = defineProps({
 const emit = defineEmits(['update:modelValue'])
 
 const DISPLAY_LABELS = { pips: 'Pips', bar: 'Bar', number: 'Number' }
-const tabListId = `sheet-tabs-${Math.random().toString(36).slice(2, 8)}`
+const tabListId = `sheet-tabs-${random().toString(36).slice(2, 8)}`
 
 const model = ref(modelFromBody(props.modelValue))
 // The sheet as last read or written: one that differs came from elsewhere

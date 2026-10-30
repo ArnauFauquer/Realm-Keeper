@@ -105,7 +105,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
   }
 
   // A different document means a new editing session; never carry live over.
-  watch(() => source.value?.id, () => { if (live.value) stop() })
+  watch(() => source.value?.id, () => { if (live.value) void stop() }) // stop() reports its own failures
 
   return { live, sending, sendToScreen, toggle, stop }
 }

@@ -32,7 +32,7 @@ const CALLOUT_META = {
 }
 const DEFAULT_META = { icon: 'mdi-message-outline', color: 'grey' }
 
-const CALLOUT_HEADER_RE = /^>\s?\[!([A-Za-z]+)\][-+]?\s*(.*)$/
+const CALLOUT_HEADER_RE = /^>\s?\[!([A-Za-z]+)\][-+]?(.*)$/
 
 /**
  * Rewrites `> [!type] Title` blockquote blocks into raw HTML callout divs
@@ -54,7 +54,8 @@ export function renderCallouts(markdownText, mdRenderFn) {
       continue
     }
 
-    const [, type, title] = header
+    const [, type, rawTitle] = header
+    const title = rawTitle.trimStart()
     const bodyLines = []
     i++
     while (i < lines.length && lines[i].startsWith('>')) {

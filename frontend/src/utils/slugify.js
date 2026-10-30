@@ -1,3 +1,5 @@
+import { trimEdges } from './trimEdges.js'
+
 /**
  * Strips inline markdown syntax that can appear inside heading text down to
  * its visible label — markdown links `[text](url)`, images `![alt](url)`,
@@ -8,10 +10,10 @@
  */
 export function stripInlineLinkSyntax(text) {
   return text
-    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
-    .replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/!\[([^\][]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[\[([^\][|]+)\|([^\][]+)\]\]/g, '$2')
+    .replace(/\[\[([^\][]+)\]\]/g, '$1')
+    .replace(/\[([^\][]*)\]\([^)]*\)/g, '$1')
 }
 
 /**
@@ -19,12 +21,11 @@ export function stripInlineLinkSyntax(text) {
  * shape, and disambiguates repeats by suffixing -1, -2, ... like markdown-it does.
  */
 export function slugifyHeading(text, headerCount) {
-  const cleanContent = stripInlineLinkSyntax(text.replace(/<[^>]+>/g, ''))
-  const idBase = cleanContent
+  const cleanContent = stripInlineLinkSyntax(text.replace(/<[^<>]+>/g, ''))
+  const idBase = trimEdges(cleanContent
     .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, '')
-    .replace(/[\s_-]+/g, '-')
-    .replace(/^-+|-+$/g, '') || 'header'
+    .replace(/[\s_-]+/g, '-'), '-') || 'header'
 
   headerCount[idBase] = (headerCount[idBase] || 0) + 1
   return headerCount[idBase] > 1 ? `${idBase}-${headerCount[idBase] - 1}` : idBase

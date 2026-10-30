@@ -1,5 +1,5 @@
 <template>
-  <div class="screen-root" @keydown.esc="close" tabindex="0" ref="root">
+  <div class="screen-root" @keydown.esc="close" tabindex="-1" ref="root">
     <!-- Star constellation background -->
     <canvas ref="starCanvas" class="star-canvas"></canvas>
     <!-- Ambient glow behind image -->

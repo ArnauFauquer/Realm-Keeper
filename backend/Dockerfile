@@ -24,13 +24,13 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && pip uninstall -y setuptools wheel
 
 # Only what the app runs: no tests, caches, env files or whatever else sits in
-# the build context.
-COPY --chown=appuser:appuser main.py ./
-COPY --chown=appuser:appuser config ./config
-COPY --chown=appuser:appuser models ./models
-COPY --chown=appuser:appuser routes ./routes
-COPY --chown=appuser:appuser scripts ./scripts
-COPY --chown=appuser:appuser services ./services
+# the build context. Left owned by root: the app can read its code, not rewrite it.
+COPY main.py ./
+COPY config ./config
+COPY models ./models
+COPY routes ./routes
+COPY scripts ./scripts
+COPY services ./services
 
 USER 1000
 

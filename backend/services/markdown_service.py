@@ -79,7 +79,7 @@ class MarkdownService:
         """What the vault's notes are, by name, size and time written: changes
         when anything outside the app (Obsidian on a shared folder) writes,
         adds, moves or deletes one. Cheap: a stat of each, no reading."""
-        digest = hashlib.sha1(usedforsecurity=False)
+        digest = hashlib.sha1(usedforsecurity=False)  # nosemgrep: python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1
         for path in sorted(self.parser.iter_note_files()):
             try:
                 stat = path.stat()

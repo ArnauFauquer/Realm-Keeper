@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import { computeDegrees, createDragHandlers, drawStarfield, getLinkEndpointId } from '@/composables/useConstellationGraph'
 
+const random = vi.hoisted(() => vi.fn(() => 0.5))
+vi.mock('@/utils/random', () => ({ random }))
+
 describe('getLinkEndpointId', () => {
   it('takes an id, or the id of the node d3 swapped in', () => {
     expect(getLinkEndpointId('a')).toBe('a')
@@ -71,10 +74,10 @@ describe('drawStarfield', () => {
 
   it('draws large stars when the odds say so', () => {
     const { canvas, ctx } = fakeCanvas()
-    const rand = vi.spyOn(Math, 'random').mockReturnValue(0.99)
+    random.mockReturnValue(0.99)
     drawStarfield(canvas, 10, 10, { ...options, density: 50 })
     expect(ctx.arc.mock.calls[0][2]).toBeGreaterThanOrEqual(3)
-    rand.mockRestore()
+    random.mockReset().mockReturnValue(0.5)
   })
 
   it('does nothing without a canvas', () => {

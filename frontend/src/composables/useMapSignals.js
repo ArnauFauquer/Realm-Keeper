@@ -5,6 +5,7 @@ import { battlemapsApi } from '@/api/docs'
 import { httpClient } from '@/api/http'
 import { encodePath } from '@/utils/paths'
 import { createSignalLayer } from '@/utils/mapSignals'
+import { random } from '../utils/random.js'
 
 // The pointer is sent a few points at a time, one request after another, at
 // most this often: everyone sees it move without a request per mouse move.
@@ -12,7 +13,7 @@ const POINTER_INTERVAL_MS = 50
 // What one request may carry (backend models/battlemap.py MAX_SIGNAL_POINTS).
 const MAX_POINTS = 64
 
-const randomId = () => Math.random().toString(36).slice(2, 10)
+const randomId = () => random().toString(36).slice(2, 10)
 
 /** Sends a signal to everyone on the map (backend routes/battlemaps.py). */
 export const sendSignal = (battlemapId, signal) =>
@@ -122,7 +123,7 @@ export function useMapSignals(battlemapId, { canSend = () => true } = {}) {
     // reach everyone before, or with, the move it leads to.
     if (end && !current.sending) {
       clearTimeout(current.timer)
-      flushMeasure(current)
+      void flushMeasure(current)
     } else {
       scheduleMeasure(current)
     }
@@ -139,8 +140,11 @@ export function useMapSignals(battlemapId, { canSend = () => true } = {}) {
     current.pending = null
     if (!signal) return
     current.sending = true
-    await send(signal)
-    current.sending = false
+    try {
+      await send(signal)
+    } finally {
+      current.sending = false
+    }
     if (current.pending) scheduleMeasure(current)
   }
 

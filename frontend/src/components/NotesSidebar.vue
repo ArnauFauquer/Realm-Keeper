@@ -241,6 +241,7 @@ import { useRouter } from 'vue-router'
 import TreeItem from './TreeItem.vue'
 import PlayerTransport from './PlayerTransport.vue'
 import { appVersion } from '../config/env'
+import { trimEdges } from '@/utils/trimEdges'
 import { listenForVaultChanges, useNotes, useNotesChanged } from '@/composables/useNotes'
 import { useAuth } from '@/composables/useAuth'
 import { useGraphModal } from '@/composables/useGraphModal'
@@ -304,7 +305,7 @@ function startNewNote() {
 }
 
 function submitNewNote() {
-  const path = newNotePath.value.trim().replace(/^\/+|\/+$/g, '')
+  const path = trimEdges(newNotePath.value.trim(), '/')
   if (!path) return
   newNotePath.value = ''
   showNewNoteInput.value = false

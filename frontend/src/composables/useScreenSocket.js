@@ -1,6 +1,7 @@
 import { getCurrentInstance, onBeforeUnmount, ref } from 'vue'
 import { socketUrl } from '@/utils/socketUrl'
 import { pairScreen } from '@/api/screen'
+import { random as defaultRandom } from '../utils/random.js'
 
 // The /screen view's connection to /ws/screen (see backend routes/screen.py):
 // pairing from a screen link, the socket itself, and reconnecting for as long
@@ -14,7 +15,7 @@ const RETRY_MAX = 30000
 
 /** How long to wait before reconnection attempt number `attempt` (0 first):
  * between half and all of RETRY_MIN * 2^attempt, capped at RETRY_MAX. */
-export function retryDelay(attempt, random = Math.random) {
+export function retryDelay(attempt, random = defaultRandom) {
   const ceiling = Math.min(RETRY_MIN * 2 ** attempt, RETRY_MAX)
   return ceiling / 2 + random() * (ceiling / 2)
 }

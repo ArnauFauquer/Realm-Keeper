@@ -52,7 +52,7 @@
 
     <div v-else class="graph-container">
       <canvas ref="starCanvas" class="star-canvas"></canvas>
-      <canvas ref="graphCanvas" class="graph-canvas" role="img" aria-label="Constellation of notes"></canvas>
+      <canvas ref="graphCanvas" class="graph-canvas" aria-label="Constellation of notes"></canvas>
 
       <!-- Mobile toggle button -->
       <button

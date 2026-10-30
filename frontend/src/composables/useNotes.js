@@ -121,9 +121,7 @@ export function useNotes() {
   const fetchNotes = (searchQuery = '') => reload(searchQuery, { keep: false })
   const refreshNotes = (searchQuery = '') => reload(searchQuery, { keep: true })
 
-  const resetPagination = (searchQuery = '') => {
-    fetchNotes(searchQuery)
-  }
+  const resetPagination = (searchQuery = '') => fetchNotes(searchQuery)
 
   return {
     notes,
