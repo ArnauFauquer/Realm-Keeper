@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.4](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.3...v0.4.4) (2026-10-30)
+
+
+### Bug Fixes
+
+* clear the second scan's findings (semgrep, bandit, hadolint, Sonar) ([#68](https://github.com/ArnauFauquer/Realm-Keeper/issues/68)) ([ae1cb23](https://github.com/ArnauFauquer/Realm-Keeper/commit/ae1cb230458debeee5941f3380d0c23875c8b8e9))
+* patch vulnerable dependencies and images, and reduce complexity ([#66](https://github.com/ArnauFauquer/Realm-Keeper/issues/66)) ([0853f55](https://github.com/ArnauFauquer/Realm-Keeper/commit/0853f554bdeefee675c38b830249c0cff039c2da))
+
 ## [0.4.3](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.2...v0.4.3) (2026-10-08)
 
 
