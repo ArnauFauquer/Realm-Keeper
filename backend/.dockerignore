@@ -17,3 +17,6 @@ docs-data
 logs
 .pytest_cache
 tests
+.env.*
+*.pem
+*.key

@@ -6,20 +6,26 @@ export default defineConfig({
   plugins: [vue()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src')
+      '@': path.resolve(import.meta.dirname, './src')
     }
   },
   build: {
-    // Minify configuration
-    minify: 'esbuild',
+    // Minify configuration (oxc, Vite 8's default minifier)
+    minify: true,
     // Code splitting strategy
     rollupOptions: {
       output: {
-        manualChunks: {
-          'd3': ['d3'],  // Separate d3 chunk
-          'vue-vendor': ['vue', 'vue-router'],
-          'three': ['three'],
-          'cannon-es': ['cannon-es']
+        // A function: Vite 8 (rolldown) no longer takes the object form.
+        manualChunks(id) {
+          const chunks = {
+            'd3': ['d3'],
+            'vue-vendor': ['vue', 'vue-router'],
+            'three': ['three'],
+            'cannon-es': ['cannon-es']
+          }
+          const pkg = id.match(/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?(@[^/]+\/[^/]+|[^/]+)/)?.[1]
+          if (!pkg) return
+          return Object.keys(chunks).find(name => chunks[name].includes(pkg) || (name === 'd3' && pkg.startsWith('d3-')))
         }
       }
     },

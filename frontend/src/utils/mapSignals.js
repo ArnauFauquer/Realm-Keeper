@@ -45,33 +45,49 @@ export function createSignalLayer() {
   const listeners = new Set()
   let seq = 0
 
+  const strokeKey = (signal) => `${signal.source || ''}|${signal.by || ''}|${signal.stroke}`
+
+  function receivePing(signal, at, { by }) {
+    const [point] = signal.points || []
+    if (!point) return false
+    pings.push({ id: ++seq, x: point.x, y: point.y, color: POINTER_COLOR, by, at })
+    return true
+  }
+
+  function receiveRuler(signal, at, { color, by }) {
+    if (!signal.stroke) return false
+    // Each one carries the whole path so far: it replaces the last.
+    const key = strokeKey(signal)
+    const before = rulers.get(key)
+    const points = signal.points?.length ? signal.points.map(({ x, y }) => ({ x, y })) : before?.points || []
+    rulers.set(key, { key, color, by, token: signal.token || null, points, ended: !!signal.end, lastAt: at })
+    // The path a token is being moved along, for it to travel once it moves.
+    if (signal.token && points.length) paths.set(signal.token, { points, at })
+    return true
+  }
+
+  function receiveRoll(signal, at, { color, by }) {
+    if (!signal.token || !signal.roll) return false
+    rolls.set(signal.token, { id: ++seq, token: signal.token, ...signal.roll, color, by, at })
+    return true
+  }
+
+  // Each takes the signal and returns whether it was one it could use.
+  const receivers = {
+    ping: receivePing,
+    pointer: (signal, at, ctx) => receivePointer(signal, at, { ...ctx, color: POINTER_COLOR }),
+    ruler: receiveRuler,
+    roll: receiveRoll
+  }
+
   function receive(signal, at = now(), { local = false } = {}) {
-    const color = signalColorForSlot(signal.slot)
-    const by = local ? null : signal.by || null
-    if (signal.kind === 'ping') {
-      const [point] = signal.points || []
-      if (!point) return
-      pings.push({ id: ++seq, x: point.x, y: point.y, color: POINTER_COLOR, by, at })
-    } else if (signal.kind === 'pointer') {
-      receivePointer(signal, at, { color: POINTER_COLOR, by, local })
-    } else if (signal.kind === 'ruler' && signal.stroke) {
-      // Each one carries the whole path so far: it replaces the last.
-      const key = `${signal.source || ''}|${signal.by || ''}|${signal.stroke}`
-      const before = rulers.get(key)
-      const points = signal.points?.length ? signal.points.map(({ x, y }) => ({ x, y })) : before?.points || []
-      rulers.set(key, { key, color, by, token: signal.token || null, points, ended: !!signal.end, lastAt: at })
-      // The path a token is being moved along, for it to travel once it moves.
-      if (signal.token && points.length) paths.set(signal.token, { points, at })
-    } else if (signal.kind === 'roll' && signal.token && signal.roll) {
-      rolls.set(signal.token, { id: ++seq, token: signal.token, ...signal.roll, color, by, at })
-    } else {
-      return
-    }
+    const context = { color: signalColorForSlot(signal.slot), by: local ? null : signal.by || null, local }
+    if (!receivers[signal.kind]?.(signal, at, context)) return
     listeners.forEach((listener) => listener())
   }
 
   function receivePointer(signal, at, { color, by, local }) {
-    const key = `${signal.source || ''}|${signal.by || ''}|${signal.stroke}`
+    const key = strokeKey(signal)
     const points = signal.points || []
     const lastT = points.length ? points[points.length - 1].t || 0 : 0
     let stroke = strokes.get(key)
@@ -85,6 +101,7 @@ export function createSignalLayer() {
     for (const point of points) stroke.points.push({ x: point.x, y: point.y, at: stroke.base + (point.t || 0) })
     stroke.lastAt = at
     if (signal.end) stroke.ended = true
+    return true
   }
 
   function view(at = now()) {

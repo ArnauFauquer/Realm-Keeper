@@ -48,34 +48,38 @@ def _is_entity_list(*values: Any) -> bool:
     )
 
 
+def _diff_entities(before: List[Dict[str, Any]], after: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """What changed between two lists of {id: ...} entities: the ones to
+    `upsert` and `remove`, and their `order` when the sequence changed."""
+    known = {e["id"]: e for e in before}
+    after_ids = [e["id"] for e in after]
+    present = set(after_ids)
+    parts = {
+        "upsert": [e for e in after if known.get(e["id"]) != e],
+        "remove": [i for i in known if i not in present],
+    }
+    parts = {name: value for name, value in parts.items() if value}
+    if [e["id"] for e in before] != after_ids:
+        parts["order"] = after_ids   # kept even when empty: the list was emptied
+    return parts
+
+
 def diff_docs(old: Dict[str, Any], new: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """What changed from `old` to `new`, as a client can apply it, or None.
     Lists of {id: ...} entities are compared entity by entity (`upsert`,
     `remove`, and `order` when their sequence changed); any other field that
     differs is `set` whole."""
-    set_fields: Dict[str, Any] = {}
-    upsert: Dict[str, List[Any]] = {}
-    remove: Dict[str, List[str]] = {}
-    order: Dict[str, List[str]] = {}
+    event: Dict[str, Dict[str, Any]] = {}
     for key in sorted((old.keys() | new.keys()) - UNREPORTED_FIELDS):
         before, after = old.get(key), new.get(key)
         if before == after:
             continue
         if _is_entity_list(before or [], after or []):
-            before, after = before or [], after or []
-            known = {e["id"]: e for e in before}
-            changed = [e for e in after if known.get(e["id"]) != e]
-            gone = [i for i in known if i not in {e["id"] for e in after}]
-            if changed:
-                upsert[key] = changed
-            if gone:
-                remove[key] = gone
-            if [e["id"] for e in before] != [e["id"] for e in after]:
-                order[key] = [e["id"] for e in after]
+            for kind, value in _diff_entities(before or [], after or []).items():
+                event.setdefault(kind, {})[key] = value
         else:
-            set_fields[key] = after
-    event = {k: v for k, v in (("set", set_fields), ("upsert", upsert), ("remove", remove), ("order", order)) if v}
-    return event or None
+            event.setdefault("set", {})[key] = after
+    return {kind: event[kind] for kind in ("set", "upsert", "remove", "order") if kind in event} or None
 
 
 class Room:

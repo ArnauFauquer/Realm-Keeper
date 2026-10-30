@@ -89,11 +89,35 @@ def image_filename(old_key: str) -> str:
     name = old_key.rsplit("/", 1)[-1]
     if _UID_RE.match(name):
         return name
-    return f"{hashlib.sha1(old_key.encode('utf-8')).hexdigest()[:8]}-{name}"
+    return f"{hashlib.sha1(old_key.encode('utf-8'), usedforsecurity=False).hexdigest()[:8]}-{name}"
 
 
 def new_image_url(old_key: str) -> str:
     return f"{NEW_URL_PREFIX}{quote(image_filename(old_key), safe='')}"
+
+
+def _library_destination(key: str, rest: str) -> Tuple[str, str]:
+    folder, _, name = rest.rpartition("/")
+    base = f"{OBSERVATORY}/{folder}/" if folder else f"{OBSERVATORY}/"
+    if name == FOLDER_MARKER:
+        return f"{base}{FOLDER_MARKER}", "folder"
+    if _is_image(name):
+        return f"{base}{image_filename(key)}", "image"
+    return f"{base}{name}", "other-file"
+
+
+def _document_destination(top: str, rest: str) -> Tuple[Optional[str], str]:
+    kind = DOC_PREFIXES[top]
+    if rest == VAULT_MARKER:
+        return f"{OBSERVATORY}/.{top}-imported-from-vault", "marker"
+    if rest == NOTES_MARKER:
+        return f"{OBSERVATORY}/{NOTES_MARKER}", "marker"
+    folder, _, name = rest.rpartition("/")
+    if name == FOLDER_MARKER and folder:
+        return f"{OBSERVATORY}/{folder}/{FOLDER_MARKER}", "folder"
+    if name == f"{kind}.json" and folder:
+        return f"{OBSERVATORY}/{folder}.{kind}.json", "document"
+    return None, "unknown"
 
 
 def destination(key: str) -> Tuple[Optional[str], str]:
@@ -105,24 +129,9 @@ def destination(key: str) -> Tuple[Optional[str], str]:
     if not rest:
         return None, "not-under-a-prefix"
     if top == ASSET_LIBRARY:
-        folder, _, name = rest.rpartition("/")
-        base = f"{OBSERVATORY}/{folder}/" if folder else f"{OBSERVATORY}/"
-        if name == FOLDER_MARKER:
-            return f"{base}{FOLDER_MARKER}", "folder"
-        if _is_image(name):
-            return f"{base}{image_filename(key)}", "image"
-        return f"{base}{name}", "other-file"
+        return _library_destination(key, rest)
     if top in DOC_PREFIXES:
-        kind = DOC_PREFIXES[top]
-        if rest == VAULT_MARKER:
-            return f"{OBSERVATORY}/.{top}-imported-from-vault", "marker"
-        if rest == NOTES_MARKER:
-            return f"{OBSERVATORY}/{NOTES_MARKER}", "marker"
-        folder, _, name = rest.rpartition("/")
-        if name == FOLDER_MARKER and folder:
-            return f"{OBSERVATORY}/{folder}/{FOLDER_MARKER}", "folder"
-        if name == f"{kind}.json" and folder:
-            return f"{OBSERVATORY}/{folder}.{kind}.json", "document"
+        return _document_destination(top, rest)
     return None, "unknown"
 
 
@@ -141,34 +150,41 @@ def rewrite_links(text: str, known: Optional[set] = None, missing: Optional[List
         name = key.rsplit("/", 1)[-1]
         if _UID_RE.match(name):
             by_uid.setdefault(name[:8], key)
+    tail_pattern = _URL_TAIL if known is None else _URL_TAIL_WITH_SPACES
     out, count, start = [], 0, 0
     while (found := text.find(OLD_URL_PREFIX, start)) != -1:
-        tail = (_URL_TAIL if known is None else _URL_TAIL_WITH_SPACES).match(text, found + len(OLD_URL_PREFIX)).group(0)
-        end, old_key = None, None
-        # The longest stretch of the tail that decodes to an image's path.
-        for length in range(len(tail), 0, -1):
-            path = unquote(tail[:length])
-            if _is_image(path) and (known is None or f"{ASSET_LIBRARY}/{path}" in known):
-                end, old_key = length, f"{ASSET_LIBRARY}/{path}"
-                break
-        if old_key is None and by_uid:
-            for length in range(len(tail), 0, -1):
-                name = unquote(tail[:length]).rsplit("/", 1)[-1]
-                if _is_image(name) and _UID_RE.match(name) and name[:8] in by_uid:
-                    end, old_key = length, by_uid[name[:8]]
-                    break
+        after_prefix = found + len(OLD_URL_PREFIX)
+        tail = tail_pattern.match(text, after_prefix).group(0)
+        end, old_key = _link_target(tail, known, by_uid)
         if old_key is None:
             if missing is not None:
                 missing.append(OLD_URL_PREFIX + tail)
-            out.append(text[start:found + len(OLD_URL_PREFIX)])
-            start = found + len(OLD_URL_PREFIX)
+            out.append(text[start:after_prefix])
+            start = after_prefix
             continue
         out.append(text[start:found])
         out.append(new_image_url(old_key))
         count += 1
-        start = found + len(OLD_URL_PREFIX) + end
+        start = after_prefix + end
     out.append(text[start:])
     return "".join(out), count
+
+
+def _link_target(tail: str, known: Optional[set], by_uid: dict) -> Tuple[Optional[int], Optional[str]]:
+    """How much of a link's `tail` is the image's path, and that image's key in
+    the asset library: the longest stretch that decodes to an image there, else
+    (when its uid is somewhere else) the image with that uid. (None, None) if
+    neither."""
+    for length in range(len(tail), 0, -1):
+        path = unquote(tail[:length])
+        if _is_image(path) and (known is None or f"{ASSET_LIBRARY}/{path}" in known):
+            return length, f"{ASSET_LIBRARY}/{path}"
+    if by_uid:
+        for length in range(len(tail), 0, -1):
+            name = unquote(tail[:length]).rsplit("/", 1)[-1]
+            if _is_image(name) and _UID_RE.match(name) and name[:8] in by_uid:
+                return length, by_uid[name[:8]]
+    return None, None
 
 
 def _rewrite_value(value, known: set, missing: List[str]):
@@ -325,36 +341,45 @@ def _copy(client, bucket: str, move: Move) -> None:
         raise RuntimeError(f"{move.target} is {copied} bytes, but {move.source} is {move.size}")
 
 
+def _compare_document(client, bucket: str, move: Move, text: str, write: bool, counts: Counter, log) -> None:
+    """A document that is in both layouts: the newer save stays."""
+    there = _read(client, bucket, move.target)
+    if there == text or _saved_at(there) >= _saved_at(text):
+        counts["kept"] += 1
+        log(f"  {move.target} stays: saved at {_saved_at(there) or '?'}, the old one at {_saved_at(text) or '?'}")
+        return
+    counts["refreshed"] += 1
+    log(f"  {move.target} {'is' if write else 'would be'} refreshed from {move.source}, saved later")
+    if write:
+        _put_json(client, bucket, move.target, text)
+
+
+def _move_document(client, bucket: str, move: Move, compare: bool, known: set, write: bool, counts: Counter, log) -> None:
+    missing: List[str] = []
+    text, links = rewrite_document(_read(client, bucket, move.source), known, missing)
+    for url in missing:
+        log(f"  {move.source}: {url} is not in the bucket; left as it is")
+    counts["links"] += links
+    if compare:
+        _compare_document(client, bucket, move, text, write, counts, log)
+        return
+    counts["copied"] += 1
+    if write:
+        _put_json(client, bucket, move.target, text)
+
+
 def execute(client, bucket: str, plan: Plan, known: set, write: bool, delete_sources: bool, log=print) -> Dict[str, int]:
     """Copies what needs copying (documents with their links rewritten), and
     with `delete_sources` removes the old keys. Without `write`, only counts
     and reports what it would do. Returns the counts."""
     counts = Counter()
     for move in [*plan.moves, *plan.compare]:
-        if move.rule != "document":
+        if move.rule == "document":
+            _move_document(client, bucket, move, move in plan.compare, known, write, counts, log)
+        else:
             if write:
                 _copy(client, bucket, move)
             counts["copied"] += 1
-        else:
-            missing: List[str] = []
-            text, links = rewrite_document(_read(client, bucket, move.source), known, missing)
-            for url in missing:
-                log(f"  {move.source}: {url} is not in the bucket; left as it is")
-            counts["links"] += links
-            if move in plan.compare:
-                there = _read(client, bucket, move.target)
-                if there == text or _saved_at(there) >= _saved_at(text):
-                    counts["kept"] += 1
-                    log(f"  {move.target} stays: saved at {_saved_at(there) or '?'}, the old one at {_saved_at(text) or '?'}")
-                else:
-                    counts["refreshed"] += 1
-                    log(f"  {move.target} {'is' if write else 'would be'} refreshed from {move.source}, saved later")
-                    if write:
-                        _put_json(client, bucket, move.target, text)
-            else:
-                counts["copied"] += 1
-                if write:
-                    _put_json(client, bucket, move.target, text)
         if delete_sources:
             client.delete_object(Bucket=bucket, Key=move.source)
         if counts["copied"] and counts["copied"] % 100 == 0 and write:

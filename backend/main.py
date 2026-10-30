@@ -1,8 +1,11 @@
 import asyncio
 import os
+import shutil
 import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -46,64 +49,67 @@ def _mark_vault_safe(vault_path: Path) -> None:
         )
 
 
+def _pull_vault(vault_path: Path, repo_url: Optional[str]) -> None:
+    logger.info(f"Vault already cloned at {vault_path}, pulling latest...")
+    if repo_url:
+        # Always ensure the remote URL matches the current env var before pulling
+        run_git(vault_path, "remote", "set-url", "origin", repo_url)
+    # Rebasing: after a push that failed, the vault has commits of its
+    # own, and a plain pull of diverged history either fails or merges.
+    result = pull_rebase(vault_path)
+    if result.returncode == 0:
+        logger.info(f"Vault sync successful: {redact_credentials(result.stdout.strip())}")
+    else:
+        logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
+
+
+def _clone_vault(vault_path: Path, repo_url: str) -> None:
+    # /vault may exist but be non-empty (e.g. created by mkdir elsewhere).
+    # Clone into a temp dir then replace to avoid the "destination path
+    # already exists and is not an empty directory" error. mkdtemp: a private
+    # (0700), unpredictable directory, not a fixed path in the world-writable
+    # /tmp. git clones into an empty one.
+    tmp_path = Path(tempfile.mkdtemp(prefix="vault_clone_"))
+    try:
+        logger.info(f"Cloning vault from {redact_credentials(repo_url)} into {tmp_path}...")
+        result = subprocess.run(
+            ["git", "clone", repo_url, str(tmp_path)],
+            capture_output=True, text=True, timeout=300
+        )
+        if result.returncode != 0:
+            logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
+            return
+        logger.info("Clone successful, moving contents into vault...")
+        # Cannot rmtree the vault mount point itself — clear contents then move in.
+        for item in vault_path.iterdir():
+            if item.is_dir():
+                shutil.rmtree(item)
+            else:
+                item.unlink()
+        for item in tmp_path.iterdir():
+            shutil.move(str(item), str(vault_path / item.name))
+        logger.info("Vault sync successful.")
+    finally:
+        shutil.rmtree(tmp_path, ignore_errors=True)
+
+
 def sync_vault() -> None:
     """Clone the vault git repository, or pull it if it is cloned. Run under
     the vault's lock (MarkdownService.git_lock) once requests are served, so a
     pull never runs alongside a note's commit."""
-    import shutil
-
     if not settings.GIT_ENABLED:
         return
     repo_url = settings.REPO_URL
     vault_path = settings.VAULT_PATH
     _mark_vault_safe(vault_path)
-    git_dir = vault_path / ".git"
 
     try:
-        if git_dir.exists():
-            logger.info(f"Vault already cloned at {vault_path}, pulling latest...")
-            if repo_url:
-                # Always ensure the remote URL matches the current env var before pulling
-                run_git(vault_path, "remote", "set-url", "origin", repo_url)
-            # Rebasing: after a push that failed, the vault has commits of its
-            # own, and a plain pull of diverged history either fails or merges.
-            result = pull_rebase(vault_path)
-            if result.returncode == 0:
-                logger.info(f"Vault sync successful: {redact_credentials(result.stdout.strip())}")
-            else:
-                logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
+        if (vault_path / ".git").exists():
+            _pull_vault(vault_path, repo_url)
         elif not repo_url:
             logger.error(f"GIT_ENABLED without a REPO_URL, but {vault_path} is not a git clone: nothing to pull.")
         else:
-            # /vault may exist but be non-empty (e.g. created by mkdir elsewhere).
-            # Clone into a temp sibling dir then replace to avoid the
-            # "destination path already exists and is not an empty directory" error.
-            tmp_path = Path("/tmp/_vault_clone_tmp")
-            if tmp_path.exists():
-                shutil.rmtree(tmp_path)
-
-            logger.info(f"Cloning vault from {redact_credentials(repo_url)} into {tmp_path}...")
-            result = subprocess.run(
-                ["git", "clone", repo_url, str(tmp_path)],
-                capture_output=True, text=True, timeout=300
-            )
-
-            if result.returncode == 0:
-                logger.info("Clone successful, moving contents into vault...")
-                # Cannot rmtree the vault mount point itself — clear contents then move in.
-                for item in vault_path.iterdir():
-                    if item.is_dir():
-                        shutil.rmtree(item)
-                    else:
-                        item.unlink()
-                for item in tmp_path.iterdir():
-                    shutil.move(str(item), str(vault_path / item.name))
-                shutil.rmtree(tmp_path)
-                logger.info("Vault sync successful.")
-            else:
-                logger.error(f"Vault sync failed (exit {result.returncode}): {redact_credentials(result.stderr.strip())}")
-                if tmp_path.exists():
-                    shutil.rmtree(tmp_path)
+            _clone_vault(vault_path, repo_url)
     except (subprocess.TimeoutExpired, GitCommitError) as e:
         logger.error(f"Vault sync timed out: {e}")
     except Exception as e:
@@ -189,7 +195,10 @@ async def lifespan(app: FastAPI):
         try:
             await background
         except asyncio.CancelledError:
-            pass
+            # Ours, from the cancel() above: swallow. If the lifespan itself
+            # is being cancelled, carry that on after the cleanup.
+            if asyncio.current_task().cancelling():
+                raise
     # Whatever was edited in the last few seconds hasn't been written yet.
     await doc_hub.flush_all()
 
@@ -205,6 +214,18 @@ app.add_middleware(CacheControlMiddleware)
 
 app.add_middleware(OriginCheckMiddleware, allowed_origins=[*cors_origins, settings.FRONTEND_URL])
 
+# Only used for the brief OAuth handshake (state/nonce) — separate from our
+# own long-lived rk_session cookie issued in routes/auth.py.
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SESSION_SECRET_KEY,
+    same_site="lax",
+    https_only=settings.SESSION_COOKIE_SECURE,
+)
+
+# Added last, so it is the outermost: every response, including the ones the
+# middleware above short-circuit (403 from the origin check), carries the CORS
+# headers, and preflights are answered before anything else.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
@@ -213,15 +234,6 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=600,
-)
-
-# Only used for the brief OAuth handshake (state/nonce) — separate from our
-# own long-lived rk_session cookie issued in routes/auth.py.
-app.add_middleware(
-    SessionMiddleware,
-    secret_key=settings.SESSION_SECRET_KEY,
-    same_site="lax",
-    https_only=settings.SESSION_COOKIE_SECURE,
 )
 
 app.include_router(auth_router)

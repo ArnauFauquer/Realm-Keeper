@@ -258,28 +258,30 @@ class DocCollection:
         if self.backend.exists(self.legacy_marker):
             return 0
 
-        copied = 0
-        legacy_filename = f"{self.doctype.kind}.json"
-        for file in sorted(root.rglob("*")):
-            if not file.is_file():
-                continue
-            folder = file.parent.relative_to(root).as_posix()
-            folder = "" if folder == "." else folder
-            try:
-                if file.name == legacy_filename:
-                    copied += self._import_legacy_file(file, sanitize_id(folder))
-                elif file.name == LEGACY_FOLDER_MARKER and folder:
-                    key = f"{self.root}{sanitize_folder_path(folder)}/{FOLDER_MARKER}"
-                    if not self.backend.exists(key):
-                        self.backend.put(key, "")
-            except ValueError as e:
-                logger.warning(f"Skipped {file} while importing {self.doctype.prefix}: {e}")
+        copied = sum(self._import_legacy_entry(file, root) for file in sorted(root.rglob("*")) if file.is_file())
         self.backend.put(self.legacy_marker, json.dumps({
             "imported_at": datetime.now(timezone.utc).isoformat(), "documents": copied,
         }))
         if copied:
             logger.info(f"Imported {copied} {self.doctype.prefix} from the vault's {legacy}/")
         return copied
+
+    def _import_legacy_entry(self, file: Path, root: Path) -> int:
+        """Copies one file of the vault's directory: a document, or an empty
+        folder's marker. Returns 1 for a document it copied. A file that can't
+        be imported is skipped with a warning."""
+        folder = file.parent.relative_to(root).as_posix()
+        folder = "" if folder == "." else folder
+        try:
+            if file.name == f"{self.doctype.kind}.json":
+                return self._import_legacy_file(file, sanitize_id(folder))
+            if file.name == LEGACY_FOLDER_MARKER and folder:
+                key = f"{self.root}{sanitize_folder_path(folder)}/{FOLDER_MARKER}"
+                if not self.backend.exists(key):
+                    self.backend.put(key, "")
+        except ValueError as e:
+            logger.warning(f"Skipped {file} while importing {self.doctype.prefix}: {e}")
+        return 0
 
     def _import_legacy_file(self, file: Path, doc_id: str) -> int:
         key = self.key(doc_id)

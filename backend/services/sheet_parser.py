@@ -209,19 +209,12 @@ def _sections(raw: Any) -> Tuple[List[SheetSection], dict]:
 DOCUMENT_FIELDS = ("id", "name", "type")
 
 
-def parse_sheet_source(
-    source: str, *, name: Optional[str] = None, sheet_id: Optional[str] = None, sheet_type: Optional[str] = None,
-) -> Tuple[SheetSpec, List[str]]:
-    """The sheet a YAML source describes, plus warnings about things that
-    parsed but are probably not what the author meant. Raises SheetParseError.
-
-    `name`, `sheet_id` and `sheet_type` are a sheet document's own (see
-    parse_sheet_doc): given, they are what the sheet is called, and an empty
-    source is an empty sheet."""
+def _load_yaml(source: str) -> Any:
+    """The YAML a source holds, or SheetParseError for whatever it can't be."""
     if len(source) > MAX_SOURCE_LENGTH:
         raise SheetParseError(f"A sheet can't be longer than {MAX_SOURCE_LENGTH // 1000} KB")
     try:
-        data = yaml.load(source, Loader=_NoAliasLoader)  # noqa: S506 (a SafeLoader)
+        return yaml.load(source, Loader=_NoAliasLoader)  # noqa: S506 (a SafeLoader)
     except yaml.YAMLError as e:
         problem = getattr(e, "problem", None) or str(e)
         raise SheetParseError(f"Invalid YAML: {problem}")
@@ -230,6 +223,11 @@ def parse_sheet_source(
         # (`2024-13-45`, `!!bool maybe`) or a document nested past the stack: the
         # sheet's YAML is wrong, not the server.
         raise SheetParseError(f"Invalid YAML: {e}")
+
+
+def _top_level(data: Any, name: Optional[str], sheet_type: Optional[str]) -> Tuple[dict, List[str]]:
+    """The mapping a source's YAML must be, with the document's own name and
+    type laid over it when there is a document, and the warnings that raises."""
     in_document = name is not None
     if data is None and in_document:
         data = {}
@@ -244,19 +242,36 @@ def parse_sheet_source(
             f"'{key}' is ignored here: the sheet's {key} is its document's" for key in DOCUMENT_FIELDS if key in data
         ]
         data = {**{k: v for k, v in data.items() if k not in DOCUMENT_FIELDS}, "name": name, "type": sheet_type}
+    return data, warnings
 
+
+def _identity(data: dict, sheet_id: Optional[str]) -> Tuple[str, str, str, bool]:
+    """The sheet's (name, type, id) and whether its id was declared."""
     name = _text(data.get("name"))
     if not name:
         raise SheetParseError("A sheet needs a name")
     sheet_type = (_text(data.get("type")) or "adversary").lower()
     if sheet_type not in SHEET_TYPES:
         raise SheetParseError(f"type must be one of: {', '.join(SHEET_TYPES)}")
-
     explicit_id = sheet_id or slugify(_text(data.get("id")) or "")
-    sheet_id = explicit_id or slugify(name)
-    if not sheet_id:
+    resolved_id = explicit_id or slugify(name)
+    if not resolved_id:
         raise SheetParseError("The sheet's id needs at least one letter or number")
-    if sheet_type == "character" and not explicit_id:
+    return name, sheet_type, resolved_id, bool(explicit_id)
+
+
+def parse_sheet_source(
+    source: str, *, name: Optional[str] = None, sheet_id: Optional[str] = None, sheet_type: Optional[str] = None,
+) -> Tuple[SheetSpec, List[str]]:
+    """The sheet a YAML source describes, plus warnings about things that
+    parsed but are probably not what the author meant. Raises SheetParseError.
+
+    `name`, `sheet_id` and `sheet_type` are a sheet document's own (see
+    parse_sheet_doc): given, they are what the sheet is called, and an empty
+    source is an empty sheet."""
+    data, warnings = _top_level(_load_yaml(source), name, sheet_type)
+    name, sheet_type, sheet_id, declared_id = _identity(data, sheet_id)
+    if sheet_type == "character" and not declared_id:
         warnings.append("A character should declare a stable id: its saved values are kept under it")
     image, image_warning = normalize_image(data.get("image"))
     if image_warning:
