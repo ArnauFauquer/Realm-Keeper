@@ -138,20 +138,36 @@ def test_a_clone_that_fails_keeps_the_vault_and_hides_the_token(vault, monkeypat
     assert "128" in error and "TOKEN" not in error
 
 
-def test_a_leftover_temporary_clone_is_cleared_first(vault, monkeypatch, tmp_path):
-    leftover = tmp_path / "clone-tmp"
-    leftover.mkdir()
-    (leftover / "junk").write_text("x")
-    monkeypatch.setattr(main, "Path", lambda p: leftover if p == "/tmp/_vault_clone_tmp" else Path(p))
+def test_the_clone_goes_into_a_fresh_private_directory(vault, monkeypatch):
     seen = {}
 
     def run(cmd, **kw):
-        seen["junk_still_there"] = (leftover / "junk").exists()
+        target = Path(cmd[-1])
+        seen["target"] = target
+        seen["empty"] = not any(target.iterdir())
+        seen["private"] = target.stat().st_mode & 0o777 == 0o700
+        seen["fixed_path"] = target == Path("/tmp/_vault_clone_tmp")
         return _done(128, err="no")
 
     monkeypatch.setattr(main.subprocess, "run", run)
     main.sync_vault()
-    assert seen == {"junk_still_there": False}
+    assert (seen["empty"], seen["private"], seen["fixed_path"]) == (True, True, False)
+
+
+@pytest.mark.parametrize("outcome", ["fails", "times_out"])
+def test_the_temporary_clone_is_removed_when_the_clone_does_not_finish(vault, monkeypatch, outcome):
+    seen = {}
+
+    def run(cmd, **kw):
+        seen["target"] = Path(cmd[-1])
+        (seen["target"] / "partial").write_text("x")
+        if outcome == "times_out":
+            raise subprocess.TimeoutExpired("git", 300)
+        return _done(128, err="no")
+
+    monkeypatch.setattr(main.subprocess, "run", run)
+    main.sync_vault()
+    assert not seen["target"].exists()
 
 
 @pytest.mark.parametrize("raised", [subprocess.TimeoutExpired("git", 300), GitCommitError("git pull timed out")])
