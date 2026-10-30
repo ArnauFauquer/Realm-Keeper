@@ -97,18 +97,26 @@ function createEntry(key, fetchDoc) {
     }
     if (event.rev <= doc.value.rev) return // already seen
     if (event.rev !== doc.value.rev + 1) {
-      // Ahead of one not seen yet: wait a moment for it, then, if it never
-      // came, start again from the server's copy.
-      ahead.set(event.rev, event)
-      aheadTimer ||= setTimeout(() => {
-        aheadTimer = null
-        ahead.clear()
-        load()
-      }, GAP_WAIT_MS)
+      waitForGap(event)
       return
     }
     applyEvent(doc.value, event)
-    // The ones that came early, now in order.
+    drainAhead()
+  }
+
+  // Ahead of one not seen yet: wait a moment for it, then, if it never
+  // came, start again from the server's copy.
+  function waitForGap(event) {
+    ahead.set(event.rev, event)
+    aheadTimer ||= setTimeout(() => {
+      aheadTimer = null
+      ahead.clear()
+      load()
+    }, GAP_WAIT_MS)
+  }
+
+  // The ones that came early, now in order.
+  function drainAhead() {
     let next
     while ((next = ahead.get(doc.value.rev + 1))) {
       ahead.delete(next.rev)
@@ -224,7 +232,7 @@ export function useSyncedDocFollowing(kind, id, fetchFor) {
 export function useSyncedDocs(kind, ids, fetchFor) {
   const held = shallowRef(new Map()) // id -> entry
 
-  watch(() => [...new Set((ids() || []).filter(Boolean))].sort().join('\n'), (key) => {
+  watch(() => [...new Set((ids() || []).filter(Boolean))].sort((a, b) => String(a).localeCompare(String(b))).join('\n'), (key) => {
     const wanted = key ? key.split('\n') : []
     const next = new Map()
     for (const id of wanted) next.set(id, held.value.get(id) || acquireEntry(kind, id, () => fetchFor(id)))

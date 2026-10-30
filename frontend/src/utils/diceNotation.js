@@ -29,6 +29,32 @@ const TERM_SRC = String.raw`(?:hf|adv|dis|\d*d(?:\d+|%)(?:k[hl]\d*)?|\d+)`
 const TERM_RE = /([+-]?)\s*(?:(hf)|(adv|dis)|(\d*)d(\d+|%)(?:k([hl])(\d*))?|(\d+))/gi
 const STRICT_RE = new RegExp(String.raw`^\s*[+-]?\s*${TERM_SRC}(\s*[+-]\s*${TERM_SRC})*\s*$`, 'i')
 
+const dualityTerms = () => [
+  { count: 1, sides: DUALITY_SIDES, sign: 1, kind: 'hope' },
+  { count: 1, sides: DUALITY_SIDES, sign: 1, kind: 'fear' }
+]
+
+function aliasTerm(name, sign) {
+  const alias = KEEP_ALIASES[name.toLowerCase()]
+  return { ...alias, keep: { ...alias.keep }, sign }
+}
+
+/** The `NdS` / `NdSkhK` term a TERM_RE match holds, or null if its count,
+ * sides or keep are out of bounds. */
+function diceTerm(match, sign) {
+  const count = match[4] ? parseInt(match[4], 10) : 1
+  const sides = match[5] === '%' ? 100 : parseInt(match[5], 10)
+  if (!SUPPORTED_SIDES.includes(sides)) return null
+  if (count < 1 || count > 100) return null
+  const term = { count, sides, sign }
+  if (match[6] !== undefined) {
+    const keepCount = match[7] ? parseInt(match[7], 10) : 1
+    if (keepCount < 1 || keepCount >= count) return null
+    term.keep = { mode: match[6].toLowerCase() === 'h' ? 'high' : 'low', count: keepCount }
+  }
+  return term
+}
+
 /**
  * Parses a dice formula into { formula, terms, flatModifier } or returns
  * null if the string contains anything outside the supported grammar
@@ -59,34 +85,18 @@ export function parseDiceFormula(text) {
     if (match[2] !== undefined) {
       if (hasDuality || sign < 0) return null
       hasDuality = true
-      terms.push(
-        { count: 1, sides: DUALITY_SIDES, sign: 1, kind: 'hope' },
-        { count: 1, sides: DUALITY_SIDES, sign: 1, kind: 'fear' }
-      )
-      continue
-    }
-    if (match[3] !== undefined) {
-      const alias = KEEP_ALIASES[match[3].toLowerCase()]
-      terms.push({ ...alias, keep: { ...alias.keep }, sign })
-      continue
-    }
-    if (match[8] !== undefined) {
+      terms.push(...dualityTerms())
+    } else if (match[3] !== undefined) {
+      terms.push(aliasTerm(match[3], sign))
+    } else if (match[8] !== undefined) {
       const value = parseInt(match[8], 10)
       if (value > MAX_MODIFIER) return null
       flatModifier += sign * value
-      continue
+    } else {
+      const term = diceTerm(match, sign)
+      if (!term) return null
+      terms.push(term)
     }
-    const count = match[4] ? parseInt(match[4], 10) : 1
-    const sides = match[5] === '%' ? 100 : parseInt(match[5], 10)
-    if (!SUPPORTED_SIDES.includes(sides)) return null
-    if (count < 1 || count > 100) return null
-    const term = { count, sides, sign }
-    if (match[6] !== undefined) {
-      const keepCount = match[7] ? parseInt(match[7], 10) : 1
-      if (keepCount < 1 || keepCount >= count) return null
-      term.keep = { mode: match[6].toLowerCase() === 'h' ? 'high' : 'low', count: keepCount }
-    }
-    terms.push(term)
   }
 
   if (terms.length === 0) return null

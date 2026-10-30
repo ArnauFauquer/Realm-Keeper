@@ -21,10 +21,17 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginxinc/nginx-unprivileged:alpine
+# alpine-slim: nginx and its runtime libs only, with no curl, brotli, expat,
+# tiff, libx11 or the njs/geoip/xslt modules the static site doesn't use.
+FROM nginxinc/nginx-unprivileged:alpine-slim
 # Processed by the base image's own entrypoint (envsubst-on-templates) into
 # /etc/nginx/conf.d/default.conf, with NGINX_LOCAL_RESOLVERS filled in from
 # the container's actual /etc/resolv.conf at startup (see nginx.conf.template).
+# apk upgrade: pull the security patches (brotli, curl, expat, tiff, libx11)
+# published since the base image was last built.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html

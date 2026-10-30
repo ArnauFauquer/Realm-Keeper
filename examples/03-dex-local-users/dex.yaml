@@ -34,8 +34,10 @@ staticPasswords:
   - email: gm@example.com
     username: gm
     userID: 6f1c9a52-0d8e-4a8b-9b6c-1d2e3f4a5b6c
+    # nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
     hash: "$2a$10$Onm4UuzCawBISGfNR3y4n.8fd4lo70Kyqx/j3xHiJICrfXN/a9NXa"   # gamemaster
   - email: player@example.com
     username: player
     userID: 2b7d4e18-5c3a-4f6e-8a9d-0e1f2a3b4c5d
+    # nosemgrep: generic.secrets.security.detected-bcrypt-hash.detected-bcrypt-hash
     hash: "$2a$10$wL4D1R8Z8Z8i/oJisoBWYeUFWMkyd6h9RcIfhsbQyUqjjA5fLwKoK"   # player

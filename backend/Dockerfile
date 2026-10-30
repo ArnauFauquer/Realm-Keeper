@@ -1,18 +1,21 @@
-FROM python:3.11-slim
+FROM python:3.11-alpine
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+# git is the only program the app runs (vault commits, sync, clone). Nothing
+# else is installed: no compiler, curl or perl. --no-cache keeps the apk index
+# out of the image; upgrade pulls patches published since the base was built.
+RUN apk upgrade --no-cache && apk add --no-cache git
 
 # Create a non-root user and pre-create the logs dir with correct ownership.
 # /vault and /data are where docker-compose.yml mounts the notes and the
 # local store: a named volume starts with the ownership of its mount point.
-RUN useradd -m -u 1000 appuser && \
+RUN adduser -D -u 1000 appuser && \
     mkdir -p /app/logs /vault /data && \
     chown -R appuser:appuser /app /vault /data
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade setuptools wheel && pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 RUN chown -R appuser:appuser /app

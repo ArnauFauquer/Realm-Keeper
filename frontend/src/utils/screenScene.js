@@ -75,43 +75,38 @@ function takeLoaded(state, doc) {
  * roll) leave it as it is. Never mutates `state`.
  */
 export function reduceScene(state, message) {
-  switch (message?.type) {
-    case 'display_media':
-      // Nothing to show: an image already up stays, anything else goes.
-      if (!message.url) return state.kind === 'media' ? state : scene(state, 'none')
-      return scene(state, 'media', { url: message.url, title: message.title || '' })
-    case 'display_chart':
-      return showDocument(state, 'chart', message.chart_id)
-    case 'display_vista':
-      return showDocument(state, 'vista', message.vista_id)
-    case 'display_constellation':
-      return scene(state, 'constellation', { constellation: body(message) })
-    case 'display_battlemap':
-      // The map itself comes with the update_battlemap sent right after.
-      return scene(state, 'battlemap', { id: message.battlemap_id })
-    case 'update_battlemap':
-      // The whole map as it is now: sent after the pointer, and after every change.
-      if (state.kind !== 'battlemap' || message.battlemap_id !== state.id) return state
-      return { ...state, battlemap: body(message) }
-    case 'update_constellation':
-      // Only for the constellation already showing.
-      if (state.kind !== 'constellation') return state
-      return { ...state, constellation: body(message) }
-    case 'update_chart':
-      return applyLiveEdit(state, 'chart', message)
-    case 'update_vista':
-      return applyLiveEdit(state, 'vista', message)
-    case 'clear_screen':
-      return scene(state, 'none')
-    case 'scene_loaded':
-      if (message.seq !== state.seq) return state
-      return takeLoaded(state, message.doc)
-    case 'scene_failed':
-      if (message.seq !== state.seq) return state
-      return { ...state, doc: null, loading: false }
-    default:
-      return state
-  }
+  return (SCENE_REDUCERS[message?.type] ?? keep)(state, message)
+}
+
+const keep = (state) => state
+
+/** One reducer per message type; anything not listed leaves the scene as it is. */
+const SCENE_REDUCERS = {
+  // Nothing to show: an image already up stays, anything else goes.
+  display_media: (state, message) => {
+    if (!message.url) return state.kind === 'media' ? state : scene(state, 'none')
+    return scene(state, 'media', { url: message.url, title: message.title || '' })
+  },
+  display_chart: (state, message) => showDocument(state, 'chart', message.chart_id),
+  display_vista: (state, message) => showDocument(state, 'vista', message.vista_id),
+  display_constellation: (state, message) => scene(state, 'constellation', { constellation: body(message) }),
+  // The map itself comes with the update_battlemap sent right after.
+  display_battlemap: (state, message) => scene(state, 'battlemap', { id: message.battlemap_id }),
+  // The whole map as it is now: sent after the pointer, and after every change.
+  update_battlemap: (state, message) => {
+    if (state.kind !== 'battlemap' || message.battlemap_id !== state.id) return state
+    return { ...state, battlemap: body(message) }
+  },
+  // Only for the constellation already showing.
+  update_constellation: (state, message) => {
+    if (state.kind !== 'constellation') return state
+    return { ...state, constellation: body(message) }
+  },
+  update_chart: (state, message) => applyLiveEdit(state, 'chart', message),
+  update_vista: (state, message) => applyLiveEdit(state, 'vista', message),
+  clear_screen: (state) => scene(state, 'none'),
+  scene_loaded: (state, message) => (message.seq !== state.seq ? state : takeLoaded(state, message.doc)),
+  scene_failed: (state, message) => (message.seq !== state.seq ? state : { ...state, doc: null, loading: false })
 }
 
 /** Whether a message puts a new scene up (and so takes down a dice roll
