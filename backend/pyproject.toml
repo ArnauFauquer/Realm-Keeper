@@ -14,3 +14,9 @@ exclude = [
 testpaths = ["tests"]
 python_files = "test_*.py"
 pythonpath = ["."]
+
+# uvicorn runs the app (the Dockerfile's CMD), python-dotenv/websockets/
+# python-multipart/httpx/certifi are what uvicorn[standard], FastAPI's forms
+# and the S3 client load by name: none is imported by the code.
+[tool.deptry.per_rule_ignores]
+DEP002 = ["uvicorn", "python-dotenv", "websockets", "python-multipart", "httpx", "certifi"]

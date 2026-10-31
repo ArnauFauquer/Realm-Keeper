@@ -31,6 +31,8 @@ spec:
         app.kubernetes.io/component: api
         app.kubernetes.io/part-of: realm-keeper
     spec:
+      # The app never calls the Kubernetes API.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000

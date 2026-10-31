@@ -38,7 +38,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
         // cleared): editing it no longer shows anywhere, so stop mirroring.
         if (res?.status === 'ignored') live.value = false
       })
-      .catch((err) => console.error(`Failed to mirror ${kind} edit on screen:`, err))
+      .catch((err) => console.error('Failed to mirror', kind, 'edit on screen:', err))
     await inflight
     inflight = null
     if (dirty) schedule()
@@ -66,7 +66,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
       await show()
       flashSent()
     } catch (err) {
-      console.error(`Failed to send ${kind} to screen:`, err)
+      console.error('Failed to send', kind, 'to screen:', err)
     }
   }
 
@@ -78,7 +78,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
       schedule()
     } catch (err) {
       live.value = false
-      console.error(`Failed to start live ${kind}:`, err)
+      console.error('Failed to start live', kind, ':', err)
     }
   }
 
@@ -96,7 +96,7 @@ export function useLiveScreen(kind, source, buildPayload, { buildShowPayload } =
       await inflight
       if (revert && doc) await screenApi.show(kind, showPayload(doc))
     } catch (err) {
-      console.error(`Failed to stop live ${kind}:`, err)
+      console.error('Failed to stop live', kind, ':', err)
     }
   }
 

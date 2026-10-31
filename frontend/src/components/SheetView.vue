@@ -139,6 +139,7 @@
               <span v-if="item.cost" class="sheet-cost">{{ item.cost }}</span>
               <span v-for="tag in item.tags" :key="tag" class="sheet-tag">{{ tag }}</span>
             </div>
+            <!-- nosemgrep: javascript.vue.security.audit.xss.templates.avoid-v-html.avoid-v-html -- block() runs sanitizeHtml -->
             <div v-if="item.text" class="sheet-item-text" v-html="block(item.text)"></div>
           </li>
         </ul>
@@ -146,6 +147,7 @@
       </template>
     </div>
 
+    <!-- nosemgrep: javascript.vue.security.audit.xss.templates.avoid-v-html.avoid-v-html -- block() runs sanitizeHtml -->
     <div v-if="sheet.text && !compact" class="sheet-text" v-html="block(sheet.text)"></div>
 
     <slot name="footer"></slot>

@@ -25,6 +25,12 @@ spec:
         app.kubernetes.io/component: web
         app.kubernetes.io/part-of: realm-keeper
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.4.3 # x-release-please-version

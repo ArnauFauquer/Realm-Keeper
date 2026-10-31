@@ -18,7 +18,7 @@ httpClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status >= 500) {
-      console.warn(`[API Error] ${error.config.method.toUpperCase()} ${error.config.url}:`, error.message)
+      console.warn('[API Error]', error.config.method.toUpperCase(), error.config.url, error.message)
     }
     if (error.response && error.response.status === 401) {
       useAuth().user.value = null

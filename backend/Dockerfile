@@ -20,8 +20,9 @@ RUN adduser -D -u 1000 appuser && \
 COPY requirements.txt .
 # setuptools and wheel only build packages, and every requirement installs from a
 # wheel: removing them also removes the copies vendored inside setuptools that
-# scanners flag (jaraco.context, wheel).
-RUN pip install --no-cache-dir -r requirements.txt && pip uninstall -y setuptools wheel
+# scanners flag (jaraco.context, wheel). pip goes last: nothing installs at
+# runtime, and the image no longer carries pip's own CVEs.
+RUN pip install --no-cache-dir -r requirements.txt && pip uninstall -y setuptools wheel pip
 
 # Only what the app runs: no tests, caches, env files or whatever else sits in
 # the build context. Left owned by root: the app can read its code, not rewrite it.
