@@ -1,0 +1,6 @@
+# googleapis/release-please-action is Google's own release tool, pinned by SHA
+# in build-and-push.yml: the unverified-creator rule can't be satisfied.
+skip:
+  - rule: github_action_from_unverified_creator_used
+    path:
+      - .github/workflows/build-and-push.yml
