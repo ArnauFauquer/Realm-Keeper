@@ -1,3 +1,5 @@
+# kics-scan disable=ce76b7d0-9e77-464d-b86f-c5c48e03e22d,610e266e-6c12-4bca-9925-1ed0cd29742b,451d79dc-0588-476a-ad03-3c7f0320abb3,698ed579-b239-4f8f-a388-baa4bcb13ef8,bc2908f3-f73c-40a9-8793-c1b7d5544f79,8c978947-0ff6-485c-b0c2-0bfca6026466,3e2d3b2f-c22a-4df1-9cc6-a7a0aebb0c99
+# (examples to copy and adapt: no hardening, healthchecks or secrets management here, on purpose)
 # The simplest Realm Keeper: files only.
 #
 #   Notes:      the Markdown files in VAULT_DIR (your Obsidian vault), read and
@@ -18,7 +20,7 @@ services:
       STORAGE_LOCAL_PATH: /data
       FRONTEND_URL: http://localhost:${RK_PORT:-8080}
     volumes:
-      # The container runs as UID 1000, which must be able to write this
+      # The container runs as UID 10001, which must be able to write this
       # folder (on Linux, usually your own user).
       - ${VAULT_DIR:-../sample-vault}:/vault
       - data:/data

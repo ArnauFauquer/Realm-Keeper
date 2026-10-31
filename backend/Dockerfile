@@ -1,3 +1,4 @@
+# kics-scan disable=d3499f6d-1651-41bb-a9a7-de925fea487b
 FROM python:3.11-alpine
 
 WORKDIR /app
@@ -13,7 +14,7 @@ RUN apk upgrade --no-cache && apk add --no-cache git
 # Create a non-root user and pre-create the logs dir with correct ownership.
 # /vault and /data are where docker-compose.yml mounts the notes and the
 # local store: a named volume starts with the ownership of its mount point.
-RUN adduser -D -u 1000 appuser && \
+RUN adduser -D -u 10001 appuser && \
     mkdir -p /app/logs /vault /data && \
     chown -R appuser:appuser /app /vault /data
 
@@ -33,7 +34,7 @@ COPY routes ./routes
 COPY scripts ./scripts
 COPY services ./services
 
-USER 1000
+USER 10001
 
 EXPOSE 8000
 

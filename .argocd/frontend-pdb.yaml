@@ -1,7 +1,10 @@
+# kics-scan disable=e84eaf4d-2f45-47b2-abe8-e581b06deb66
+# (ArgoCD creates the namespace: CreateNamespace=true, see home_lab realmkeeper.yaml)
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: realm-keeper-frontend-pdb
+  namespace: realmkeeper
   labels:
     app: realm-keeper-frontend
     app.kubernetes.io/name: realm-keeper-frontend

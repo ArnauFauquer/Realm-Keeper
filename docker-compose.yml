@@ -1,3 +1,4 @@
+# kics-scan disable=8c978947-0ff6-485c-b0c2-0bfca6026466
 # Everything is optional except the app itself:
 #
 #   docker compose up --build
@@ -15,11 +16,16 @@ services:
     image: quay.io/minio/minio:latest
     container_name: realm-keeper-minio
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     environment:
+      # Development defaults for a MinIO that listens on 127.0.0.1 only.
+      # kics-scan ignore-line
       - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minioadmin}
+      # kics-scan ignore-line
       - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minioadmin123}
     volumes:
       - minio-data:/data
@@ -34,12 +40,22 @@ services:
     profiles: ["s3"]
     image: quay.io/minio/mc:latest
     container_name: realm-keeper-minio-init
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # Runs once and exits: nothing to check.
+    healthcheck:
+      # kics-scan ignore-line
+      disable: true
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      # kics-scan ignore-line
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin123}
     entrypoint: >
       /bin/sh -c "
-      mc alias set local http://minio:9000 ${S3_ACCESS_KEY:-minioadmin} ${S3_SECRET_KEY:-minioadmin123} &&
+      mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
       mc mb -p local/${S3_BUCKET_NAME:-realm-keeper-audio} &&
       exit 0
       "
@@ -48,6 +64,13 @@ services:
     build: ./backend
     container_name: realm-keeper-backend
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/docs', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     ports:
       # This machine only, like MinIO: from elsewhere the app is reached
       # through the frontend's nginx. The backend trusts X-Forwarded-*
@@ -63,13 +86,14 @@ services:
       - STORAGE_LOCAL_PATH=/data
       - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
       - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      # kics-scan ignore-line
       - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin123}
       - S3_BUCKET_NAME=${S3_BUCKET_NAME:-realm-keeper-audio}
       - S3_REGION=${S3_REGION:-us-east-1}
     volumes:
       # A host folder (your Obsidian vault: VAULT_DIR=/path/to/vault), or a
       # named volume holding the git clone when VAULT_DIR is unset. The
-      # container runs as UID 1000, which must be able to write it.
+      # container runs as UID 10001, which must be able to write it.
       - ${VAULT_DIR:-vault}:/vault
       # Documents, images and audio when STORAGE_BACKEND=local.
       - ${DATA_DIR:-data}:/data
@@ -88,11 +112,22 @@ services:
         - VITE_API_URL=${VITE_API_URL:-}
     container_name: realm-keeper-frontend
     restart: unless-stopped
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # The only service meant to be reached from other machines (the LAN,
+    # a reverse proxy): hence every interface.
+    # kics-scan ignore-line
     ports:
       - "5173:8080"
     depends_on:
       - backend
 
+# Each named volume belongs to one service; kics-scan counts any volume as shared.
 volumes:
   minio-data:
   vault:

@@ -28,8 +28,8 @@ the sample campaign in [sample-vault](sample-vault).
 - `VAULT_DIR`: the folder with your notes (an Obsidian vault works as it is).
   The app reads and writes the `.md` files in place and leaves `.obsidian` alone;
   what you change in Obsidian shows in the app within seconds. The container
-  runs as UID 1000, which must be able to write the folder (on Linux, usually
-  your own user; otherwise `sudo chown -R 1000 <folder>`).
+  runs as UID 10001, which must be able to write the folder (on Linux, usually
+  your own user; otherwise `sudo chown -R 10001 <folder>`).
 - `RK_PORT`: the port the app is served on (8080).
 - `REALM_KEEPER_VERSION`: the release to run (`latest`, or a version such as `0.5.0`).
 

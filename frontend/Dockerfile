@@ -2,6 +2,7 @@
 # static JS/CSS (identical for every arch), and running npm under QEMU for the
 # arm64 image crashes with SIGILL and hangs the job. Only the nginx stage below
 # is per-target-platform.
+# kics-scan ignore-line
 FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
