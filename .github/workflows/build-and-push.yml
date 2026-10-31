@@ -33,6 +33,7 @@ jobs:
     steps:
       - name: Run release-please
         id: release
+        # poutine:ignore github_action_from_unverified_creator_used -- Google's own release tool, pinned by SHA
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
           config-file: release-please-config.json

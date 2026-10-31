@@ -47,6 +47,7 @@ jobs:
           node-version: "20"       # the image's (frontend/Dockerfile)
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm install -g npm@11.11.0 && npm ci
+      # The npm the lockfile was written with, pinned (see frontend/Dockerfile).
+      - run: npm install -g npm@11.11.0 && npm ci  # zizmor: ignore[adhoc-packages]
       - run: npx vitest run
       - run: npm run build
