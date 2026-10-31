@@ -19,6 +19,7 @@ def test_api_responses_are_locked_down():
     r = TestClient(app).get("/api/x")
     assert r.headers["x-content-type-options"] == "nosniff"
     assert r.headers["cross-origin-resource-policy"] == "same-origin"
+    assert "max-age" in r.headers["strict-transport-security"]
     assert "default-src 'none'" in r.headers["content-security-policy"]
 
 

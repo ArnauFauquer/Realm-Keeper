@@ -4,6 +4,7 @@ from starlette.datastructures import MutableHeaders
 # sends should be run, framed or embedded by another site. Swagger/ReDoc
 # (served by FastAPI) load their scripts from a CDN, so they keep no CSP.
 API_HEADERS = {
+    "strict-transport-security": "max-age=31536000; includeSubDomains",
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
     "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=()",
