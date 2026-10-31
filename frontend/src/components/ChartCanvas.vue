@@ -549,13 +549,13 @@ function onCanvasClick(evt) {
   if (!pos) return
 
   if (mode.value === 'pin') {
-    props.chart.pins.push({ id: uuid(), x: pos.x, y: pos.y, name: '', icon_url: null, note_path: null, color: nextPinColor.value, scale: 1 })
+    props.chart.pins.push({ id: uuid(), x: pos.x, y: pos.y, name: '', icon_url: null, note_path: null, color: nextPinColor.value, scale: 1 })  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
     emitChange()
     mode.value = 'select'
     selectedId.value = props.chart.pins[props.chart.pins.length - 1].id
   } else if (mode.value === 'annotation') {
     const note = { id: uuid(), x: pos.x, y: pos.y, text: '', scale: 1 }
-    props.chart.annotations.push(note)
+    props.chart.annotations.push(note)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
     emitChange()
     mode.value = 'select'
     editingAnnotationId.value = note.id
@@ -568,7 +568,7 @@ function onCanvasClick(evt) {
 
 function finishPath() {
   if (drawingPoints.value.length < 2) return
-  props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })
+  props.chart.paths.push({ id: uuid(), points: [...drawingPoints.value], direction: 'forward', color: nextPathColor.value })  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   emitChange()
   drawingPoints.value = []
   mode.value = 'select'
@@ -657,19 +657,19 @@ function updateAnnotationText(id, text) {
 }
 
 function deletePin(id) {
-  props.chart.pins = props.chart.pins.filter(p => p.id !== id)
+  props.chart.pins = props.chart.pins.filter(p => p.id !== id)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   selectedId.value = null
   emitChange()
 }
 
 function deletePath(id) {
-  props.chart.paths = props.chart.paths.filter(p => p.id !== id)
+  props.chart.paths = props.chart.paths.filter(p => p.id !== id)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   selectedId.value = null
   emitChange()
 }
 
 function deleteAnnotation(id) {
-  props.chart.annotations = props.chart.annotations.filter(a => a.id !== id)
+  props.chart.annotations = props.chart.annotations.filter(a => a.id !== id)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   selectedId.value = null
   emitChange()
 }

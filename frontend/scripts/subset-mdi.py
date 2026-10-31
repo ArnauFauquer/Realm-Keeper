@@ -33,6 +33,8 @@ used = sorted(t[4:] for t in tokens if t[4:] in glyphs)
 # The rest of the stylesheet (the .mdi base class, sizes, flips, spin): kept as is.
 rest = glyph_rule.sub("", css)
 rest = re.sub(r"/\*# sourceMappingURL=.*?\*/", "", rest)
+# A generic family last, so text shows if the font fails to load.
+rest = rest.replace('"Material Design Icons";', '"Material Design Icons", sans-serif;')
 rest = re.sub(r"@font-face \{.*?\n\}\n\n?", "", rest, flags=re.S).lstrip("\n")
 
 subset_css = (
