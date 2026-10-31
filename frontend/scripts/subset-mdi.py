@@ -10,7 +10,7 @@ you do):
 Icon names are literals in the source (`mdi-sword`); the font comes from the
 @mdi/font dev dependency, so `npm ci` first."""
 import re
-import subprocess
+import subprocess  # nosec B404 -- runs pyftsubset with fixed arguments
 import sys
 from pathlib import Path
 
@@ -46,7 +46,7 @@ subset_css = (
 (out_dir / "materialdesignicons-subset.css").write_text(subset_css.rstrip() + "\n")
 
 unicodes = ",".join(f"U+{glyphs[n]}" for n in used)
-subprocess.run(
+subprocess.run(  # nosec B603 B607 -- fonttools' own tool, no user input
     ["pyftsubset", str(font_dir / "fonts" / "materialdesignicons-webfont.woff2"),
      f"--unicodes={unicodes}", "--flavor=woff2", "--no-hinting", "--layout-features=",
      "--glyph-names", f"--output-file={out_dir / 'materialdesignicons-subset.woff2'}"],
