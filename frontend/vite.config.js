@@ -41,7 +41,7 @@ export default defineConfig({
     watch: {
       usePolling: true
     },
-    // Mirrors the production ingress path routing (see .argocd/ingress.yaml):
+    // Mirrors the production ingress path routing (see helm/realm-keeper/templates/ingress.yaml):
     // frontend and backend appear same-origin, so the auth session cookie
     // works in dev without needing SameSite=None/HTTPS gymnastics.
     proxy: {

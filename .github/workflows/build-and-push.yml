@@ -16,7 +16,7 @@ env:
   IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
 
 jobs:
-  # Keeps a release PR open that bumps VERSION, the image tags in .argocd/
+  # Keeps a release PR open that bumps VERSION, the chart version in helm/
   # and CHANGELOG.md from the Conventional Commits merged since the last
   # release. Merging that PR creates the vX.Y.Z tag and GitHub release, and
   # only then are the images built. Nothing is pushed to main outside a PR,

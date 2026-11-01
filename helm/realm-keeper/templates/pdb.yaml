@@ -1,0 +1,14 @@
+{{- range $component := list "backend" "frontend" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "realm-keeper.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "realm-keeper.componentLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+spec:
+  maxUnavailable: {{ (index $.Values $component).podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "realm-keeper.selectorLabels" (dict "ctx" $ "component" $component) | nindent 6 }}
+---
+{{- end }}
