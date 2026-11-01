@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.5...v0.4.6) (2026-11-01)
+
+
+### Bug Fixes
+
+* deploy the 0.4.5 images and never let Argo CD prune the bucket claim ([#76](https://github.com/ArnauFauquer/Realm-Keeper/issues/76)) ([69d5d1f](https://github.com/ArnauFauquer/Realm-Keeper/commit/69d5d1fa0d690abf05cd19142e8e5783c2f4677b))
+
 ## [0.4.5](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.4...v0.4.5) (2026-11-01)
 
 
