@@ -5,6 +5,11 @@
 set -e
 root=$(git rev-parse --show-toplevel)
 
+# git exports GIT_DIR, GIT_INDEX_FILE... to hooks. Left in place they are
+# inherited by the tests' own `git -C <tmp>` calls, which then act on THIS
+# repository (commits, fetches and pushes to its real remote).
+unset $(git rev-parse --local-env-vars)
+
 echo "pre-commit: backend tests..."
 (cd "$root/backend" && ${RK_PYTHON:-python} -m pytest -q -p no:cacheprovider)
 
