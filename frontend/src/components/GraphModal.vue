@@ -397,6 +397,10 @@ export default {
   height: 90dvh;
 }
 
+@media (max-width: 640px) {
+  .graph-modal-content { height: 100dvh; }
+}
+
 .graph-body {
   flex: 1;
   min-height: 0;

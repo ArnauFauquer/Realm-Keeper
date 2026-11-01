@@ -1087,3 +1087,33 @@ function setPathDirection(id, direction) {
 
 <!-- The rules every canvas's toolbar and selection panel share. -->
 <style scoped src="../styles/canvas.css"></style>
+
+<style scoped>
+/* Phones: the toolbar lies along the top, and the selection panel is a
+   bottom sheet that scrolls instead of covering the map. */
+@media (max-width: 640px) {
+  .chart-toolbar {
+    flex-direction: row;
+    top: var(--space-2);
+    right: var(--space-2);
+  }
+
+  .selection-panel {
+    left: var(--space-2);
+    right: var(--space-2);
+    bottom: var(--space-2);
+    min-width: 0;
+    max-height: 40%;
+    overflow-y: auto;
+  }
+
+  .path-hint {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .path-hint-text {
+    white-space: normal;
+  }
+}
+</style>

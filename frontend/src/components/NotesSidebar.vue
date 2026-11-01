@@ -32,6 +32,10 @@
           <span class="search-trigger-label">Search</span>
           <kbd class="search-trigger-key" aria-hidden="true">{{ SEARCH_SHORTCUT }}</kbd>
         </button>
+        <button class="search-trigger graph-trigger" @click="closeSidebar(); openGraphModal()">
+          <span class="mdi mdi-graph-outline" aria-hidden="true"></span>
+          <span class="search-trigger-label">Constellation</span>
+        </button>
         <!-- The Observatory (every document and image) is behind login, like the player. -->
         <div v-if="user" class="observatory-tile">
           <button class="observatory-trigger" @click="openObservatory()">
@@ -282,7 +286,7 @@ async function copyScreenLink() {
   // (Without a clipboard, copy() hands the link over in a prompt.)
   await copy(link, 'screen-link', 'Screen link. Copy it and open it on the screen device:')
 }
-const { isOpen: isGraphModalOpen, close: closeGraphModal } = useGraphModal()
+const { isOpen: isGraphModalOpen, close: closeGraphModal, open: openGraphModal } = useGraphModal()
 const {
   isOpen: isObservatoryOpen, targetId: observatoryPath, kind: observatoryKind,
   open: openObservatory, openKind: openObservatoryKind, close: closeObservatory
@@ -945,6 +949,13 @@ onBeforeUnmount(() => {
 
   .sidebar.is-open {
     transform: translateX(0);
+  }
+}
+
+/* The right sidebar, which holds the graph link, is hidden below 1025px. */
+@media (min-width: 1025px) {
+  .graph-trigger {
+    display: none;
   }
 }
 </style>

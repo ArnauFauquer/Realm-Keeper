@@ -316,6 +316,10 @@ function startFromTemplate(systemId) {
   .sheet-editor {
     grid-template-columns: minmax(0, 1fr);
     overflow-y: auto;
+    /* Rows follow their content: the 1fr row of two columns squeezed the form
+       into the preview below it. */
+    grid-template-rows: none;
+    grid-auto-rows: auto;
   }
 
   /* One scroll, the page's: the builder grows with what it holds. */
