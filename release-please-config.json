@@ -9,7 +9,16 @@
     ".": {
       "version-file": "VERSION",
       "extra-files": [
-        "helm/realm-keeper/Chart.yaml"
+        {
+          "type": "yaml",
+          "path": "helm/realm-keeper/Chart.yaml",
+          "jsonpath": "$.version"
+        },
+        {
+          "type": "yaml",
+          "path": "helm/realm-keeper/Chart.yaml",
+          "jsonpath": "$.appVersion"
+        }
       ]
     }
   }

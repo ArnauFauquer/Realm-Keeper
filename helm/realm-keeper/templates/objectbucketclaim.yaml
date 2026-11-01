@@ -9,6 +9,9 @@ metadata:
     # Sync before the backend, so the Secret/ConfigMap Rook generates exist
     # when its pod is scheduled.
     argocd.argoproj.io/sync-wave: "-1"
+    # Deleting the claim deletes the bucket and every file in it (the storage
+    # class reclaims with Delete): Argo CD must never prune it.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   bucketName: {{ .Values.objectBucketClaim.bucketName }}
   storageClassName: {{ .Values.objectBucketClaim.storageClassName }}
