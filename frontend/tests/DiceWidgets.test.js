@@ -7,7 +7,7 @@ vi.mock('@/composables/useDiceRoller', async () => {
   const { reactive } = await import('vue')
   dice.state = reactive({ isPanelOpen: false, isRolling: false, overlayVisible: false, toasts: [] })
   Object.assign(dice, {
-    togglePanel: vi.fn(), dismissToast: vi.fn(), registerCanvas: vi.fn(), resizeWorld: vi.fn(), disposeWorld: vi.fn()
+    togglePanel: vi.fn(), dismissToast: vi.fn(), listenToRolls: vi.fn(() => () => {}), registerCanvas: vi.fn(), resizeWorld: vi.fn(), disposeWorld: vi.fn()
   })
   return { useDiceRoller: () => dice }
 })

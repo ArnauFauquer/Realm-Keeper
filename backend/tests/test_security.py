@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from config.settings import settings
 from main import app
+from routes import screen
 from services import storage_service
 from services.auth_service import (
     SCREEN_COOKIE_NAME, SESSION_COOKIE_NAME, create_screen_key, create_session_token,
@@ -584,3 +585,14 @@ def test_constellation_does_not_change_what_a_paired_screen_may_read(client, scr
     client.cookies.set(SCREEN_COOKIE_NAME, create_screen_key("gm@example.com"))
     assert _asset(client, MAP_KEY) == 401
     assert client.get("/api/charts/tavern").status_code == 401
+
+
+def test_dice_roll_is_announced_to_every_signed_in_client(client, monkeypatch):
+    announced = []
+
+    async def announce(message):
+        announced.append(message)
+    monkeypatch.setattr(screen.hub, "announce", announce)
+    client.cookies.set(SESSION_COOKIE_NAME, create_session_token("gm@example.com"))
+    client.post("/api/screen/dice", json={"formula": "1d20", "total": 7, "source": "tab1"})
+    assert announced[0]["type"] == "dice_roll" and announced[0]["source"] == "tab1"

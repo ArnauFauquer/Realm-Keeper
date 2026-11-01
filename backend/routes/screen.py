@@ -215,6 +215,8 @@ class DiceRollRequest(BaseModel):
     groups: List[DiceGroup] = Field(default_factory=list, max_length=MAX_DICE)
     flatModifier: int = Field(0, ge=-MAX_FLAT_MODIFIER, le=MAX_FLAT_MODIFIER)
     total: int = Field(0, ge=-1_000_000, le=1_000_000)
+    # The roller's tab, echoed to the other clients so it can skip its own roll.
+    source: Optional[str] = Field(None, max_length=40)
 
     @model_validator(mode="after")
     def _at_most_max_dice(self):
@@ -227,14 +229,14 @@ class DiceRollRequest(BaseModel):
 @router.post("/api/screen/dice")
 async def display_dice(body: DiceRollRequest, user: dict = Depends(require_auth)):
     """
-    Broadcasts a dice roll result to all connected screens: the formula, each
+    Broadcasts a dice roll result to all connected screens and signed-in clients: the formula, each
     group's dice, the flat modifier and the total, plus an optional label
     saying what the roll is for ("Bugboar · Gore").
     The roller's name and dice colour come from the session, not the payload,
     so one player can't have their roll shown as another's. The screen shows
     the roller when there's no label (a roll from the dice panel or a note).
     """
-    await manager.broadcast({
+    roll = {
         "type": "dice_roll",
         "formula": body.formula,
         "label": (body.label or "")[:MAX_DICE_LABEL_LENGTH],
@@ -243,7 +245,10 @@ async def display_dice(body: DiceRollRequest, user: dict = Depends(require_auth)
         "flatModifier": body.flatModifier,
         "total": body.total,
         "diceSlot": dice_slot(user["email"])
-    })
+    }
+    await manager.broadcast(roll)
+    # And to everyone signed in, who sees it as a toast.
+    await hub.announce({**roll, "source": body.source})
     return {"status": "success"}
 
 @router.post("/api/screen/clear")

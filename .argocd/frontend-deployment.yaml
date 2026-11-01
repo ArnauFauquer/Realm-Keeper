@@ -45,7 +45,7 @@ spec:
           # Pinned by release tag, not digest: release-please bumps the tag on
           # each release and a digest would go stale (CKV_K8S_43).
           # kics-scan ignore-line
-          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.4.3 # x-release-please-version
+          image: ghcr.io/arnaufauquer/realm-keeper/frontend:0.4.4 # x-release-please-version
           imagePullPolicy: Always
           securityContext:
             runAsNonRoot: true

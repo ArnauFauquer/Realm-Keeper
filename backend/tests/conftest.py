@@ -7,6 +7,11 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Run from a git hook, GIT_DIR / GIT_INDEX_FILE point at the real repo and every
+# `git` a test runs would commit into it instead of its own temporary one.
+for _name in [n for n in os.environ if n.startswith("GIT_") and n not in ("GIT_TERMINAL_PROMPT",)]:
+    del os.environ[_name]
+
 TEST_ROOT = Path(tempfile.mkdtemp())
 os.environ.update({
     "VAULT_PATH": str(TEST_ROOT / "vault"),
