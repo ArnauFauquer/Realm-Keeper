@@ -41,7 +41,8 @@ describe('useDiceRoller without WebGL', () => {
     expect(dice.state.toasts).toHaveLength(1)
     expect(dice.state.toasts[0]).toMatchObject({ formula: '2d6 + 3', label: 'Aria', total: result.total })
     expect(screenDice).toHaveBeenCalledWith({
-      formula: '2d6 + 3', label: null, groups: result.groups, flatModifier: 3, total: result.total
+      formula: '2d6 + 3', label: null, groups: result.groups, flatModifier: 3, total: result.total,
+      source: expect.any(String)
     })
     expect(dice.state.isRolling).toBe(false)
     expect(dice.state.overlayVisible).toBe(false)

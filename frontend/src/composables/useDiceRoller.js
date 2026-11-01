@@ -4,6 +4,7 @@ import { screenApi } from '@/api/screen'
 import { themeForSlot } from '@/dice/diceTheme'
 import { rollWithoutDice } from '@/dice/randomRoll'
 import { useAuth } from '@/composables/useAuth'
+import { listenToSync } from '@/composables/syncSocket'
 
 // Module-scoped singleton (no Pinia in this app) shared by DiceFab,
 // DicePanel, DiceOverlay, DiceToastStack and the note-rendering click hook
@@ -21,6 +22,8 @@ const { user } = useAuth()
 let worldInstance = null
 let canvasEl = null
 let toastSeq = 0
+// This tab: its rolls come back on the sync socket and are already toasted.
+const source = Math.random().toString(36).slice(2, 10)
 let hideTimer = null
 // Set once this device turned out unable to draw the dice (no WebGL): later
 // rolls skip straight to the plain roll instead of failing again every time.
@@ -80,7 +83,8 @@ function broadcastToScreen(formula, result, label) {
     label,
     groups: result.groups,
     flatModifier: result.flatModifier,
-    total: result.total
+    total: result.total,
+    source
   }).catch(() => {})
 }
 
@@ -143,6 +147,18 @@ function showRoll(formula, result, { outcome = null } = {}) {
   pushToast(formula, result, user.value?.name || null, outcome)
 }
 
+/** Toasts the rolls everyone else makes, heard on the sync socket. Returns
+ * the function that stops. */
+function listenToRolls() {
+  return listenToSync({
+    onEvent(event) {
+      if (event?.type !== 'dice_roll' || event.source === source) return
+      pushToast(event.formula, event, event.label || event.roller || null)
+    },
+    onOpen() {}
+  })
+}
+
 function openPanel() { state.isPanelOpen = true }
 function closePanel() { state.isPanelOpen = false }
 function togglePanel() { state.isPanelOpen = !state.isPanelOpen }
@@ -164,6 +180,7 @@ export function useDiceRoller() {
     resizeWorld,
     roll,
     showRoll,
+    listenToRolls,
     openPanel,
     closePanel,
     togglePanel,
