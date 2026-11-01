@@ -1,0 +1,32 @@
+# Apply once by hand (kubectl apply -n argocd -f .argocd/application.yaml);
+# after that Argo CD tracks main and syncs the chart in helm/realm-keeper.
+#
+# Migrating from the raw manifests: if an Application already syncs
+# `.argocd/`, replace it with this one (same name) — the Helm chart renders
+# the same object names and Deployment selectors, so Argo CD adopts the
+# running resources instead of recreating them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: realm-keeper
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/ArnauFauquer/Realm-Keeper.git
+    targetRevision: main
+    path: helm/realm-keeper
+    helm:
+      releaseName: realm-keeper
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: realmkeeper
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

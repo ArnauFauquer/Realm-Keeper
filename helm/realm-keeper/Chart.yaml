@@ -1,0 +1,8 @@
+apiVersion: v2
+name: realm-keeper
+description: Realm Keeper, a tabletop RPG campaign companion (FastAPI backend + nginx/Vue frontend)
+type: application
+# Chart version and appVersion are bumped together by release-please
+# (see release-please-config.json). appVersion is the default image tag.
+version: 0.4.4 # x-release-please-version
+appVersion: "0.4.4" # x-release-please-version

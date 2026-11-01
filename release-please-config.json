@@ -9,8 +9,7 @@
     ".": {
       "version-file": "VERSION",
       "extra-files": [
-        ".argocd/backend-deployment.yaml",
-        ".argocd/frontend-deployment.yaml"
+        "helm/realm-keeper/Chart.yaml"
       ]
     }
   }

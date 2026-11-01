@@ -128,7 +128,7 @@ Use `feat`, `fix`, `refactor`, `docs`, `test` or `chore`, and describe the
 change from the user's point of view where possible. The prefix matters:
 releases and the changelog are generated from it.
 
-Don't edit `VERSION`, `CHANGELOG.md` or the image tags in `.argocd/` —
+Don't edit `VERSION`, `CHANGELOG.md` or the version in `helm/realm-keeper/Chart.yaml` —
 [release-please](https://github.com/googleapis/release-please) updates them
 in its release PR.
 

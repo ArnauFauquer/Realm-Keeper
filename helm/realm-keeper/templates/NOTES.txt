@@ -1,0 +1,4 @@
+Realm Keeper {{ .Chart.AppVersion }} deployed at https://{{ .Values.host }}
+
+The backend reads {{ join ", " .Values.backend.secretKeys }} from the Secret
+"{{ .Values.backend.existingSecret }}", which this chart does not create.

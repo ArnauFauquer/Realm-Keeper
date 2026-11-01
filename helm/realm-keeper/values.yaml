@@ -1,0 +1,131 @@
+nameOverride: ""
+fullnameOverride: ""
+
+# Public hostname. Also the origin the backend allows (CORS, FRONTEND_URL).
+host: realmkeeper.faukinator.com
+
+imagePullSecrets: []
+
+backend:
+  # The image tag defaults to the chart's appVersion.
+  image:
+    repository: ghcr.io/arnaufauquer/realm-keeper/backend
+    tag: ""
+    pullPolicy: IfNotPresent
+  port: 8000
+  # Always 1: live documents and screen state are held in this one process's
+  # memory and the vault is a single volume (see ARCHITECTURE.md, Deployment
+  # constraints). The Deployment uses Recreate for the same reason.
+  replicas: 1
+  # Pre-existing Secret (not created by this chart) with one key per entry
+  # of secretKeys, each exposed as an env var of the same name.
+  existingSecret: realm-keeper-secrets
+  secretKeys:
+    - REPO_URL
+    - GOOGLE_CLIENT_ID
+    - GOOGLE_CLIENT_SECRET
+    - SESSION_SECRET_KEY
+    - ALLOWED_EMAILS
+  # Plain env vars. FRONTEND_URL and CORS_ALLOWED_ORIGINS default to
+  # https://<host>.
+  env:
+    NOTE_TAG_IGNORE: draft
+    VAULT_PATH: /vault
+    GIT_SYNC_INTERVAL: "300"
+    SESSION_COOKIE_SECURE: "true"
+  extraEnv: []
+  # Sized from the running pod's cgroup counters: memory.peak 97Mi over ~10h
+  # including the startup vault clone, CPU ~1m average. The memory limit
+  # leaves room for one S3 upload (boto3 buffers ~80Mi) with ~2x headroom.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 384Mi
+  # Uvicorn only answers once the startup vault clone is done (up to 300s);
+  # 64 * 5s = 320s keeps liveness from killing a pod that is still cloning.
+  startupProbe:
+    periodSeconds: 5
+    failureThreshold: 64
+    timeoutSeconds: 3
+  podDisruptionBudget:
+    maxUnavailable: 1
+  nodeSelector: {}
+  tolerations: []
+
+frontend:
+  image:
+    repository: ghcr.io/arnaufauquer/realm-keeper/frontend
+    tag: ""
+    pullPolicy: IfNotPresent
+  port: 8080
+  replicas: 1
+  # Only serves the static bundle: memory.peak 20Mi over ~10h.
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 500m
+      memory: 64Mi
+  # With one replica, minAvailable: 1 would block `kubectl drain` for good.
+  podDisruptionBudget:
+    maxUnavailable: 1
+  nodeSelector: {}
+  tolerations: []
+
+service:
+  type: ClusterIP
+  frontendPort: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+  tls:
+    enabled: true
+    secretName: realm-keeper-tls
+
+# What the namespace itself enforces: default sizes for containers that set
+# none, a ceiling for the whole app, and who may talk to whom (default deny,
+# then the proxy in, and the backend out to DNS, the object store and the
+# internet over HTTPS/SSH for the vault's git remote and sign-in).
+namespacePolicies:
+  enabled: true
+  limitRange:
+    default: {cpu: 500m, memory: 128Mi}
+    defaultRequest: {cpu: 10m, memory: 32Mi}
+  resourceQuota:
+    pods: "10"
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "4"
+    limits.memory: 2Gi
+  networkPolicy:
+    # Namespace of the Traefik / Gateway pods allowed to reach the app.
+    ingressNamespace: traefik
+    objectStoreNamespace: rook-ceph
+
+# Gateway API alternative to the Ingress (set ingress.enabled=false to use it).
+# The Gateway itself, its listener and its TLS certificate belong to the
+# platform; this only attaches the routes (/api and /ws to the backend, the
+# rest to the frontend) to it. WebSockets need no extra config in HTTPRoute.
+httpRoute:
+  enabled: false
+  annotations: {}
+  # e.g. [{name: public-gateway, namespace: gateway-system, sectionName: https}]
+  parentRefs: []
+
+# Rook-Ceph bucket for documents, images and audio. Rook creates a ConfigMap
+# and a Secret named like the claim; the backend reads S3_* from them.
+objectBucketClaim:
+  enabled: true
+  name: realm-keeper-audio
+  bucketName: realm-keeper-audio
+  storageClassName: ceph-bucket
+  endpoint: http://rook-ceph-rgw-ceph-objectstore.rook-ceph.svc:80
+  region: us-east-1

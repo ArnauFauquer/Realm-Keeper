@@ -1,0 +1,156 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "realm-keeper.fullname" . }}-backend
+  annotations:
+    checkov.io/skip1: CKV_K8S_43=Tagged by release-please; a digest would go stale on each release
+  labels:
+    {{- include "realm-keeper.componentLabels" (dict "ctx" . "component" "backend") | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "realm-keeper.selectorLabels" (dict "ctx" . "component" "backend") | nindent 6 }}
+  # One pod at a time, never two: live documents and screen state are held in
+  # the process's memory. With a rolling update both pods sat behind the
+  # Service and edits on the new pod were reset by the old one's final save.
+  # Recreate stops the old pod first (it saves on the way out).
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "realm-keeper.componentLabels" (dict "ctx" . "component" "backend") | nindent 8 }}
+      annotations:
+        container.apparmor.security.beta.kubernetes.io/backend: runtime/default
+    spec:
+      # The app never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.port }}
+              protocol: TCP
+          env:
+            - name: FRONTEND_URL
+              value: {{ include "realm-keeper.publicUrl" . | quote }}
+            - name: CORS_ALLOWED_ORIGINS
+              value: {{ include "realm-keeper.publicUrl" . | quote }}
+            {{- range $k, $v := .Values.backend.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- range .Values.backend.secretKeys }}
+            - name: {{ . }}_FILE
+              value: /secrets/{{ . }}
+            {{- end }}
+            {{- with .Values.objectBucketClaim }}
+            {{- if .enabled }}
+            - name: S3_ENDPOINT_URL
+              value: {{ .endpoint | quote }}
+            - name: S3_REGION
+              value: {{ .region | quote }}
+            - name: S3_BUCKET_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ .name }}
+                  key: BUCKET_NAME
+            - name: S3_ACCESS_KEY_FILE
+              value: /secrets/S3_ACCESS_KEY
+            - name: S3_SECRET_KEY_FILE
+              value: /secrets/S3_SECRET_KEY
+            {{- end }}
+            {{- end }}
+            {{- with .Values.backend.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: vault-data
+              mountPath: /vault
+            # With a read-only root: vault clone staging and spooled uploads
+            # (/tmp), LOG_DIR, and git's global safe.directory (~/.gitconfig).
+            - name: tmp
+              mountPath: /tmp
+            - name: logs
+              mountPath: /app/logs
+            - name: home
+              mountPath: /home/appuser
+            # The Secrets as files (see load_secret_files in config/settings.py).
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            {{- toYaml .Values.backend.startupProbe | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: vault-data
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: home
+          emptyDir: {}
+        - name: secrets
+          projected:
+            defaultMode: 0440
+            sources:
+              - secret:
+                  name: {{ .Values.backend.existingSecret }}
+                  items:
+                    {{- range .Values.backend.secretKeys }}
+                    - {key: {{ . }}, path: {{ . }}}
+                    {{- end }}
+              {{- if .Values.objectBucketClaim.enabled }}
+              - secret:
+                  name: {{ .Values.objectBucketClaim.name }}
+                  items:
+                    - {key: AWS_ACCESS_KEY_ID, path: S3_ACCESS_KEY}
+                    - {key: AWS_SECRET_ACCESS_KEY, path: S3_SECRET_KEY}
+              {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

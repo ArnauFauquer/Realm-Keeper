@@ -1,0 +1,34 @@
+name: Helm chart
+
+# Lints and renders the chart, then validates the output against the
+# Kubernetes schemas. Helm is preinstalled on the runner, so no third-party
+# action is needed. CRDs (the Rook ObjectBucketClaim) have no schema here.
+on:
+  pull_request:
+    paths:
+      - "helm/**"
+      - ".argocd/**"
+      - ".github/workflows/helm.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "helm/**"
+      - ".argocd/**"
+      - ".github/workflows/helm.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  chart:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - run: helm lint --strict helm/realm-keeper
+      - name: Render and validate
+        run: |
+          helm template realm-keeper helm/realm-keeper -n realmkeeper > rendered.yaml
+          docker run --rm -v "$PWD:/w" ghcr.io/yannh/kubeconform:v0.7.0 \
+            -strict -summary -ignore-missing-schemas /w/rendered.yaml /w/.argocd/application.yaml

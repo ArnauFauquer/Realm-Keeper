@@ -1,0 +1,15 @@
+{{- if .Values.objectBucketClaim.enabled }}
+apiVersion: objectbucket.io/v1alpha1
+kind: ObjectBucketClaim
+metadata:
+  name: {{ .Values.objectBucketClaim.name }}
+  labels:
+    {{- include "realm-keeper.labels" . | nindent 4 }}
+  annotations:
+    # Sync before the backend, so the Secret/ConfigMap Rook generates exist
+    # when its pod is scheduled.
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  bucketName: {{ .Values.objectBucketClaim.bucketName }}
+  storageClassName: {{ .Values.objectBucketClaim.storageClassName }}
+{{- end }}

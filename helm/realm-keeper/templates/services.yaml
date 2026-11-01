@@ -1,0 +1,18 @@
+{{- range $component, $port := dict "backend" .Values.backend.port "frontend" .Values.service.frontendPort }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "realm-keeper.fullname" $ }}-{{ $component }}
+  labels:
+    {{- include "realm-keeper.componentLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+spec:
+  type: {{ $.Values.service.type }}
+  selector:
+    {{- include "realm-keeper.selectorLabels" (dict "ctx" $ "component" $component) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $port }}
+      targetPort: http
+      protocol: TCP
+---
+{{- end }}
