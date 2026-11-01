@@ -21,8 +21,6 @@ spec:
     metadata:
       labels:
         {{- include "realm-keeper.componentLabels" (dict "ctx" . "component" "backend") | nindent 8 }}
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/backend: runtime/default
     spec:
       # The app never calls the Kubernetes API.
       automountServiceAccountToken: false

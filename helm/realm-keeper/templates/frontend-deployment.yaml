@@ -20,8 +20,6 @@ spec:
     metadata:
       labels:
         {{- include "realm-keeper.componentLabels" (dict "ctx" . "component" "frontend") | nindent 8 }}
-      annotations:
-        container.apparmor.security.beta.kubernetes.io/frontend: runtime/default
     spec:
       automountServiceAccountToken: false
       securityContext:
