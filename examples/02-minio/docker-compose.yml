@@ -1,0 +1,70 @@
+# Files in object storage: a MinIO bucket runs beside the app and keeps the
+# maps, scenes, sheets, images and music. Notes stay a folder (VAULT_DIR).
+# The same settings point at any S3-compatible bucket (AWS S3, Cloudflare R2,
+# Backblaze B2, Ceph RGW...): drop the two minio services and set S3_*.
+#
+#   docker compose up -d   ->   http://localhost:8080
+#   MinIO console          ->   http://localhost:9001
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-realmkeeper}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-change-me-please}
+    ports:
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"   # the console, this machine only
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Creates the bucket, once, then exits.
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_USER} $${MINIO_PASSWORD} &&
+      mc mb -p local/$${BUCKET}
+      "
+    environment:
+      MINIO_USER: ${S3_ACCESS_KEY:-realmkeeper}
+      MINIO_PASSWORD: ${S3_SECRET_KEY:-change-me-please}
+      BUCKET: ${S3_BUCKET_NAME:-realm-keeper}
+
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      ENABLE_AUTH: "false"
+      VAULT_PATH: /vault
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-realmkeeper}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-change-me-please}
+      S3_BUCKET_NAME: ${S3_BUCKET_NAME:-realm-keeper}
+      S3_REGION: us-east-1
+      FRONTEND_URL: http://localhost:${RK_PORT:-8080}
+    volumes:
+      - ${VAULT_DIR:-../sample-vault}:/vault
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${RK_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  minio-data:

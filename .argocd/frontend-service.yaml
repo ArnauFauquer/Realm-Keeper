@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: realm-keeper-frontend
+  labels:
+    app: realm-keeper-frontend
+    app.kubernetes.io/name: realm-keeper-frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: realm-keeper
+spec:
+  type: ClusterIP
+  selector:
+    app: realm-keeper-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

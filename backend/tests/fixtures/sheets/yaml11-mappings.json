@@ -1,0 +1,103 @@
+{
+  "sheet": {
+    "id": "mappings",
+    "name": "Mappings",
+    "type": "adversary",
+    "subtitle": "1.0",
+    "image": null,
+    "tags": [],
+    "resources": {
+      "HP": {
+        "max": 8,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      },
+      "Armor": {
+        "max": 6,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      },
+      "Time": {
+        "max": 90,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      },
+      "Stress": {
+        "max": 3,
+        "min": 0,
+        "start": 9,
+        "color": null,
+        "style": null
+      },
+      "Hope": {
+        "max": 5,
+        "min": 0,
+        "start": null,
+        "color": null,
+        "style": null
+      }
+    },
+    "stats": [],
+    "sections": [
+      {
+        "title": "Counters",
+        "columns": null,
+        "wide": true,
+        "collapsed": true,
+        "tab": null,
+        "counters": [
+          "HP",
+          "Armor",
+          "Time",
+          "Stress",
+          "Hope"
+        ],
+        "stats": [
+          {
+            "title": null,
+            "columns": null,
+            "stats": [
+              {
+                "label": "10",
+                "value": "ten",
+                "roll": null
+              },
+              {
+                "label": "2",
+                "value": "two",
+                "roll": null
+              },
+              {
+                "label": "True",
+                "value": "one again",
+                "roll": null
+              }
+            ]
+          }
+        ],
+        "items": []
+      },
+      {
+        "title": "Not wide",
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "tab": null,
+        "counters": [],
+        "stats": [],
+        "items": []
+      }
+    ],
+    "columns": null,
+    "text": null
+  },
+  "warnings": [
+    "Unknown field 'None'"
+  ]
+}

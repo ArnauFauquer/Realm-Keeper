@@ -1,0 +1,5 @@
+name: Imp
+sections:
+  - counters:
+      HP: { max: 2, min: 3 }
+

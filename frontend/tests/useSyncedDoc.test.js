@@ -1,0 +1,411 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApp, defineComponent, h, nextTick, ref } from 'vue'
+
+vi.mock('@/config/env', () => ({ apiUrl: '' }))
+
+class FakeSocket {
+  static instances = []
+  readyState = 0
+  constructor(url) {
+    this.url = url
+    FakeSocket.instances.push(this)
+  }
+  open() {
+    this.readyState = 1
+    this.onopen?.()
+  }
+  say(event) {
+    this.onmessage?.({ data: JSON.stringify(event) })
+  }
+  drop(code = 1006) {
+    this.readyState = 3
+    this.onclose?.({ code })
+  }
+  close() {
+    this.readyState = 3
+  }
+}
+
+const { useSyncedDoc, useSyncedDocFollowing, useSyncedDocs } = await import('@/composables/useSyncedDoc')
+const { syncStatus } = await import('@/composables/syncSocket')
+
+const flush = async () => {
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  await nextTick()
+}
+
+const mounted = []
+/** Runs the composable inside a component, like a real caller. */
+function use(kind, id, fetchDoc) {
+  let result
+  const app = createApp(
+    defineComponent({
+      setup() {
+        result = useSyncedDoc(kind, id, fetchDoc)
+        return () => h('div')
+      }
+    })
+  )
+  app.mount(document.createElement('div'))
+  mounted.push(app)
+  return { ...result, unmount: () => app.unmount() }
+}
+
+const snapshot = (overrides = {}) => ({ id: 'fight', rev: 1, count: 0, combatants: [{ id: 'a', n: 1 }], ...overrides })
+const event = (rev, extra = {}) => ({ type: 'doc', doc: 'encounter:fight', rev, ...extra })
+
+// A document no one holds is kept a moment (RELEASE_GRACE_MS) before it is
+// let go of: the clock is fake, and each test ends by letting that moment pass.
+const GRACE = 3000
+
+beforeEach(() => {
+  FakeSocket.instances = []
+  vi.stubGlobal('WebSocket', FakeSocket)
+  vi.useFakeTimers()
+})
+
+afterEach(() => {
+  mounted.splice(0).forEach((app) => app.unmount())
+  vi.advanceTimersByTime(GRACE)
+  vi.useRealTimers()
+  vi.unstubAllGlobals()
+})
+
+describe('useSyncedDoc', () => {
+  it('loads the document and applies the changes announced after it', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const { doc, status } = use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(status.value).toBe('ready')
+    expect(doc.value.count).toBe(0)
+
+    const socket = FakeSocket.instances[0]
+    expect(socket.url).toMatch(/\/ws\/sync$/)
+    socket.open()
+    await flush() // opening reloads the document: a change could have been missed meanwhile
+    socket.say(event(2, { set: { count: 1 } }))
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
+  })
+
+  it('ignores a change it has already seen, and the other documents\'', async () => {
+    const { doc } = use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
+    await flush()
+    const socket = FakeSocket.instances[0]
+    socket.say(event(1, { set: { count: 9 } }))
+    socket.say({ ...event(2, { set: { count: 9 } }), doc: 'encounter:another' })
+    expect(doc.value.count).toBe(0)
+  })
+
+  it('applies the reply of its own command once, however it arrives', async () => {
+    const { doc, commit } = use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
+    await flush()
+    const reply = event(2, { upsert: { combatants: [{ id: 'a', n: 5 }] } })
+    await commit(Promise.resolve(reply))
+    FakeSocket.instances[0].say(reply)
+    expect(doc.value.combatants).toEqual([{ id: 'a', n: 5 }])
+    expect(doc.value.rev).toBe(2)
+    await commit(Promise.resolve({ type: 'noop' }))
+    expect(doc.value.rev).toBe(2)
+  })
+
+  it('reloads when it misses a change', async () => {
+    const fetchDoc = vi.fn().mockResolvedValueOnce(snapshot()).mockResolvedValueOnce(snapshot({ rev: 5, count: 4 }))
+    const { doc } = use('encounter', 'fight', fetchDoc)
+    await flush()
+    FakeSocket.instances[0].say(event(4, { set: { count: 3 } })) // 2 and 3 never came
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(1) // they may still be on their way
+    await vi.advanceTimersByTimeAsync(300)
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    expect(doc.value).toMatchObject({ rev: 5, count: 4 })
+  })
+
+  it('puts in order a change that overtook the one before it, without reloading', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const { doc, commit } = use('encounter', 'fight', fetchDoc)
+    await flush()
+    // The command's own reply (rev 3) comes back before the socket brings rev 2.
+    await commit(Promise.resolve(event(3, { set: { count: 3 } })))
+    expect(doc.value.rev).toBe(1)
+    FakeSocket.instances[0].say(event(2, { set: { count: 2 } }))
+    expect(doc.value).toMatchObject({ rev: 3, count: 3 })
+    FakeSocket.instances[0].say(event(3, { set: { count: 3 } })) // the same, on the socket
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchDoc).toHaveBeenCalledTimes(1)
+    expect(doc.value).toMatchObject({ rev: 3, count: 3 })
+  })
+
+  it('loads again when the socket opens while the first copy is still on its way', async () => {
+    const finishes = []
+    const fetchDoc = vi.fn(() => new Promise((resolve) => finishes.push(resolve)))
+    const { doc, status } = use('encounter', 'fight', fetchDoc)
+    FakeSocket.instances[0].open() // a change made before it opened may be missing from that copy
+    finishes[0](snapshot())
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    expect(status.value).toBe('loading')
+    finishes[1](snapshot({ rev: 2, count: 1 }))
+    await flush()
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not load twice when the socket is already open as it starts', async () => {
+    use('encounter', 'other', vi.fn().mockResolvedValue({ id: 'other', rev: 1 }))
+    await flush()
+    FakeSocket.instances[0].open()
+    await flush()
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(1)
+  })
+
+  it('fetches once more when a reset comes while a copy is on its way', async () => {
+    const finishes = []
+    const fetchDoc = vi.fn(() => new Promise((resolve) => finishes.push(resolve)))
+    const { doc } = use('encounter', 'fight', fetchDoc)
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:fight', reset: true })
+    finishes[0](snapshot())
+    await flush()
+    finishes[1](snapshot({ rev: 7, count: 7 }))
+    await flush()
+    expect(doc.value).toMatchObject({ rev: 7, count: 7 })
+  })
+
+  it('keeps the changes that arrive while it is still loading', async () => {
+    let finish
+    const fetchDoc = vi.fn(() => new Promise((resolve) => { finish = resolve }))
+    const { doc, status } = use('encounter', 'fight', fetchDoc)
+    const socket = FakeSocket.instances[0]
+    socket.say(event(2, { set: { count: 1 } }))
+    socket.say(event(1, { set: { count: 7 } })) // older than the snapshot: dropped
+    expect(status.value).toBe('loading')
+    finish(snapshot())
+    await flush()
+    expect(doc.value).toMatchObject({ rev: 2, count: 1 })
+  })
+
+  it('reloads on a reset, and when the connection comes back', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    use('encounter', 'fight', fetchDoc)
+    await flush()
+    const socket = FakeSocket.instances[0]
+    socket.say({ type: 'doc', doc: 'encounter:fight', reset: true })
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    socket.open()
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(3)
+  })
+
+  it('knows when its document is gone', async () => {
+    const { status } = use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
+    await flush()
+    FakeSocket.instances[0].say({ type: 'gone', doc: 'encounter:fight' })
+    expect(status.value).toBe('gone')
+
+    const missing = use('encounter', 'missing', vi.fn().mockRejectedValue({ response: { status: 404 } }))
+    await flush()
+    expect(missing.status.value).toBe('gone')
+    const broken = use('encounter', 'broken', vi.fn().mockRejectedValue(new Error('network')))
+    await flush()
+    expect(broken.status.value).toBe('error')
+    expect(broken.error.value).toBe('network')
+  })
+
+  it('shares one copy, and one socket, between everyone who asks', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const one = use('encounter', 'fight', fetchDoc)
+    const two = use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(one.doc).toBe(two.doc)
+    expect(fetchDoc).toHaveBeenCalledTimes(1)
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
+
+  it('lets go of the socket when the last one is done', async () => {
+    const one = use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
+    const two = use('characters', 'all', vi.fn().mockResolvedValue({ id: 'all', rev: 0, characters: [] }))
+    await flush()
+    FakeSocket.instances[0].open()
+    expect(syncStatus.value).toBe('open')
+    one.unmount()
+    expect(syncStatus.value).toBe('open')
+    two.unmount()
+    expect(syncStatus.value).toBe('open') // a moment, in case it is asked for again
+    vi.advanceTimersByTime(3000)
+    expect(syncStatus.value).toBe('idle')
+  })
+
+  it('keeps a document a moment after the last one lets go, so mounting again costs nothing', async () => {
+    const fetchDoc = vi.fn().mockResolvedValue(snapshot())
+    const first = use('encounter', 'fight', fetchDoc)
+    await flush()
+    FakeSocket.instances[0].open()
+    await flush()
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    first.unmount() // a note's preview, typed into: its embeds mount again at once
+    vi.advanceTimersByTime(1000)
+    FakeSocket.instances[0].say(event(2, { set: { count: 4 } })) // still listened to meanwhile
+    const again = use('encounter', 'fight', fetchDoc)
+    await flush()
+    expect(again.doc.value).toMatchObject({ rev: 2, count: 4 })
+    expect(fetchDoc).toHaveBeenCalledTimes(2)
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(syncStatus.value).toBe('open')
+  })
+
+  it('reconnects with a growing pause, and gives up when not signed in', async () => {
+    use('encounter', 'fight', vi.fn().mockResolvedValue(snapshot()))
+    await flush()
+    FakeSocket.instances[0].drop()
+    expect(syncStatus.value).toBe('connecting')
+    vi.advanceTimersByTime(1000)
+    expect(FakeSocket.instances).toHaveLength(2)
+    FakeSocket.instances[1].drop()
+    vi.advanceTimersByTime(1000)
+    expect(FakeSocket.instances).toHaveLength(2) // the pause doubled
+    vi.advanceTimersByTime(1000)
+    expect(FakeSocket.instances).toHaveLength(3)
+    FakeSocket.instances[2].drop(1008)
+    expect(syncStatus.value).toBe('denied')
+    vi.advanceTimersByTime(60000)
+    expect(FakeSocket.instances).toHaveLength(3)
+  })
+})
+
+describe('useSyncedDocFollowing', () => {
+  /** Runs the composable inside a component, following whatever `id` holds. */
+  function follow(id, fetchFor) {
+    let result
+    const app = createApp(
+      defineComponent({
+        setup() {
+          result = useSyncedDocFollowing('encounter', () => id.value, fetchFor)
+          return () => h('div')
+        }
+      })
+    )
+    app.mount(document.createElement('div'))
+    mounted.push(app)
+    return { ...result, unmount: () => app.unmount() }
+  }
+
+  it('has nothing while there is nothing to follow, and opens no connection for it', async () => {
+    const { doc, status } = follow(ref(null), vi.fn())
+    await flush()
+    expect(doc.value).toBeNull()
+    expect(status.value).toBe('idle')
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
+
+  it('follows the document it is given, live', async () => {
+    const fetchFor = vi.fn(async (id) => ({ id, rev: 1, count: 0 }))
+    const { doc, status } = follow(ref('fight'), fetchFor)
+    await flush()
+    expect(fetchFor).toHaveBeenCalledWith('fight')
+    expect(status.value).toBe('ready')
+    FakeSocket.instances[0].say(event(2, { set: { count: 5 } }))
+    expect(doc.value.count).toBe(5)
+  })
+
+  it('switches to another document when the id changes, letting go of the first', async () => {
+    const id = ref('fight')
+    const fetchFor = vi.fn(async (wanted) => ({ id: wanted, rev: 1, count: wanted === 'fight' ? 1 : 2 }))
+    const { doc } = follow(id, fetchFor)
+    await flush()
+    expect(doc.value.count).toBe(1)
+
+    id.value = 'ambush'
+    await flush()
+    expect(doc.value).toMatchObject({ id: 'ambush', count: 2 })
+    FakeSocket.instances[0].say(event(2, { set: { count: 9 } })) // the old one's: not this one's
+    expect(doc.value.count).toBe(2)
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'encounter:ambush', rev: 2, set: { count: 7 } })
+    expect(doc.value.count).toBe(7)
+    expect(FakeSocket.instances).toHaveLength(1) // one connection throughout
+
+    id.value = null
+    await flush()
+    expect(doc.value).toBeNull()
+    vi.advanceTimersByTime(3000)
+    expect(syncStatus.value).toBe('idle')
+  })
+
+  it('lets go when the component goes', async () => {
+    const view = follow(ref('fight'), async (id) => ({ id, rev: 1 }))
+    await flush()
+    FakeSocket.instances[0].open()
+    expect(syncStatus.value).toBe('open')
+    view.unmount()
+    vi.advanceTimersByTime(3000)
+    expect(syncStatus.value).toBe('idle')
+  })
+})
+
+
+describe('useSyncedDocs', () => {
+  function useMany(ids, fetchFor) {
+    let result
+    const app = createApp(defineComponent({
+      setup() {
+        result = useSyncedDocs('character', () => ids.value, fetchFor)
+        return () => h('div')
+      }
+    }))
+    app.mount(document.createElement('div'))
+    mounted.push(app)
+    return { ...result, unmount: () => app.unmount() }
+  }
+  const character = (id, hp) => ({ id, rev: 1, resources: { HP: { current: hp, max: 9 } } })
+  const missing = () => Promise.reject({ response: { status: 404 } })
+
+  it('follows each id it is given, and lets go of the ones no longer asked for', async () => {
+    const ids = ref(['aria'])
+    const fetchFor = vi.fn(async (id) => character(id, id === 'aria' ? 3 : 5))
+    const { docs, statusOf } = useMany(ids, fetchFor)
+    await flush()
+    expect(Object.keys(docs.value)).toEqual(['aria'])
+    ids.value = ['aria', 'bram', 'bram', null]
+    await flush()
+    expect(fetchFor).toHaveBeenCalledTimes(2)                       // aria is not loaded again
+    expect(docs.value.bram.resources.HP.current).toBe(5)
+    ids.value = ['bram']
+    await flush()
+    expect(Object.keys(docs.value)).toEqual(['bram'])
+    expect(statusOf('aria')).toBe('idle')
+  })
+
+  it('keeps each one up to date with its own events', async () => {
+    const ids = ref(['aria', 'bram'])
+    const { docs } = useMany(ids, async (id) => character(id, 1))
+    await flush()
+    FakeSocket.instances[0].say({ type: 'doc', doc: 'character:bram', rev: 2, set: { resources: { HP: { current: 8, max: 9 } } } })
+    expect(docs.value.bram.resources.HP.current).toBe(8)
+    expect(docs.value.aria.resources.HP.current).toBe(1)
+  })
+
+  it('knows one that does not exist yet, and loads it once it does', async () => {
+    const ids = ref(['vex'])
+    let exists = false
+    const { docs, statusOf, reload } = useMany(ids, (id) => (exists ? Promise.resolve(character(id, 4)) : missing()))
+    await flush()
+    expect(statusOf('vex')).toBe('gone')
+    expect(docs.value.vex).toBeUndefined()
+    exists = true
+    await reload('vex')
+    await flush()
+    expect(statusOf('vex')).toBe('ready')
+    expect(docs.value.vex.resources.HP.current).toBe(4)
+  })
+
+  it('applies the event a command returns', async () => {
+    const ids = ref(['aria'])
+    const { docs, commit } = useMany(ids, async (id) => character(id, 3))
+    await flush()
+    await commit('aria', Promise.resolve({ type: 'doc', rev: 2, set: { resources: { HP: { current: 2, max: 9 } } } }))
+    expect(docs.value.aria.resources.HP.current).toBe(2)
+  })
+})

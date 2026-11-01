@@ -1,0 +1,16 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: realm-keeper-frontend-pdb
+  labels:
+    app: realm-keeper-frontend
+    app.kubernetes.io/name: realm-keeper-frontend
+    app.kubernetes.io/component: web
+    app.kubernetes.io/part-of: realm-keeper
+spec:
+  # One replica: "minAvailable: 1" would forbid ever evicting it, and
+  # block `kubectl drain` of its node for good.
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: realm-keeper-frontend

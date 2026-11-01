@@ -1,0 +1,37 @@
+{
+  "sheet": {
+    "id": "merged",
+    "name": "Merged",
+    "type": "adversary",
+    "subtitle": "own",
+    "image": null,
+    "tags": [],
+    "resources": {},
+    "stats": [],
+    "sections": [
+      {
+        "title": "first",
+        "columns": 2,
+        "wide": false,
+        "collapsed": false,
+        "tab": "one",
+        "counters": [],
+        "stats": [],
+        "items": []
+      },
+      {
+        "title": "deep",
+        "columns": null,
+        "wide": false,
+        "collapsed": true,
+        "tab": null,
+        "counters": [],
+        "stats": [],
+        "items": []
+      }
+    ],
+    "columns": null,
+    "text": "from the merge"
+  },
+  "warnings": []
+}

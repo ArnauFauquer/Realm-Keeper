@@ -1,0 +1,16 @@
+# fastapi 0.104 pinned starlette 0.27, which has known DoS CVEs in its
+# multipart and Range handling (CVE-2024-47874, CVE-2025-54121,
+# CVE-2025-62727); python-multipart < 0.0.18 has CVE-2024-53981.
+fastapi==0.141.1
+uvicorn[standard]>=0.30.0
+pydantic>=2.9.0
+python-frontmatter==1.0.1
+PyYAML>=6.0
+python-dotenv>=1.0.0
+websockets>=12.0
+boto3>=1.34.0
+python-multipart>=0.0.22
+authlib>=1.9.1
+httpx>=0.27.0
+itsdangerous>=2.1.0
+certifi>=2026.10.23

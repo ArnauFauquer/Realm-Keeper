@@ -1,0 +1,36 @@
+{
+  "name": "Realm Keeper",
+  "short_name": "RealmKeeper",
+  "description": "A note-taking and world-building app for tabletop RPG campaigns",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0d1d",
+  "theme_color": "#0c0d1d",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icons/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/favicon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

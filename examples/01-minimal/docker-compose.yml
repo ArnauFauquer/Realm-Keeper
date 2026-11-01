@@ -1,0 +1,35 @@
+# The simplest Realm Keeper: files only.
+#
+#   Notes:      the Markdown files in VAULT_DIR (your Obsidian vault), read and
+#               written in place. No git: back it up however you already do.
+#   Everything else (maps, scenes, sheets, images, music): a Docker volume.
+#   Login:      none. Everyone who can reach the app can edit it, so keep it
+#               on your own machine or a network you trust.
+#
+#   docker compose up -d   ->   http://localhost:8080
+services:
+  backend:
+    image: ghcr.io/arnaufauquer/realm-keeper/backend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      ENABLE_AUTH: "false"
+      VAULT_PATH: /vault
+      STORAGE_BACKEND: local
+      STORAGE_LOCAL_PATH: /data
+      FRONTEND_URL: http://localhost:${RK_PORT:-8080}
+    volumes:
+      # The container runs as UID 1000, which must be able to write this
+      # folder (on Linux, usually your own user).
+      - ${VAULT_DIR:-../sample-vault}:/vault
+      - data:/data
+
+  frontend:
+    image: ghcr.io/arnaufauquer/realm-keeper/frontend:${REALM_KEEPER_VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${RK_PORT:-8080}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  data:
