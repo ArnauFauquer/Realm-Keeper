@@ -33,6 +33,7 @@
 </template>
 
 <script setup>
+import { onMounted, onUnmounted } from 'vue'
 import { useDiceRoller } from '@/composables/useDiceRoller'
 import { DUALITY_OUTCOME_LABELS, NATURAL_OUTCOME_LABELS, rollClass } from '@/utils/diceNotation'
 
@@ -46,7 +47,11 @@ function toastClasses(t) {
   ]
 }
 
-const { state, dismissToast } = useDiceRoller()
+const { state, dismissToast, listenToRolls } = useDiceRoller()
+
+let stopListening = null
+onMounted(() => { stopListening = listenToRolls() })
+onUnmounted(() => stopListening?.())
 </script>
 
 <style scoped>
