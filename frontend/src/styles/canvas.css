@@ -1,0 +1,29 @@
+/* What the chart's and the vista's toolbars and selection panels share,
+   included scoped by each (<style scoped src="../styles/canvas.css">). */
+
+.tool-btn {
+  width: 40px;
+  height: 40px;
+}
+
+.tool-btn .mdi {
+  font-size: 1.3rem;
+}
+
+.tool-btn.active,
+.tool-btn.active:hover {
+  background: var(--accent-strong);
+  color: var(--accent-contrast);
+}
+
+.selection-panel-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-secondary);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--status-error-bg);
+  color: var(--status-error);
+}

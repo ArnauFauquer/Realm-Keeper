@@ -1,0 +1,18 @@
+{
+  "sheet": {
+    "id": "boar",
+    "name": "Boar",
+    "type": "adversary",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {},
+    "stats": [],
+    "sections": [],
+    "columns": null,
+    "text": null
+  },
+  "warnings": [
+    "image must be the URL of an Observatory image, as copied from the Observatory"
+  ]
+}

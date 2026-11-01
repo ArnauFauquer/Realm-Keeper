@@ -1,0 +1,84 @@
+import { random } from '../utils/random.js'
+/**
+ * Shared building blocks for the two D3 "constellation" graph views
+ * (GraphModal's full graph and RightSidebar's mini graph). Only the parts
+ * that were byte-identical in both components live here — node/link visual
+ * styling (hub vs. current-note treatment, colors, opacities) differs
+ * enough between the two that it stays local to each component.
+ */
+
+/**
+ * A static starfield, drawn once onto `canvas` (sized to width x height).
+ * One star in `density` px², small/medium/large picked with the odds in
+ * `sizeOdds` (the share of small, then of small + medium). The screen's
+ * backdrop uses it too, with its own numbers.
+ */
+export function drawStarfield(canvas, width, height, {
+  density,
+  sizeRanges,
+  opacityRange,
+  hueRange = [210, 260],
+  sizeOdds = [0.7, 0.9],
+  saturation = 60,
+  lightness = 90
+}) {
+  if (!canvas) return
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  const rand = (min, max) => min + random() * (max - min)
+  const starCount = Math.floor((width * height) / density)
+
+  for (let i = 0; i < starCount; i++) {
+    const x = rand(0, width)
+    const y = rand(0, height)
+    const r = random()
+    const size = r < sizeOdds[0]
+      ? rand(...sizeRanges[0])
+      : r < sizeOdds[1]
+        ? rand(...sizeRanges[1])
+        : rand(...sizeRanges[2])
+    const opacity = rand(...opacityRange)
+    const hue = rand(...hueRange)
+    ctx.beginPath()
+    ctx.arc(x, y, size, 0, Math.PI * 2)
+    ctx.fillStyle = `hsla(${hue}, ${saturation}%, ${lightness}%, ${opacity})`
+    ctx.fill()
+  }
+}
+
+export function getLinkEndpointId(endpoint) {
+  return typeof endpoint === 'object' ? endpoint.id : endpoint
+}
+
+export function computeDegrees(nodes, links) {
+  const degrees = {}
+  nodes.forEach(node => { degrees[node.id] = 0 })
+  links.forEach(link => {
+    const sourceId = getLinkEndpointId(link.source)
+    const targetId = getLinkEndpointId(link.target)
+    if (degrees[sourceId] !== undefined) degrees[sourceId]++
+    if (degrees[targetId] !== undefined) degrees[targetId]++
+  })
+  const maxDegree = Math.max(1, ...Object.values(degrees))
+  return { degrees, maxDegree }
+}
+
+export function createDragHandlers(getSimulation) {
+  return {
+    dragStarted(event, d) {
+      if (!event.active) getSimulation().alphaTarget(0.3).restart()
+      d.fx = d.x
+      d.fy = d.y
+    },
+    dragged(event, d) {
+      d.fx = event.x
+      d.fy = event.y
+    },
+    dragEnded(event, d) {
+      if (!event.active) getSimulation().alphaTarget(0)
+      d.fx = null
+      d.fy = null
+    }
+  }
+}

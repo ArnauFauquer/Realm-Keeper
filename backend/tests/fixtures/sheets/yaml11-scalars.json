@@ -1,0 +1,196 @@
+{
+  "sheet": {
+    "id": "scalars",
+    "name": "Scalars",
+    "type": "adversary",
+    "subtitle": null,
+    "image": null,
+    "tags": [],
+    "resources": {},
+    "stats": [],
+    "sections": [
+      {
+        "title": "Each item is one scalar",
+        "columns": null,
+        "wide": false,
+        "collapsed": false,
+        "tab": null,
+        "counters": [],
+        "stats": [],
+        "items": [
+          {
+            "name": null,
+            "text": "True",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "False",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "y",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1.0",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "6.0",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "8",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "31",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "5",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1000",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1e3",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1.0e3",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1000.0",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1.2345678901234568e+16",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "1e-05",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "-inf",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "nan",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "90",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "90.5",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "2024-01-01",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "2024-01-01 10:20:30.500000+02:00",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": null,
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "yes",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": "['a', \"b'c\", 1.5, None, True]",
+            "roll": null,
+            "tags": [],
+            "cost": null
+          },
+          {
+            "name": null,
+            "text": null,
+            "roll": null,
+            "tags": [],
+            "cost": null
+          }
+        ]
+      }
+    ],
+    "columns": null,
+    "text": null
+  },
+  "warnings": []
+}

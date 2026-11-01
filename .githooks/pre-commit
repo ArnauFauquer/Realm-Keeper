@@ -1,0 +1,21 @@
+#!/bin/sh
+# Blocks a commit unless both test suites pass (the same ones CI runs).
+# Enable once per clone:  git config core.hooksPath .githooks
+# Override the interpreters with RK_PYTHON (default: python) and RK_VITEST.
+set -e
+root=$(git rev-parse --show-toplevel)
+
+echo "pre-commit: backend tests..."
+(cd "$root/backend" && ${RK_PYTHON:-python} -m pytest -q -p no:cacheprovider)
+
+echo "pre-commit: frontend tests..."
+if [ -n "$RK_VITEST" ]; then
+  (cd "$root/frontend" && sh -c "$RK_VITEST")
+elif command -v npx >/dev/null 2>&1; then
+  (cd "$root/frontend" && npx vitest run)
+elif command -v bun >/dev/null 2>&1; then
+  (cd "$root/frontend" && bun --bun run vitest run)
+else
+  echo "pre-commit: neither npx nor bun found; set RK_VITEST to the vitest command." >&2
+  exit 1
+fi

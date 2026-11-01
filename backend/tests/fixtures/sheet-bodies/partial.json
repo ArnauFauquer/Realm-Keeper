@@ -1,0 +1,88 @@
+{
+  "type": "character",
+  "doc": {
+    "id": "party/vex",
+    "name": "Vex",
+    "sheet": {
+      "image": "https://realm.example.com/api/observatory/images/1a2b3c4d-vex.png",
+      "sections": [
+        {
+          "title": "Combat",
+          "tab": "Fight",
+          "counters": [
+            {
+              "name": "HP",
+              "max": 9,
+              "start": 4
+            }
+          ]
+        },
+        {
+          "title": "Gear",
+          "tab": "Bag",
+          "collapsed": true,
+          "items": [
+            {
+              "text": "A rope."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "expected": {
+    "sheet": {
+      "id": "party/vex",
+      "name": "Vex",
+      "type": "character",
+      "subtitle": null,
+      "image": "/api/observatory/images/1a2b3c4d-vex.png",
+      "tags": [],
+      "resources": {
+        "HP": {
+          "max": 9,
+          "min": 0,
+          "start": 4,
+          "color": null,
+          "style": null
+        }
+      },
+      "stats": [],
+      "sections": [
+        {
+          "title": "Combat",
+          "columns": null,
+          "wide": false,
+          "collapsed": false,
+          "tab": "Fight",
+          "counters": [
+            "HP"
+          ],
+          "stats": [],
+          "items": []
+        },
+        {
+          "title": "Gear",
+          "columns": null,
+          "wide": false,
+          "collapsed": true,
+          "tab": "Bag",
+          "counters": [],
+          "stats": [],
+          "items": [
+            {
+              "name": null,
+              "text": "A rope.",
+              "roll": null,
+              "tags": [],
+              "cost": null
+            }
+          ]
+        }
+      ],
+      "columns": null,
+      "text": null
+    },
+    "warnings": []
+  }
+}

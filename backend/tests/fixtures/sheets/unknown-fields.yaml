@@ -1,0 +1,4 @@
+name: Ghoul
+resource:
+  HP: 4
+image: Bestiary/ghoul.png

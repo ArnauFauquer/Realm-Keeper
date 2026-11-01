@@ -1,0 +1,8 @@
+name: Aria Stormwind
+id: aria
+type: character
+sections:
+  - counters:
+      HP: 12
+      Hope: { max: 6, start: 2 }
+
