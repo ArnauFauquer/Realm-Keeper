@@ -1,4 +1,0 @@
-name: A
-sections:
-  - counters:
-      HP: 1e3  # a string in YAML 1.1

@@ -1,5 +1,0 @@
-name: A
-sections:
-  - counters: { HP: 6 }
-  - title: Spells
-    counters: { HP: 3 }
