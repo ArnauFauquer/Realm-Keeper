@@ -303,6 +303,11 @@ pre,
   animation: rk-fade-in var(--duration-base) var(--ease-out);
 }
 
+@media (max-width: 640px) {
+  .rk-scrim { padding: var(--space-2); }
+  .rk-dialog { max-height: calc(100dvh - 2 * var(--space-2)); }
+}
+
 .rk-dialog {
   width: min(100%, 440px);
   max-height: calc(100dvh - 2 * var(--space-4));

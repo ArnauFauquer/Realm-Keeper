@@ -962,6 +962,16 @@ function formatTime(seconds) {
     width: 100%;
   }
 
+  /* Its own line, and allowed to shrink: a range input otherwise keeps its
+     default width and runs off the edge. */
+  .seek-row {
+    flex: 1 1 100%;
+  }
+
+  .seek-bar {
+    min-width: 0;
+  }
+
   .volume-row {
     display: none;
   }

@@ -275,6 +275,10 @@ async function setAsset(route, url) {
   height: 90dvh;
 }
 
+@media (max-width: 640px) {
+  .document-modal { height: 100dvh; }
+}
+
 .document-body {
   flex: 1;
   min-height: 0;

@@ -169,5 +169,19 @@ defineEmits(['back', 'save', 'send-to-screen', 'toggle-live', 'close'])
   .header-btn {
     padding: 0 var(--space-3);
   }
+
+  /* The actions drop under the title when they would squeeze it to "T…". */
+  .modal-header {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .modal-header h2 {
+    flex: 1 1 10rem;
+  }
+
+  .header-actions {
+    margin-left: auto;
+  }
 }
 </style>
