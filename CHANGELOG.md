@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.4.5](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.4...v0.4.5) (2026-11-01)
+
+
+### Features
+
+* deploy with a Helm chart and an Argo CD Application ([#70](https://github.com/ArnauFauquer/Realm-Keeper/issues/70)) ([083d72f](https://github.com/ArnauFauquer/Realm-Keeper/commit/083d72f7b4ec9288e480603ba86bb1a6d6d4f9c1))
+* show every dice roll to all signed-in users ([#72](https://github.com/ArnauFauquer/Realm-Keeper/issues/72)) ([17481e5](https://github.com/ArnauFauquer/Realm-Keeper/commit/17481e59971b79f2717146585904a8ef4cd30b12))
+
+
+### Bug Fixes
+
+* close the third security scan's findings ([#69](https://github.com/ArnauFauquer/Realm-Keeper/issues/69)) ([ca91d7f](https://github.com/ArnauFauquer/Realm-Keeper/commit/ca91d7fad55023a87950271cd02b55e87528bd2e))
+* drop the AppArmor annotation, the nodes don't run AppArmor ([#75](https://github.com/ArnauFauquer/Realm-Keeper/issues/75)) ([aeb6ca2](https://github.com/ArnauFauquer/Realm-Keeper/commit/aeb6ca28e0c143ba67f60fe8aa406e1f647c916a))
+* keep the pre-commit hook's git environment out of the tests ([#74](https://github.com/ArnauFauquer/Realm-Keeper/issues/74)) ([b413d6b](https://github.com/ArnauFauquer/Realm-Keeper/commit/b413d6b840d9fb77e36d004a0e5229f5e161b7f3))
+
 ## [0.4.4](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.3...v0.4.4) (2026-10-30)
 
 
