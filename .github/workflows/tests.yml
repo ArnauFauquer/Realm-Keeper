@@ -22,6 +22,8 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"   # the image's (backend/Dockerfile)
@@ -38,11 +40,14 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: "20"       # the image's (frontend/Dockerfile)
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm install -g npm@11.11.0 && npm ci
+      # The npm the lockfile was written with, pinned (see frontend/Dockerfile).
+      - run: npm install -g npm@11.11.0 && npm ci  # zizmor: ignore[adhoc-packages]
       - run: npx vitest run
       - run: npm run build

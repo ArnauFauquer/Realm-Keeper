@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from starlette.middleware.sessions import SessionMiddleware
 from routes.auth import require_auth
 from routes.auth import router as auth_router
@@ -27,6 +28,7 @@ from routes.observatory import router as observatory_router
 from config.settings import settings
 from config.logging import setup_logging
 from config.cache import CacheControlMiddleware
+from config.security_headers import SecurityHeadersMiddleware
 from config.csrf import OriginCheckMiddleware
 from services.doc_registry import hub as doc_hub, import_legacy_documents
 from services.git_sync_utils import GitCommitError, clear_stale_index_lock, pull_rebase, redact_credentials, run_git
@@ -208,9 +210,27 @@ if settings.ENABLE_AUTH and not os.getenv("SESSION_SECRET_KEY"):
 
 app = FastAPI(title="Realm Keeper API", lifespan=lifespan)
 
+
+def _openapi():
+    """The schema, plus the failure answers every route can give (not signed
+    in, not found, bad input): without them API fuzzers flag each as an
+    undocumented status code."""
+    if not app.openapi_schema:
+        schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+        for path in schema["paths"].values():
+            for operation in path.values():
+                operation["responses"].setdefault("default", {"description": "Error (401, 403, 404, 422 and the like)"})
+        app.openapi_schema = schema
+    return app.openapi_schema
+
+
+app.openapi = _openapi
+
 cors_origins = settings.CORS_ALLOWED_ORIGINS
 
 app.add_middleware(CacheControlMiddleware)
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.add_middleware(OriginCheckMiddleware, allowed_origins=[*cors_origins, settings.FRONTEND_URL])
 

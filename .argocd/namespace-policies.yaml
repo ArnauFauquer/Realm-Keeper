@@ -1,0 +1,93 @@
+# kics-scan disable=e84eaf4d-2f45-47b2-abe8-e581b06deb66
+# (ArgoCD creates the namespace: CreateNamespace=true, see home_lab realmkeeper.yaml)
+# What the namespace itself enforces: default sizes for containers that set
+# none, a ceiling for the whole app, and who may talk to whom.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: realm-keeper-defaults
+  namespace: realmkeeper
+spec:
+  limits:
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 128Mi
+      defaultRequest:
+        cpu: 10m
+        memory: 32Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: realm-keeper-quota
+  namespace: realmkeeper
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "1"
+    requests.memory: 1Gi
+    limits.cpu: "4"
+    limits.memory: 2Gi
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: realmkeeper
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# Traefik (its own namespace) is the only way in, to the two ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-from-traefik
+  namespace: realmkeeper
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - {port: 8000, protocol: TCP}
+        - {port: 8080, protocol: TCP}
+---
+# The backend calls out to: DNS, the Ceph object store (HTTP, in rook-ceph),
+# and the internet over HTTPS/SSH (the vault's git remote, Google sign-in).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-egress
+  namespace: realmkeeper
+spec:
+  podSelector:
+    matchLabels:
+      app: realm-keeper-backend
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - {port: 53, protocol: UDP}
+        - {port: 53, protocol: TCP}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: rook-ceph
+      ports:
+        - {port: 80, protocol: TCP}
+        - {port: 8080, protocol: TCP}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16]
+      ports:
+        - {port: 443, protocol: TCP}
+        - {port: 22, protocol: TCP}

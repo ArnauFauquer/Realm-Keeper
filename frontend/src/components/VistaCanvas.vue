@@ -489,7 +489,7 @@ function onStageClick(evt) {
     id: uuid(), name: item.name, image_url: item.image_url, x: pos.x, y: pos.y,
     width_pct: 20, elevation: 0, flip_h: false, rotation: 0, opacity: 1, brightness: 1, saturation: 1, hue_rotate: 0
   }
-  props.vista.assets.push(asset)
+  props.vista.assets.push(asset)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   pendingLibraryItem.value = null
   emitChange()
   mode.value = 'select'
@@ -611,7 +611,7 @@ function dragTo(evt, dragState) {
       // Dragging down should drag the art down with the cursor (revealing
       // more of its top edge), which means the offset percentage decreases.
       const deltaPct = (dy / range) * 100
-      props.vista.background_offset_y = clamp(dragState.startOffset - deltaPct, 0, 100)
+      props.vista.background_offset_y = clamp(dragState.startOffset - deltaPct, 0, 100)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
     }
     return
   }
@@ -650,14 +650,14 @@ function dragTo(evt, dragState) {
     const asset = props.vista.assets.find(a => a.id === dragState.id)
     if (asset) asset.elevation = asset.y - pos.y
   } else if (dragState.kind === 'vanishingPoint') {
-    props.vista.vanishing_point.x = pos.x
-    props.vista.vanishing_point.y = pos.y
+    props.vista.vanishing_point.x = pos.x  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
+    props.vista.vanishing_point.y = pos.y  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   }
 }
 
 
 function deleteAsset(id) {
-  props.vista.assets = props.vista.assets.filter(a => a.id !== id)
+  props.vista.assets = props.vista.assets.filter(a => a.id !== id)  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
   selectedId.value = null
   emitChange()
 }

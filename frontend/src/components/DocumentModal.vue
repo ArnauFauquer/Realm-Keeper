@@ -151,7 +151,7 @@ const { confirmDiscard } = useUnsavedChangesGuard(
 watch(() => [isOpen.value, props.modal.targetId.value], ([open, target], [wasOpen]) => {
   if (!open) return
   if (target) {
-    props.modal.targetId.value = null
+    props.modal.targetId.value = null  // NOSONAR: the document is shared state edited in place; the parent persists it on the change event
     switchTo(target)
   } else if (!wasOpen) {
     // Nothing to edit: the documents are found in the Observatory.

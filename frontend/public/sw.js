@@ -137,7 +137,7 @@ self.addEventListener('fetch', (event) => {
           // Fetch in background to update cache
           fetch(request).then((networkResponse) => {
             if (networkResponse && networkResponse.status === 200) {
-              cacheStaticAsset(request, networkResponse.clone());
+              cacheStaticAsset(request, networkResponse.clone()).catch(() => {});
             }
           }).catch(() => {
             // Network failed, cached version is fine
@@ -152,7 +152,7 @@ self.addEventListener('fetch', (event) => {
           }
 
           // Cache successful responses
-          cacheStaticAsset(request, response.clone());
+          cacheStaticAsset(request, response.clone()).catch(() => {});
 
           return response;
         });
@@ -169,9 +169,7 @@ self.addEventListener('fetch', (event) => {
           // Only cache successful, shareable responses
           if (isCacheableApiResponse(response)) {
             const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseToCache);
-            });
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache)).catch(() => {});
           }
           return response;
         })
@@ -202,9 +200,7 @@ self.addEventListener('fetch', (event) => {
           // Clone and cache successful responses
           if (response && response.status === 200) {
             const responseToCache = response.clone();
-            caches.open(CACHE_NAME).then((cache) => {
-              cache.put(request, responseToCache);
-            });
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseToCache)).catch(() => {});
             // A page from the network says which build is live now.
             if (request.mode === 'navigate') {
               const noted = response.clone().text().then(noteBuild).catch(() => {});

@@ -5,6 +5,26 @@ from pathlib import Path
 from typing import List
 
 
+SECRETS = (
+    "REPO_URL", "SESSION_SECRET_KEY", "ALLOWED_EMAILS", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET",
+    "S3_ACCESS_KEY", "S3_SECRET_KEY",
+)
+
+
+def load_secret_files(environ=os.environ) -> None:
+    """NAME_FILE=/path sets NAME to that file's contents (unless NAME is set).
+    Kubernetes mounts a Secret as files, which a pod's process list and
+    `kubectl describe` do not show, unlike an env var."""
+    for name in SECRETS:
+        path = environ.get(f"{name}_FILE")
+        if path and not environ.get(name):
+            with open(path, encoding="utf-8") as f:
+                environ[name] = f.read().strip()
+
+
+load_secret_files()
+
+
 def _flag(name: str, default: bool) -> bool:
     value = os.getenv(name, "").strip().lower()
     return default if not value else value in ("1", "true", "yes", "on")

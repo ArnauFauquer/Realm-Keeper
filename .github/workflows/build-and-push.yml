@@ -50,6 +50,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Set up Docker Buildx
@@ -95,6 +96,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
+          persist-credentials: false
           ref: ${{ needs.release-please.outputs.tag_name }}
 
       - name: Set up Docker Buildx
