@@ -85,7 +85,8 @@ ingress:
   className: traefik
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    # `public` is the internet-facing Traefik entrypoint; websecure is LAN-only.
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure,public
   tls:
     enabled: true
     secretName: realm-keeper-tls
