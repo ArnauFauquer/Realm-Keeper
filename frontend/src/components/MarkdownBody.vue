@@ -151,13 +151,6 @@ function onMouseover(e) {
   font-size: var(--text-md);
 }
 
-/* Prose keeps a readable measure. Headings (and their rules), tables, code,
-   callouts, and paragraphs that only wrap an image or a chart/vista embed
-   still use the full column, and so does a sheet (it has its own layout). */
-.markdown-content :deep(:is(p:not(:has(img, .doc-embed)), ul, ol, blockquote):not(.sheet-card *)) {
-  max-width: 70ch;
-}
-
 .markdown-content :deep(h1),
 .markdown-content :deep(h2),
 .markdown-content :deep(h3),
