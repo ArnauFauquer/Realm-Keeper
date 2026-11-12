@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.6...v0.4.7) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** update dependency three to ^0.187.0 ([#86](https://github.com/ArnauFauquer/Realm-Keeper/issues/86)) ([e0c14cb](https://github.com/ArnauFauquer/Realm-Keeper/commit/e0c14cbbad75e669455e49450de12903ea53ab35))
+
 ## [0.4.6](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.5...v0.4.6) (2026-11-01)
 
 
