@@ -1,14 +1,13 @@
 name: Tests
 
-# Every pull request and every push to main runs both suites. The backend and
+# Every pull request runs both suites, and the image build calls this workflow
+# again on a release, so no image is pushed from a red commit. The backend and
 # the frontend keep copies of the same rules (the sheet parser, the live
 # documents' event diff) checked against shared fixtures, and only running
 # both keeps them from drifting apart.
 on:
   pull_request:
-  push:
-    branches:
-      - main
+  workflow_call:
 
 permissions:
   contents: read

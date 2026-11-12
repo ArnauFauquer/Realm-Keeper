@@ -35,11 +35,22 @@ jobs:
         id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5
         with:
+          # A PR opened with the default GITHUB_TOKEN triggers no workflows, so
+          # the release PR would never get its checks. A PAT or GitHub App token
+          # in RELEASE_PLEASE_TOKEN (contents + pull-requests write) fixes that.
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  build-backend:
+  # The release commit itself has no PR checks of its own, and an image must
+  # never come from a red commit.
+  tests:
     needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/tests.yml
+
+  build-backend:
+    needs: [release-please, tests]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -85,7 +96,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
 
   build-frontend:
-    needs: release-please
+    needs: [release-please, tests]
     if: needs.release-please.outputs.release_created == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30

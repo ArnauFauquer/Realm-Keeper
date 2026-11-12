@@ -9,13 +9,6 @@ on:
       - "helm/**"
       - ".argocd/**"
       - ".github/workflows/helm.yml"
-  push:
-    branches:
-      - main
-    paths:
-      - "helm/**"
-      - ".argocd/**"
-      - ".github/workflows/helm.yml"
 
 permissions:
   contents: read
