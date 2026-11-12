@@ -9,6 +9,10 @@ export default defineConfig({
       '@': path.resolve(import.meta.dirname, './src')
     }
   },
+  test: {
+    // Node 25+ ships its own global localStorage, which shadows jsdom's.
+    execArgv: ['--no-experimental-webstorage']
+  },
   build: {
     // Minify configuration (oxc, Vite 8's default minifier)
     minify: true,

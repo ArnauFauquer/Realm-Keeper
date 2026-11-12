@@ -3,7 +3,7 @@
 # arm64 image crashes with SIGILL and hangs the job. Only the nginx stage below
 # is per-target-platform.
 # kics-scan ignore-line
-FROM --platform=$BUILDPLATFORM node:24-alpine AS build
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
