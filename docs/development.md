@@ -24,7 +24,7 @@ pip install -r requirements.txt
 uvicorn main:app --reload --host 0.0.0.0 --port 8000 --env-file .env
 ```
 
-Frontend (Node 20):
+Frontend (Node 26):
 
 ```bash
 cd frontend
