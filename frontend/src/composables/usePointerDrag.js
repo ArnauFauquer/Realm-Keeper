@@ -134,15 +134,17 @@ export function usePointerDrag({ toPoint = (event) => event, thresholdPx = 0, on
 // phase, before anything else sees it; if none comes, the guard goes away by
 // itself.
 function swallowNextClick() {
+  // Held, not looked up again: the timer can fire after the global is gone (a torn-down test environment).
+  const win = window
   const swallow = (event) => {
     event.stopPropagation()
     event.preventDefault()
     done()
   }
   const done = () => {
-    window.removeEventListener('click', swallow, true)
+    win.removeEventListener('click', swallow, true)
     clearTimeout(timer)
   }
-  window.addEventListener('click', swallow, true)
+  win.addEventListener('click', swallow, true)
   const timer = setTimeout(done, 50)
 }
