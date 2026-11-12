@@ -3,7 +3,7 @@
 # arm64 image crashes with SIGILL and hangs the job. Only the nginx stage below
 # is per-target-platform.
 # kics-scan ignore-line
-FROM --platform=$BUILDPLATFORM node:20-alpine AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
@@ -15,7 +15,7 @@ COPY package*.json ./
 # rather than whatever npm install resolves on the day. It does demand that
 # the lockfile's optionalDependencies entries (e.g. esbuild's per-platform
 # binaries) match what the installing npm would write, which breaks across
-# npm major versions — node:20-alpine bundles npm 10.x, so pin the npm the
+# npm major versions — the node image bundles its own npm, so pin the npm the
 # lockfile is generated with. Bump this together with the lockfile.
 RUN npm install -g npm@11.11.0 && npm ci
 COPY . .

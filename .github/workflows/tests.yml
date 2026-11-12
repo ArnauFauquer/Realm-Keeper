@@ -44,7 +44,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
-          node-version: "20"       # the image's (frontend/Dockerfile)
+          node-version: "24"       # the image's (frontend/Dockerfile)
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # The npm the lockfile was written with, pinned (see frontend/Dockerfile).

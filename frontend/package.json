@@ -16,7 +16,7 @@
     "dompurify": "^3.4.17",
     "markdown-it": "^14.3.3",
     "mermaid": "^12.2.0",
-    "three": "^0.185.1",
+    "three": "^0.187.0",
     "vue": "^3.3.8",
     "vue-router": "^4.2.5"
   },
