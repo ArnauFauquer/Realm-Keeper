@@ -204,6 +204,13 @@ function onMouseover(e) {
   margin-bottom: 1em;
 }
 
+/* A bold label on its own line right after text ("text\n**Label:**") is a
+   soft break inside one paragraph; give it the gap a new paragraph would. */
+.markdown-content :deep(p > br + strong:last-child) {
+  display: block;
+  margin-top: 1em;
+}
+
 .markdown-content :deep(code) {
   background: var(--accent-a12);
   color: var(--accent-soft);
