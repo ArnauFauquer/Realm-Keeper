@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.9](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.8...v0.4.9) (2026-11-12)
+
+
+### Bug Fixes
+
+* bump the Helm chart version on each release ([#94](https://github.com/ArnauFauquer/Realm-Keeper/issues/94)) ([9d69b6f](https://github.com/ArnauFauquer/Realm-Keeper/commit/9d69b6f036b681c62bae9dc8c3fbf0976b70f453))
+* **notes:** let prose use the full width of the note ([#96](https://github.com/ArnauFauquer/Realm-Keeper/issues/96)) ([6fa517a](https://github.com/ArnauFauquer/Realm-Keeper/commit/6fa517a7f0c1c7440196578bfa01cee6dcd546b1))
+
 ## [0.4.8](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.7...v0.4.8) (2026-11-12)
 
 
