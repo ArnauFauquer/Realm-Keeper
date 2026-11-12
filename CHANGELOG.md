@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.8](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.7...v0.4.8) (2026-11-12)
+
+
+### Bug Fixes
+
+* **notes:** give a bold label line after text the gap of a paragraph ([#91](https://github.com/ArnauFauquer/Realm-Keeper/issues/91)) ([d34318c](https://github.com/ArnauFauquer/Realm-Keeper/commit/d34318c98956a28edb73d5633b5606466f58b293))
+
+
+### Continuous Integration
+
+* list every commit type in the release notes ([#93](https://github.com/ArnauFauquer/Realm-Keeper/issues/93)) ([12ffb0c](https://github.com/ArnauFauquer/Realm-Keeper/commit/12ffb0c999da6b2d982e1398291e4e16120b3fca))
+
 ## [0.4.7](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.6...v0.4.7) (2026-11-12)
 
 
