@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.10](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.9...v0.4.10) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** update dependency markdown-it to v15 ([#97](https://github.com/ArnauFauquer/Realm-Keeper/issues/97)) ([346492b](https://github.com/ArnauFauquer/Realm-Keeper/commit/346492b834958e1562cb6c3194aa3cdb35e6db28))
+* **deps:** update dependency vue-router to v5 ([#98](https://github.com/ArnauFauquer/Realm-Keeper/issues/98)) ([63ff132](https://github.com/ArnauFauquer/Realm-Keeper/commit/63ff13298c3fede8490021816d36adc57206b91f))
+
+
+### Continuous Integration
+
+* gate image builds on tests and stop duplicate CI runs ([#99](https://github.com/ArnauFauquer/Realm-Keeper/issues/99)) ([1d10b8c](https://github.com/ArnauFauquer/Realm-Keeper/commit/1d10b8c31db5d2e46493b03151270790bd62dcea))
+
 ## [0.4.9](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.8...v0.4.9) (2026-11-12)
 
 
