@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.11](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.10...v0.4.11) (2026-11-12)
+
+
+### Bug Fixes
+
+* bump the chart's version and appVersion with the YAML updater ([#101](https://github.com/ArnauFauquer/Realm-Keeper/issues/101)) ([fd1942e](https://github.com/ArnauFauquer/Realm-Keeper/commit/fd1942e7a3516f00959ef70dfa01c323ea45a3a8))
+
 ## [0.4.10](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.9...v0.4.10) (2026-11-12)
 
 
