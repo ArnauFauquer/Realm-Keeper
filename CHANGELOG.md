@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.12](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.11...v0.4.12) (2026-11-13)
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency fastapi to v0.162.7 ([#104](https://github.com/ArnauFauquer/Realm-Keeper/issues/104)) ([b770811](https://github.com/ArnauFauquer/Realm-Keeper/commit/b770811221efc056dfa1748fbc04986476c73b97))
+* **deps:** update dependency jsdom to v31.0.1 ([#103](https://github.com/ArnauFauquer/Realm-Keeper/issues/103)) ([6931fc4](https://github.com/ArnauFauquer/Realm-Keeper/commit/6931fc4f6a5abf7ed5f6567176a9181b775d58d8))
+* **deps:** update dependency vue-router to v5.5.1 ([#105](https://github.com/ArnauFauquer/Realm-Keeper/issues/105)) ([14b28fb](https://github.com/ArnauFauquer/Realm-Keeper/commit/14b28fb6a7ec7b022b70cc20241c4991ed1344c1))
+
 ## [0.4.11](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.10...v0.4.11) (2026-11-12)
 
 
