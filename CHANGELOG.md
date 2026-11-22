@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.12](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.11...v0.4.12) (2026-11-22)
+
+
+### Miscellaneous Chores
+
+* **deps:** update dependency @vue/test-utils to v2.6.0 ([#109](https://github.com/ArnauFauquer/Realm-Keeper/issues/109)) ([a98a385](https://github.com/ArnauFauquer/Realm-Keeper/commit/a98a3859bff23100db4525bf16713f9518806b28))
+* **deps:** update dependency dompurify to v3.4.18 ([#107](https://github.com/ArnauFauquer/Realm-Keeper/issues/107)) ([e8012d8](https://github.com/ArnauFauquer/Realm-Keeper/commit/e8012d8c5f4e54b8a124d6e3e05eff63dd6b2699))
+* **deps:** update dependency fastapi to v0.162.7 ([#104](https://github.com/ArnauFauquer/Realm-Keeper/issues/104)) ([b770811](https://github.com/ArnauFauquer/Realm-Keeper/commit/b770811221efc056dfa1748fbc04986476c73b97))
+* **deps:** update dependency fastapi to v0.163.1 ([#108](https://github.com/ArnauFauquer/Realm-Keeper/issues/108)) ([fe4a92d](https://github.com/ArnauFauquer/Realm-Keeper/commit/fe4a92d438494b209fe949ceefb93fea8b051fb1))
+* **deps:** update dependency fastapi to v0.163.2 ([#110](https://github.com/ArnauFauquer/Realm-Keeper/issues/110)) ([8963554](https://github.com/ArnauFauquer/Realm-Keeper/commit/8963554f33ee18223f4b6e6fe6044d864e3612b4))
+* **deps:** update dependency fastapi to v0.165.0 ([#112](https://github.com/ArnauFauquer/Realm-Keeper/issues/112)) ([6ec0fb2](https://github.com/ArnauFauquer/Realm-Keeper/commit/6ec0fb2a8e816174acdd5efa064c54acb6bd05dc))
+* **deps:** update dependency jsdom to v31.0.1 ([#103](https://github.com/ArnauFauquer/Realm-Keeper/issues/103)) ([6931fc4](https://github.com/ArnauFauquer/Realm-Keeper/commit/6931fc4f6a5abf7ed5f6567176a9181b775d58d8))
+* **deps:** update dependency vitest to v5.1.1 ([#111](https://github.com/ArnauFauquer/Realm-Keeper/issues/111)) ([8e4d56b](https://github.com/ArnauFauquer/Realm-Keeper/commit/8e4d56bbed15ed34cd0baf4bef3ea976ae41676b))
+* **deps:** update dependency vue to v3.5.46 ([#113](https://github.com/ArnauFauquer/Realm-Keeper/issues/113)) ([ab5b239](https://github.com/ArnauFauquer/Realm-Keeper/commit/ab5b2399cdc9da01bd77eb1671760b82c0c9707d))
+* **deps:** update dependency vue-router to v5.5.1 ([#105](https://github.com/ArnauFauquer/Realm-Keeper/issues/105)) ([14b28fb](https://github.com/ArnauFauquer/Realm-Keeper/commit/14b28fb6a7ec7b022b70cc20241c4991ed1344c1))
+
 ## [0.4.11](https://github.com/ArnauFauquer/Realm-Keeper/compare/v0.4.10...v0.4.11) (2026-11-12)
 
 
